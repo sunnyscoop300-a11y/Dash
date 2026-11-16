@@ -1,0 +1,38 @@
+#!/usr/bin/env dsh-hare
+let navn = "Bossun"
+let tal = 42
+let sprog = ["hare", "nim", "dash"]
+echo "Hej {navn}! {tal} gange to er {tal * 2}"
+echo "Sprog: {sprog} ({sprog.len} stk), første: {sprog.first}"
+let mappe = "/tmp/dash hare test"
+rm -rf $mappe
+mkdir -p $mappe
+for i in range(1, 6) {
+    echo "lyd {i}" > "{mappe}/sang nummer {i}.flac"
+}
+let antal = $(ls $mappe | wc -l)
+echo "Der er {antal} filer"
+ls $mappe | sort -r | head -n 2
+try ls "/findes/ikke" 2> /dev/null
+if status != 0 {
+    echo "ls fejlede (exit {status}) — 'try' fangede det"
+}
+let sum = 0
+for n in range(1, 100) {
+    if n % 2 == 0 { continue }
+    if n > 9 { break }
+    sum += n
+}
+echo "Sum af ulige tal under 10: {sum}"
+let i = 0
+while i < 3 { i += 1 }
+echo "while gav {i}"
+for f in sprog parallel 3 {
+    sleep 0.3
+    echo "  ✔ løber {f}"
+}
+echo hej verden | tr a-z A-Z
+cat < "{mappe}/sang nummer 3.flac"
+rm -rf $mappe
+print("print virker", 1 + 1, true, nil)
+echo "=== færdig ==="
