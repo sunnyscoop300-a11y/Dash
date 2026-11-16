@@ -1,0 +1,29 @@
+# (run.sh sletter /tmp/ap.txt før kørslen)
+fn fib(n) {
+    if n < 2 { return n }
+    return fib(n - 1) + fib(n - 2)
+}
+print("fib:", fib(20))
+let m = {"navn": "Jade", "liv": 3}
+m["liv"] -= 1
+m.level = 2
+print(m, m.keys, m.values, m.has("navn"), m.get("x", "–"))
+let l = [5, 2, 9]
+l[0] = 7
+l.push(1)
+print(l, l.pop(), l.sort(), l.reverse(), max(l), min(4, 8))
+print(["b", "a", "c"].sort(), "a,,b".split(","), "  x  y ".split())
+fn fn_stor(x) { return x > 5 }
+fn dobbelt(x) { return x * 2 }
+print(l.map(dobbelt), l.filter(fn_stor) == nil or true)
+print(7 / 2, 6 / 2, 1.5 + 1, round(3.14159, 2), round(2.6), abs(-3), int(3.9), float("2.5"))
+let f = "/home/tux/Musik/en sang.flac"
+print(f.name, f.stem, f.ext, f.dir)
+print("ÆØÅ æøå".lower(), "blåbær".upper(), "abc" < "abd")
+append("/tmp/ap.txt", "a")
+append("/tmp/ap.txt", "b")
+print(read("/tmp/ap.txt"), glob("/tmp/ap*.txt"))
+let t0 = now()
+sleep(0.2)
+print(now() - t0 >= 0.2, type(t0), type(m), type(dobbelt))
+for k in m { print("nøgle", k) }

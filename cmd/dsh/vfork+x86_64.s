@@ -34,4 +34,3 @@ dsh_vfork_exec:
 	syscall
 3:	ret
 	.size dsh_vfork_exec, .-dsh_vfork_exec
-	.section .note.GNU-stack,"",@progbits

@@ -1,20 +1,21 @@
 // Runs the syntax tree.
 use fmt;
+use math;
 use os;
 use os::exec;
-use strconv;
 use strings;
 use time;
 
-type flow = enum { NORMAL, BREAK, CONTINUE };
+type flow = enum { NORMAL, BREAK, CONTINUE, RETURN };
 
 let root: *env = null: *env;
+let ret_val: value = nilv;
 
 fn home() str = os::tryenv("HOME", "/");
 
 fn run_block(stmts: []stmt, e: *env) (flow | failed) = {
-	for (let s .. stmts) {
-		const f = exec_stmt(&s, e)?;
+	for (let s &.. stmts) {
+		const f = exec_stmt(s, e)?;
 		if (f != flow::NORMAL) return f;
 	};
 	return flow::NORMAL;
@@ -25,17 +26,7 @@ fn exec_stmt(s: *stmt, e: *env) (flow | failed) = {
 	case let l: s_let =>
 		define(e, l.name, eval(l.val, e)?);
 	case let a: s_assign =>
-		const slot = match (env_find(e, a.name)) {
-		case let p: *value => yield p;
-		case void =>
-			return dief(a.line, "'{}' er ikke defineret — brug 'let {} = ...'", a.name, a.name);
-		};
-		let v = eval(a.val, e)?;
-		if (a.op != "=") {
-			const op = strings::sub(a.op, 0, 1);
-			v = binop(op, *slot, v, a.line)?;
-		};
-		*slot = v;
+		assign(&a, e)?;
 	case let x: s_expr =>
 		eval(x.e, e)?;
 	case let c: s_cmd =>
@@ -50,21 +41,83 @@ fn exec_stmt(s: *stmt, e: *env) (flow | failed) = {
 			const inner = newenv(e);
 			const f = run_block(w.body, inner);
 			freeenv(inner);
-			if (f? == flow::BREAK) break;
+			switch (f?) {
+			case flow::BREAK => break;
+			case flow::RETURN => return flow::RETURN;
+			case => void;
+			};
 		};
 	case let f: s_for =>
 		return exec_for(&f, e);
-	case let l: s_break =>
+	case let f: s_fn =>
+		e.captured = true;
+		define(e, f.name, alloc(func {
+			name = f.name,
+			params = f.params,
+			body = f.body,
+			closure = e,
+		})!);
+	case let r: s_return =>
+		ret_val = match (r.val) {
+		case null => yield nilv;
+		case let x: *expr => yield eval(x, e)?;
+		};
+		return flow::RETURN;
+	case s_break =>
 		return flow::BREAK;
-	case let l: s_continue =>
+	case s_continue =>
 		return flow::CONTINUE;
 	};
 	return flow::NORMAL;
 };
 
+fn assign(a: *s_assign, e: *env) (void | failed) = {
+	let v = eval(a.val, e)?;
+	if (a.op != "=") {
+		v = binop(strings::sub(a.op, 0, 1), eval(a.target, e)?, v, a.line)?;
+	};
+	match (*a.target) {
+	case let t: e_var =>
+		match (env_find(e, t.name)) {
+		case let p: *value => *p = v;
+		case void =>
+			return dief(a.line, "'{}' er ikke defineret — brug 'let {} = ...'", t.name, t.name);
+		};
+	case let t: e_index =>
+		const obj = eval(t.obj, e)?;
+		const k = eval(t.idx, e)?;
+		match (obj) {
+		case let l: *list =>
+			const i = list_index(l, k, a.line)?;
+			l.items[i] = v;
+		case let m: *mapv =>
+			map_set(m, k, v);
+		case => return dief(a.line, "kan ikke sætte [..] på en {}", typename(obj));
+		};
+	case let t: e_attr =>
+		match (eval(t.obj, e)?) {
+		case let m: *mapv => map_set(m, t.name, v);
+		case => return dief(a.line, "kan kun sætte .{} på en map", t.name);
+		};
+	case => abort();
+	};
+};
+
+fn list_index(l: *list, k: value, line: int) (size | failed) = {
+	const i = match (k) {
+	case let i: i64 => yield i;
+	case => return die(line, "indeks skal være et heltal");
+	};
+	const n = len(l.items): i64;
+	const j = if (i < 0) n + i else i;
+	if (j < 0 || j >= n) return dief(line, "indeks {} er udenfor (længde {})", i, n);
+	return j: size;
+};
+
 fn items_of(v: value, line: int) ([]value | failed) = {
 	match (v) {
 	case let l: *list => return l.items;
+	case let m: *mapv => return m.keys;
 	case let n: i64 =>
 		let out: []value = [];
 		for (let i = 0i64; i < n; i += 1) append(out, i)!;
@@ -89,7 +142,11 @@ fn exec_for(f: *s_for, e: *env) (flow | failed) = {
 			define(inner, f.var, x);
 			const r = run_block(f.body, inner);
 			freeenv(inner);
-			if (r? == flow::BREAK) break;
+			switch (r?) {
+			case flow::BREAK => break;
+			case flow::RETURN => return flow::RETURN;
+			case => void;
+			};
 		};
 		return flow::NORMAL;
 	case let pe: *expr =>
@@ -118,7 +175,13 @@ fn run_parallel(f: *s_for, e: *env, items: []value, n: size) (flow | failed) = {
 			const inner = newenv(e);
 			define(inner, f.var, x);
 			match (run_block(f.body, inner)) {
-			case flow =>
+			case let fl: flow =>
+				if (fl == flow::BREAK) {
+					die(f.line, "'break' virker ikke i en parallel-løkke — man kan ikke stoppe alle løbere på én gang"): void;
+					flush_out();
+					report_error();
+					os::exit(1);
+				};
 				flush_out();
 				os::exit(0);
 			case failed =>
@@ -159,6 +222,7 @@ fn wait_one() bool = {
 fn eval(x: *expr, e: *env) (value | failed) = {
 	match (*x) {
 	case let n: e_num => return n: i64;
+	case let n: e_fnum => return n: f64;
 	case let c: e_const => return c.v;
 	case let s: e_str => return eval_parts(s.parts, e)?;
 	case let v: e_var =>
@@ -170,6 +234,12 @@ fn eval(x: *expr, e: *env) (value | failed) = {
 		let items: []value = [];
 		for (let it .. l.items) append(items, eval(it, e)?)!;
 		return newlist(items);
+	case let m: e_map =>
+		const mp = alloc(mapv { ... })!;
+		for (let i = 0z; i < len(m.keys); i += 1) {
+			map_set(mp, eval(m.keys[i], e)?, eval(m.vals[i], e)?);
+		};
+		return mp;
 	case let b: e_bin =>
 		if (b.op == "and") {
 			const a = eval(b.a, e)?;
@@ -185,51 +255,73 @@ fn eval(x: *expr, e: *env) (value | failed) = {
 		if (u.op == "not") return !truthy(a);
 		match (a) {
 		case let i: i64 => return -i;
+		case let f: f64 => return -f;
 		case => return dief(u.line, "kan ikke bruge '-' på en {}", typename(a));
 		};
 	case let c: e_call =>
 		let args: []value = [];
 		for (let a .. c.args) append(args, eval(a, e)?)!;
-		return call(c.name, args, c.line);
+		match (env_find(e, c.name)) {
+		case let p: *value =>
+			match (*p) {
+			case let f: *func => return call_fn(f, args, c.line);
+			case => return dief(c.line, "'{}' er en {}, ikke en funktion", c.name, typename(*p));
+			};
+		case void =>
+			return call(c.name, args, c.line);
+		};
+	case let m: e_method =>
+		const obj = eval(m.obj, e)?;
+		let args: []value = [];
+		for (let a .. m.args) append(args, eval(a, e)?)!;
+		return method(obj, m.name, args, m.line);
 	case let c: e_cap =>
 		return capture(c.raw, e, c.line);
 	case let ix: e_index =>
 		const obj = eval(ix.obj, e)?;
-		const i = match (eval(ix.idx, e)?) {
-		case let i: i64 => yield i;
-		case => return die(ix.line, "indeks skal være et heltal");
-		};
+		const k = eval(ix.idx, e)?;
 		match (obj) {
 		case let l: *list =>
-			const k = if (i < 0) len(l.items): i64 + i else i;
-			if (k < 0 || k >= len(l.items): i64) {
-				return dief(ix.line, "indeks {} er udenfor (længde {})", i, len(l.items));
+			return l.items[list_index(l, k, ix.line)?];
+		case let m: *mapv =>
+			match (map_find(m, k)) {
+			case let i: size => return m.vals[i];
+			case void => return nilv;
 			};
-			return l.items[k];
 		case let s: str =>
+			const i = match (k) {
+			case let i: i64 => yield i;
+			case => return die(ix.line, "indeks skal være et heltal");
+			};
 			const b = strings::toutf8(s);
-			const k = if (i < 0) len(b): i64 + i else i;
-			if (k < 0 || k >= len(b): i64) {
+			const j = if (i < 0) len(b): i64 + i else i;
+			if (j < 0 || j >= len(b): i64) {
 				return dief(ix.line, "indeks {} er udenfor (længde {})", i, len(b));
 			};
-			return strings::dup(strings::fromutf8_unsafe(b[k..k + 1]))!;
+			return strings::dup(strings::fromutf8_unsafe(b[j..j + 1]))!;
 		case => return dief(ix.line, "kan ikke slå op i en {}", typename(obj));
 		};
 	case let a: e_attr =>
-		const obj = eval(a.obj, e)?;
-		match (obj) {
-		case let l: *list =>
-			switch (a.name) {
-			case "len" => return len(l.items): i64;
-			case "first" => return if (len(l.items) > 0) l.items[0] else nilv;
-			case "last" => return if (len(l.items) > 0) l.items[len(l.items) - 1] else nilv;
-			case => void;
-			};
-		case let s: str =>
-			if (a.name == "len") return len(s): i64;
-		case => void;
-		};
-		return dief(a.line, "en {} har ingen egenskab '.{}'", typename(obj), a.name);
+		return attr(eval(a.obj, e)?, a.name, a.line);
+	};
+};
+
+fn call_fn(f: *func, args: []value, line: int) (value | failed) = {
+	if (len(args) != len(f.params)) {
+		return dief(line, "{}() vil have {} argumenter, fik {}", f.name, len(f.params), len(args));
+	};
+	const inner = newenv(f.closure);
+	defer freeenv(inner);
+	for (let i = 0z; i < len(args); i += 1) define(inner, f.params[i], args[i]);
+	ret_val = nilv;
+	switch (run_block(f.body, inner)?) {
+	case flow::RETURN =>
+		const r = ret_val;
+		ret_val = nilv;
+		return r;
+	case flow::BREAK, flow::CONTINUE =>
+		return dief(line, "'break'/'continue' uden for en løkke i {}()", f.name);
+	case => return nilv;
 	};
 };
 
@@ -271,108 +363,64 @@ fn binop(op: str, a: value, b: value, line: int) (value | failed) = {
 		case => void;
 		};
 	};
-	const x = match (a) {
-	case let i: i64 => yield i;
-	case => return dief(line, "kan ikke bruge '{}' på {} og {}", op, typename(a), typename(b));
+	// strings compare alphabetically
+	match (a) {
+	case let x: str =>
+		match (b) {
+		case let y: str =>
+			const c = strings::compare(x, y);
+			switch (op) {
+			case "<" => return c < 0;
+			case ">" => return c > 0;
+			case "<=" => return c <= 0;
+			case ">=" => return c >= 0;
+			case => void;
+			};
+		case => void;
+		};
+	case => void;
 	};
-	const y = match (b) {
-	case let i: i64 => yield i;
-	case => return dief(line, "kan ikke bruge '{}' på {} og {}", op, typename(a), typename(b));
+	if (!(a is i64 || a is f64) || !(b is i64 || b is f64)) return badop(op, a, b, line);
+
+	// whole numbers stay whole
+	if (a is i64 && b is i64) {
+		const x = a as i64, y = b as i64;
+		switch (op) {
+		case "+" => return x + y;
+		case "-" => return x - y;
+		case "*" => return x * y;
+		case "/" =>
+			if (y == 0) return die(line, "division med nul — selv Dash kan ikke løbe uendeligt");
+			if (x % y == 0) return x / y;
+			return x: f64 / y: f64;
+		case "%" =>
+			if (y == 0) return die(line, "division med nul — selv Dash kan ikke løbe uendeligt");
+			return x % y;
+		case "<" => return x < y;
+		case ">" => return x > y;
+		case "<=" => return x <= y;
+		case ">=" => return x >= y;
+		case => return badop(op, a, b, line);
+		};
 	};
+	const x = num(a) as f64, y = num(b) as f64;
 	switch (op) {
 	case "+" => return x + y;
 	case "-" => return x - y;
 	case "*" => return x * y;
 	case "/" =>
-		if (y == 0) return die(line, "division med nul — selv Dash kan ikke løbe uendeligt");
+		if (y == 0.0) return die(line, "division med nul — selv Dash kan ikke løbe uendeligt");
 		return x / y;
 	case "%" =>
-		if (y == 0) return die(line, "division med nul — selv Dash kan ikke løbe uendeligt");
-		return x % y;
+		if (y == 0.0) return die(line, "division med nul — selv Dash kan ikke løbe uendeligt");
+		return math::modf64(x, y);
 	case "<" => return x < y;
 	case ">" => return x > y;
 	case "<=" => return x <= y;
 	case ">=" => return x >= y;
-	case => return dief(line, "ukendt operator '{}'", op);
+	case => return badop(op, a, b, line);
 	};
 };
 
-// --- built-in functions ---
-
-fn need(name: str, args: []value, n: size, line: int) (void | failed) = {
-	if (len(args) != n) {
-		return dief(line, "{}() vil have {} argumenter, fik {}", name, n, len(args));
-	};
-};
-
-fn int_arg(name: str, v: value, line: int) (i64 | failed) = match (v) {
-case let i: i64 => yield i;
-case => yield dief(line, "{}() vil have et heltal, fik {}", name, typename(v));
-};
-
-fn call(name: str, args: []value, line: int) (value | failed) = {
-	switch (name) {
-	case "print" =>
-		for (let i = 0z; i < len(args); i += 1) {
-			if (i > 0) fmt::print(" ")!;
-			fmt::print(tostr(args[i]))!;
-		};
-		fmt::println()!;
-		return nilv;
-	case "len" =>
-		need(name, args, 1, line)?;
-		match (args[0]) {
-		case let s: str => return len(s): i64;
-		case let l: *list => return len(l.items): i64;
-		case => return dief(line, "len() virker ikke på en {}", typename(args[0]));
-		};
-	case "str" =>
-		need(name, args, 1, line)?;
-		return tostr(args[0]);
-	case "int" =>
-		need(name, args, 1, line)?;
-		match (args[0]) {
-		case let i: i64 => return i;
-		case let s: str =>
-			match (strconv::stoi64(strings::trim(s))) {
-			case let i: i64 => return i;
-			case => return dief(line, "'{}' er ikke et heltal", s);
-			};
-		case => return dief(line, "int() virker ikke på en {}", typename(args[0]));
-		};
-	case "type" =>
-		need(name, args, 1, line)?;
-		return typename(args[0]);
-	case "range" =>
-		let a = 0i64, b = 0i64;
-		if (len(args) == 1) {
-			b = int_arg(name, args[0], line)?;
-		} else {
-			need(name, args, 2, line)?;
-			a = int_arg(name, args[0], line)?;
-			b = int_arg(name, args[1], line)?;
-		};
-		let items: []value = [];
-		for (let i = a; i < b; i += 1) append(items, i)!;
-		return newlist(items);
-	case "env" =>
-		const key = tostr(args[0]);
-		match (os::getenv(key)) {
-		case let s: str => return s;
-		case void => return if (len(args) > 1) args[1] else nilv;
-		};
-	case "exists" =>
-		need(name, args, 1, line)?;
-		return os::exists(tostr(args[0]));
-	case "which" =>
-		need(name, args, 1, line)?;
-		match (exec::lookup(tostr(args[0]))) {
-		case let s: str => return strings::dup(s)!;
-		case => return nilv;
-		};
-	case "now" =>
-		const t = time::now(time::clock::MONOTONIC);
-		return t.sec * 1000 + t.nsec / 1000000;
-	case => return dief(line, "ukendt funktion '{}()'", name);
-	};
-};
+fn badop(op: str, a: value, b: value, line: int) failed =
+	dief(line, "kan ikke bruge '{}' på {} og {}", op, typename(a), typename(b));

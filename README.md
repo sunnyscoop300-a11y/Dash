@@ -34,17 +34,25 @@ make install    # ~/.local/bin/dsh-hare
 - **Strict som standard**: en kommando der fejler stopper scriptet (brug `try`).
 - **Ingen word-splitting**: `$fil` er altid ét argument, også med mellemrum.
 
-## Hvad v0.2 kan
+## Hvad den kan (v0.3)
 
-`let`, `=`, `+=`, `if`/`else if`/`else`, `for … in … [parallel N]`, `while`,
-`break`, `continue`, `try`, `fail`, `echo`, `cd`, `exit`, kommandoer med
-pipes `|` og `>`, `>>`, `<`, `2>`, `2>>`, `$(…)`, `"…{udtryk}…"`, `$navn`,
-`${udtryk}`, lister `[…]`, `.len`/`.first`/`.last`, indeks `l[0]`, heltal,
-`and`/`or`/`not`.
+Alt fra Python-prototypen — de samme scripts giver det samme output:
 
-Indbygget: `print()`, `len()`, `str()`, `int()`, `type()`, `range()`,
-`env()`, `exists()`, `which()`, `now()`.
+- `let`, `=`, `+=` …, `if`/`else if`/`else`, `for … in … [parallel N]`, `while`,
+  `break`, `continue`, `fn navn(a, b) { … return … }`
+- kommandoer med `|`, `>`, `>>`, `<`, `2>`, `2>>`, `$(…)`, `try`, `fail`,
+  `echo`, `cd`, `exit`
+- `"…{udtryk}…"`, `$navn`, `${udtryk}`, heltal, kommatal, lister `[…]`,
+  maps `{"k": v}`, `l[i] = v`, `m["k"] = v`, `m.k`
+- metoder: `.replace .split .trim .upper .lower .contains .starts_with
+  .ends_with .lines .repeat .push .pop .join .sort .reverse .map .filter
+  .get .has`
+- egenskaber: `.len .first .last .name .stem .ext .dir .keys .values`
+- funktioner: `print len str int float type range env exists is_dir is_file
+  which read write append glob input now sleep round min max abs cwd`
 
-**Mangler endnu** (findes i Python-prototypen): `fn`, metoder som
-`.replace()`/`.split()`/`.push()`, `glob()`, `read()`/`write()`, `input()`,
-kommatal og maps.
+## Skift Python-dsh ud
+
+```
+make install-dsh     # dsh = Hare-versionen, dsh-py = den gamle
+```

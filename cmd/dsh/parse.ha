@@ -110,6 +110,24 @@ fn statement(p: *parser) (stmt | failed) = {
 				par = pexpr(p)?;
 			};
 			return s_for { var = v, it = it, par = par, body = block(p)?, line = line };
+		case "fn" =>
+			next(p);
+			const name = expect_ident(p)?;
+			expect(p, "(")?;
+			let params: []str = [];
+			for (!at(p, ")")) {
+				append(params, expect_ident(p)?)!;
+				if (!at(p, ")")) expect(p, ",")?;
+			};
+			expect(p, ")")?;
+			return s_fn { name = name, params = params, body = block(p)?, line = line };
+		case "return" =>
+			next(p);
+			const n = peek(p);
+			if (n.kind == tkind::NL || n.kind == tkind::EOF || at(p, "}") || at(p, ";")) {
+				return s_return { val = null, line = line };
+			};
+			return s_return { val = pexpr(p)?, line = line };
 		case "break" =>
 			next(p);
 			return (line: s_break): stmt;
@@ -126,15 +144,23 @@ fn statement(p: *parser) (stmt | failed) = {
 	};
 	if (t.kind == tkind::IDENT) {
 		const nx = peek(p, 1);
-		if (nx.kind == tkind::OP && (nx.val == "=" || nx.val == "+=" || nx.val == "-="
-				|| nx.val == "*=" || nx.val == "/=")) {
+		if (is_assign(nx)) {
 			next(p);
 			const op = next(p).val;
-			return s_assign { name = t.val, op = op, val = pexpr(p)?, line = line };
+			const target = mk(e_var { name = t.val, line = line });
+			return s_assign { target = target, op = op, val = pexpr(p)?, line = line };
 		};
 		if (nx.kind == tkind::OP && (nx.val == "(" || nx.val == "[" || nx.val == ".")
 				&& !nx.space) {
-			return s_expr { e = pexpr(p)?, line = line };
+			const e = pexpr(p)?;
+			if (is_assign(peek(p))) {
+				if (!(*e is e_var || *e is e_index || *e is e_attr)) {
+					return die(line, "kan ikke tildele til det udtryk");
+				};
+				const op = next(p).val;
+				return s_assign { target = e, op = op, val = pexpr(p)?, line = line };
+			};
+			return s_expr { e = e, line = line };
 		};
 	};
 	if (t.kind == tkind::NUM || t.kind == tkind::STR || t.kind == tkind::RSTR
@@ -143,6 +169,9 @@ fn statement(p: *parser) (stmt | failed) = {
 	};
 	return command(p, t, false)?;
 };
+
+fn is_assign(t: token) bool = t.kind == tkind::OP && (t.val == "=" || t.val == "+="
+	|| t.val == "-=" || t.val == "*=" || t.val == "/=");
 
 fn if_rest(p: *parser, line: int) (s_if | failed) = {
 	const cond = pexpr(p)?;
@@ -477,7 +506,12 @@ fn postfix(p: *parser) (*expr | failed) = {
 				return dief(t.line, "forventede et navn efter '.', fik {}", desc(n));
 			};
 			next(p);
-			e = mk(e_attr { obj = e, name = n.val, line = t.line });
+			const paren = peek(p);
+			if (paren.kind == tkind::OP && paren.val == "(" && !paren.space) {
+				e = mk(e_method { obj = e, name = n.val, args = call_args(p)?, line = t.line });
+			} else {
+				e = mk(e_attr { obj = e, name = n.val, line = t.line });
+			};
 		} else if (t.val == "[" && !t.space) {
 			next(p);
 			const idx = pexpr(p)?;
@@ -490,24 +524,30 @@ fn postfix(p: *parser) (*expr | failed) = {
 	return e;
 };
 
+fn call_args(p: *parser) ([]*expr | failed) = {
+	expect(p, "(")?;
+	let args: []*expr = [];
+	for (!at(p, ")")) {
+		append(args, pexpr(p)?)!;
+		if (!at(p, ")")) expect(p, ",")?;
+	};
+	expect(p, ")")?;
+	return args;
+};
+
 fn primary(p: *parser) (*expr | failed) = {
 	const t = next(p);
 	switch (t.kind) {
-	case tkind::NUM => return mk(t.num: e_num);
+	case tkind::NUM =>
+		if (t.isf) return mk(t.fnum: e_fnum);
+		return mk(t.num: e_num);
 	case tkind::STR => return mk(e_str { parts = interp(strings::toutf8(t.val), t.line)? });
 	case tkind::RSTR => return mk(e_const { v = t.val });
 	case tkind::CAP => return mk(e_cap { raw = t.val, line = t.line });
 	case tkind::IDENT =>
 		const n = peek(p);
 		if (n.kind == tkind::OP && n.val == "(" && !n.space) {
-			next(p);
-			let args: []*expr = [];
-			for (!at(p, ")")) {
-				append(args, pexpr(p)?)!;
-				if (!at(p, ")")) expect(p, ",")?;
-			};
-			expect(p, ")")?;
-			return mk(e_call { name = t.val, args = args, line = t.line });
+			return mk(e_call { name = t.val, args = call_args(p)?, line = t.line });
 		};
 		return mk(e_var { name = t.val, line = t.line });
 	case tkind::KW =>
@@ -531,6 +571,22 @@ fn primary(p: *parser) (*expr | failed) = {
 			};
 			expect(p, "]")?;
 			return mk(e_list { items = items });
+		};
+		if (t.val == "{") {
+			let keys: []*expr = [], vals: []*expr = [];
+			skip_seps(p);
+			for (!at(p, "}")) {
+				append(keys, pexpr(p)?)!;
+				expect(p, ":")?;
+				append(vals, pexpr(p)?)!;
+				skip_seps(p);
+				if (!at(p, "}")) {
+					expect(p, ",")?;
+					skip_seps(p);
+				};
+			};
+			expect(p, "}")?;
+			return mk(e_map { keys = keys, vals = vals });
 		};
 	case => void;
 	};

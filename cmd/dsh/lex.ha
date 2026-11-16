@@ -19,6 +19,8 @@ type token = struct {
 	kind: tkind,
 	val: str,
 	num: i64,
+	fnum: f64,
+	isf: bool,
 	line: int,
 	pos: size,
 	space: bool,    // whitespace before the token
@@ -26,7 +28,7 @@ type token = struct {
 
 const KEYWORDS: [_]str = ["let", "if", "else", "for", "in", "while", "echo",
 	"fail", "try", "parallel", "true", "false", "nil", "and", "or", "not",
-	"break", "continue"];
+	"break", "continue", "fn", "return"];
 
 fn iskw(s: str) bool = {
 	for (let k .. KEYWORDS) if (k == s) return true;
@@ -105,10 +107,21 @@ fn lex(src: []u8, line: int) ([]token | failed) = {
 		if (ascii::isdigit(c: rune)) {
 			for (i < len(src) && ascii::isdigit(src[i]: rune)) i += 1;
 			t.kind = tkind::NUM;
-			t.val = sub(src, start, i);
-			t.num = match (strconv::stoi64(t.val)) {
-			case let n: i64 => yield n;
-			case => return die(line, "tallet er for stort");
+			if (i + 1 < len(src) && src[i] == '.' && ascii::isdigit(src[i + 1]: rune)) {
+				i += 1;
+				for (i < len(src) && ascii::isdigit(src[i]: rune)) i += 1;
+				t.val = sub(src, start, i);
+				t.isf = true;
+				t.fnum = match (strconv::stof64(t.val)) {
+				case let f: f64 => yield f;
+				case => return die(line, "ugyldigt kommatal");
+				};
+			} else {
+				t.val = sub(src, start, i);
+				t.num = match (strconv::stoi64(t.val)) {
+				case let n: i64 => yield n;
+				case => return die(line, "tallet er for stort");
+				};
 			};
 		} else if (c == '"') {
 			i = scan_string(src, i, line)?;
