@@ -144,7 +144,7 @@ fn walk_parts(parts: []part, n: *names, line: int) void = {
 fn walk_cmd(c: *s_cmd, n: *names) void = {
 	for (let st .. c.stages) {
 		for (let w .. st.args) walk_parts(w.parts, n, c.line);
-		if (len(st.args) == 0) continue;
+		if (len(st.args) == 0 || c.try_) continue;    // try: may be missing
 		const first = st.args[0];
 		if (len(first.parts) != 1 || first.quoted) continue;
 		const name = match (first.parts[0]) {
@@ -155,13 +155,13 @@ fn walk_cmd(c: *s_cmd, n: *names) void = {
 		// the words as written, for the "missing #" check
 		let words: []str = [];
 		for (let w .. st.args) {
-			if (w.quoted) {
-				append(words, "\"")!;    // quotes mean code, not a lost comment
-			} else if (len(w.parts) == 1 && w.parts[0] is p_lit) {
+			if (len(w.parts) == 1 && w.parts[0] is p_lit && !w.quoted) {
 				append(words, (w.parts[0] as p_lit): str)!;
+			} else {
+				append(words, "\"")!;    // quotes and $variables mean code
 			};
 		};
-		record_at(c.line, fmt::asprintf("kommandoen '{}' findes ikke", name)!,
+		record_at(c.line, fmt::asprintf("kommandoen '{}' findes ikke på denne maskine", name)!,
 			command_hint(words, n.fns));
 	};
 };

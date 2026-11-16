@@ -161,6 +161,12 @@ fn run_cmd(stages: []stage, e: *env, line: int, cap: bool, try_: bool) ((str | i
 		let sp = spawnspec { path = resolve(args[0]), args = args, fds = [-1, -1, -1], detach = bg_null >= 0 };
 		if (bg_null >= 0) sp.fds = [bg_null, bg_null, bg_null];
 		if (!strings::contains(sp.path, "/")) {
+			if (try_) {
+				// try: a missing program is just a failure (exit 127, like sh)
+				for (let f .. files) close(f);
+				define(root, "status", 127i64);
+				return if (cap) "" else 127;
+			};
 			dief(line, "kommandoen '{}' findes ikke — selv med superfart", args[0]): void;
 			sethint(command_hint(args, visible_names(e)));
 			return failed;

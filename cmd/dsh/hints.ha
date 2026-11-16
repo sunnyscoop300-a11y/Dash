@@ -111,6 +111,8 @@ fn looks_like_text(words: []str) bool = {
 		if (len(w) == 0) return false;
 		const b = strings::toutf8(w);
 		if (b[0] == '-' || b[0] == '/' || b[0] == '.' || b[0] == '~') return false;
+		// a dot inside a word (com.valvesoftware.Steam, fil.txt) is code, not a sentence
+		for (let i = 0z; i + 1 < len(b); i += 1) if (b[i] == '.') return false;
 		for (let c .. b) {
 			const ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c >= 0x80
 				|| c == ',' || c == '.' || c == '!' || c == '?' || c == ':'

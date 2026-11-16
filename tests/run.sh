@@ -39,6 +39,9 @@ check "$(printf '\n' | ./dsh-hare -e 'print(ask("ok?", true))' | tail -c 5)" "tr
 check "$(printf '7\n2\n' | ./dsh-hare -e 'print(menu(["a", "b"]))' | tail -c 2)" "b" "menu"
 check "$(./dsh-hare -e 'progress(50, "x")')" "  ██████████░░░░░░░░░░  50%  x" "progress"
 
+check "$(./dsh-hare -e 'try findesikke
+echo $status')" "127" "try fanger manglende kommando"
+
 # dsh check: den ødelagte fil skal give præcis disse fejl og forslag
 out=$(./dsh-hare check tests/ødelagt.Dash 2>&1)
 for want in "linje 3: kommandoen '⚡'" "mangler der et # foran" "mangler der et komma i slutningen af linje 11" \
