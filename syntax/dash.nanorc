@@ -26,7 +26,7 @@ color brightwhite,red "^([^"#]*"[^"]*")*[^"#]*"[^"]*$"
 color green ""([^"\\]|\\.)*""
 color green "'[^']*'"
 # {udtryk} og escape-koder inde i strenge
-color brightblue "\{[^}" ]*\}"
+color brightblue "\{[^}"[:space:]]*\}"
 color brightcyan "\\[nter0\\"{$]"
 
 # kommentarer til sidst, så de vinder
