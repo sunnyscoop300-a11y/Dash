@@ -91,9 +91,23 @@ fn run_bg(stages: []stage, e: *env, line: int) (void | failed) = {
 };
 
 let bg_null = -1;    // set while starting a background job
+let bg_jobs: []exec::process = [];
+
+// Collects background jobs (&) that have finished, so they don't linger as
+// zombies — a zombie still answers "kill -0", so scripts would think it runs.
+fn reap_bg() void = {
+	let i = 0z;
+	for (i < len(bg_jobs)) {
+		match (exec::peek(&bg_jobs[i])) {
+		case void => i += 1;               // still running
+		case => delete(bg_jobs[i]);        // done (or already collected)
+		};
+	};
+};
 
 // Runs a pipeline. Returns the output when capturing, otherwise the exit code.
 fn run_cmd(stages: []stage, e: *env, line: int, cap: bool, try_: bool) ((str | int) | failed) = {
+	reap_bg();
 	let argv: [][]str = [];
 	for (let st .. stages) {
 		let a: []str = [];
@@ -251,6 +265,7 @@ fn run_cmd(stages: []stage, e: *env, line: int, cap: bool, try_: bool) ((str | i
 
 	if (bg_null >= 0) {
 		// background: don't wait — the jobs live on in their own session
+		append(bg_jobs, procs...)!;
 		define(root, "status", 0i64);
 		return 0;
 	};

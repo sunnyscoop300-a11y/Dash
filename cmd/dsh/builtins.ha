@@ -210,7 +210,9 @@ fn call(name: str, args: []value, line: int) (value | failed) = {
 	case "sleep" =>
 		need(name, args, 1, line)?;
 		const s = num_arg(name, args[0], line)?;
+		reap_bg();
 		time::sleep((s * 1000000000.0): i64: time::duration);
+		reap_bg();
 		return nilv;
 	case "round" =>
 		const x = num_arg(name, args[0], line)?;
