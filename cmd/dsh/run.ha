@@ -142,7 +142,9 @@ fn run_cmd(stages: []stage, e: *env, line: int, cap: bool, try_: bool) ((str | i
 		const last = i == len(stages) - 1;
 		let sp = spawnspec { path = resolve(args[0]), args = args, fds = [-1, -1, -1] };
 		if (!strings::contains(sp.path, "/")) {
-			return dief(line, "kommandoen '{}' findes ikke — selv med superfart", args[0]);
+			dief(line, "kommandoen '{}' findes ikke — selv med superfart", args[0]): void;
+			sethint(command_hint(args, visible_names(e)));
+			return failed;
 		};
 
 		// stdin

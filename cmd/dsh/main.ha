@@ -4,7 +4,7 @@ use io;
 use os;
 use strings;
 
-def VERSION: str = "0.3-hare";
+def VERSION: str = "0.4-hare";
 
 let script_name = "dsh";
 let script_src: []u8 = [];
@@ -34,6 +34,7 @@ fn report_error() void = {
 			script_name, err_line, reset(), err_msg)!;
 		const l = source_line(err_line);
 		if (len(l) > 0) fmt::errorfln("{}   {:4} │ {}{}", dim(), err_line, l, reset())!;
+		if (len(err_hint) > 0) fmt::errorfln("{}        ↳ {}{}", orange(), err_hint, reset())!;
 	} else {
 		fmt::errorfln("{}⚡✘ dsh{} {}", red(), reset(), err_msg)!;
 	};
@@ -50,7 +51,7 @@ fn version() void = {
 		"        __",
 		"       / /",
 		"      / /___",
-		"     /___  /      dsh 0.3-hare",
+		"     /___  /      dsh 0.4-hare",
 		"        / /       hurtigere end sh",
 		"       / /",
 		"      /_/",
@@ -72,11 +73,22 @@ export fn main() void = {
 	};
 	if (len(args) < 2) {
 		fmt::errorln("⚡ dsh — hurtigere end sh\n")!;
-		fmt::errorln("brug: dsh script.Dash [args...]\n      dsh -e 'kode'\n      dsh --version")!;
+		fmt::errorln("brug: dsh script.Dash [args...]\n      dsh check script.Dash\n      dsh -e 'kode'\n      dsh --version")!;
 		os::exit(2);
 	};
 
 	let rest: []str = [];
+	if (args[1] == "check" || args[1] == "--check") {
+		if (len(args) < 3) fail_and_exit("brug: dsh check fil.Dash");
+		script_name = args[2];
+		const f = match (os::open(args[2])) {
+		case let f: io::file => yield f;
+		case => fail_and_exit(strings::concat("kan ikke åbne ", args[2])!);
+		};
+		script_src = io::drain(f)!;
+		close(f);
+		check_main(script_src);
+	};
 	if (args[1] == "-e") {
 		if (len(args) < 3) fail_and_exit("-e mangler kode");
 		script_name = "<-e>";

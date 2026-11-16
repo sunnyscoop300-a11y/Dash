@@ -226,7 +226,10 @@ fn call(name: str, args: []value, line: int) (value | failed) = {
 	case "min" => return extreme(name, args, false, line);
 	case "max" => return extreme(name, args, true, line);
 	case "cwd" => return strings::dup(os::getcwd())!;
-	case => return dief(line, "ukendt funktion '{}()'", name);
+	case =>
+		dief(line, "ukendt funktion '{}()'", name): void;
+		sethint(hint_from(name, BUILTIN_FNS));
+		return failed;
 	};
 };
 

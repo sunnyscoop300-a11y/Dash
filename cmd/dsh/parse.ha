@@ -1,5 +1,6 @@
 // Tokens → syntax tree. Command lines are cut out of the source as raw
 // text and split into words, so they keep shell-like freedom.
+use fmt;
 use strings;
 
 type parser = struct {
@@ -33,7 +34,14 @@ case => yield strings::concat("'", t.val, "'")!;
 };
 
 fn expect(p: *parser, v: str) (token | failed) = {
-	if (!at(p, v)) return dief(peek(p).line, "forventede '{}', fik {}", v, desc(peek(p)));
+	if (!at(p, v)) {
+		const t = peek(p);
+		dief(t.line, "forventede '{}', fik {}", v, desc(t)): void;
+		if (v == "," && t.line > p.prev.line) {
+			sethint(fmt::asprintf("mangler der et komma i slutningen af linje {}?", p.prev.line)!);
+		};
+		return failed;
+	};
 	return next(p);
 };
 
@@ -113,6 +121,10 @@ fn statement(p: *parser) (stmt | failed) = {
 		case "fn" =>
 			next(p);
 			const name = expect_ident(p)?;
+			if (peek(p).kind == tkind::IDENT && !at(p, "(")) {
+				const joined = strings::concat(name, peek(p).val)!;
+				return dieh(line, "mellemrum i funktionsnavnet", mente(joined));
+			};
 			expect(p, "(")?;
 			let params: []str = [];
 			for (!at(p, ")")) {
@@ -196,12 +208,12 @@ fn if_rest(p: *parser, line: int) (s_if | failed) = {
 // --- command lines ---
 
 // Where a command line ends: newline, ';', a comment or an unmatched '}'.
-fn cmd_end(src: []u8, i: size) (size | failed) = {
+fn cmd_end(src: []u8, i: size, line: int) (size | failed) = {
 	let depth = 0;
 	for (i < len(src)) {
 		const c = src[i];
 		if (c == '\\') { i += 2; continue; };
-		if (c == '"') { i = scan_string(src, i, 0)?; continue; };
+		if (c == '"') { i = scan_string(src, i, line)?; continue; };
 		if (c == '\'') {
 			let k = i + 1;
 			for (k < len(src) && src[k] != '\'') k += 1;
@@ -210,7 +222,7 @@ fn cmd_end(src: []u8, i: size) (size | failed) = {
 		};
 		if (c == '$' && i + 1 < len(src) && (src[i + 1] == '(' || src[i + 1] == '{')) {
 			const close: u8 = if (src[i + 1] == '(') ')' else '}';
-			i = scan_balanced(src, i + 1, src[i + 1], close, 0)?;
+			i = scan_balanced(src, i + 1, src[i + 1], close, line)?;
 			continue;
 		};
 		if (c == '{') {
@@ -230,7 +242,7 @@ fn cmd_end(src: []u8, i: size) (size | failed) = {
 
 fn command(p: *parser, start: token, try_: bool) (s_cmd | failed) = {
 	if (start.kind == tkind::EOF) return die(start.line, "forventede en kommando");
-	const end = cmd_end(p.src, start.pos)?;
+	const end = cmd_end(p.src, start.pos, start.line)?;
 	for (peek(p).kind != tkind::EOF && peek(p).pos < end) next(p);
 	return s_cmd {
 		stages = parse_command(p.src[start.pos..end], start.line)?,
@@ -541,7 +553,7 @@ fn primary(p: *parser) (*expr | failed) = {
 	case tkind::NUM =>
 		if (t.isf) return mk(t.fnum: e_fnum);
 		return mk(t.num: e_num);
-	case tkind::STR => return mk(e_str { parts = interp(strings::toutf8(t.val), t.line)? });
+	case tkind::STR => return mk(e_str { parts = interp(strings::toutf8(t.val), t.line)?, line = t.line });
 	case tkind::RSTR => return mk(e_const { v = t.val });
 	case tkind::CAP => return mk(e_cap { raw = t.val, line = t.line });
 	case tkind::IDENT =>

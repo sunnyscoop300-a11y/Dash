@@ -51,6 +51,34 @@ Alt fra Python-prototypen — de samme scripts giver det samme output:
 - funktioner: `print len str int float type range env exists is_dir is_file
   which read write append glob input now sleep round min max abs cwd`
 
+## Find fejl før du kører
+
+```
+dsh check mit-script.Dash
+```
+
+Finder *alle* fejl på én gang uden at køre noget — og foreslår rettelser:
+
+```
+  ✘ linje 5: kommandoen 'kigger' findes ikke
+        5 │ kigger selv efter filerne.
+          ↳ ligner almindelig tekst — mangler der et # foran?
+  ✘ linje 16: mellemrum i funktionsnavnet
+       16 │ fn har _brave() {
+          ↳ mente du 'har_brave'?
+```
+
+De samme "mente du …?"-forslag kommer også når et script fejler undervejs.
+
+## Farver i nano og Kate
+
+```
+make install-syntax
+```
+
+Nøgleord, strenge, `{udtryk}`, `$variabler` og kommentarer får hver deres
+farve — og en linje med en streng der ikke er lukket lyser **rødt**.
+
 ## Skift Python-dsh ud
 
 ```

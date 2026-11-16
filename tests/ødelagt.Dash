@@ -1,0 +1,25 @@
+#!/usr/bin/env dsh
+# rick3.Dash — som rick.Dash, men med superfart
+⚡
+# Ingen ekstra programmer for at tjekke ting: dsh
+kigger selv efter filerne.
+
+let t0   = now()
+let home = env("HOME")
+let app  = "com.brave.Browser"
+let urls = [
+    "https://www.youtube.com/watch?v=AxBD1IQVL6E"
+    "https://www.ecosia.org/search?q=one%20punch%20man"
+]
+# Er Brave installeret som flatpak? (bruger-
+eller system-installation)
+fn har _brave() {
+    for sted in ["{home}/.local/share/flatpak/
+app/{app}", "/var/lib/flatpak/app/{app}"] {
+        if is_dir(sted) { return true }
+    }
+    return false
+}
+ecgo "starter"
+echo "{urlz.len} faner"
+let n = lenn(urls)

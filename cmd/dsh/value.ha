@@ -27,6 +27,7 @@ let err_line: int = 0;
 fn die(line: int, msg: str) failed = {
 	err_msg = msg;
 	err_line = line;
+	err_hint = "";
 	return failed;
 };
 

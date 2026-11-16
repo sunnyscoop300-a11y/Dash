@@ -5,7 +5,7 @@
 type e_num = i64;
 type e_fnum = f64;
 type e_const = struct { v: value };
-type e_str = struct { parts: []part };
+type e_str = struct { parts: []part, line: int };
 type e_var = struct { name: str, line: int };
 type e_list = struct { items: []*expr };
 type e_map = struct { keys: []*expr, vals: []*expr };

@@ -52,7 +52,7 @@ fn scan_string(src: []u8, i: size, line: int) (size | failed) = {
 		if (c == '\n') break;
 		j += 1;
 	};
-	return die(line, "streng mangler afsluttende \"");
+	return dieh(line, "streng mangler afsluttende \"", HINT_SPLIT);
 };
 
 // src[i] == open. Returns the index after the matching close.
@@ -124,9 +124,20 @@ fn lex(src: []u8, line: int) ([]token | failed) = {
 				};
 			};
 		} else if (c == '"') {
-			i = scan_string(src, i, line)?;
-			t.kind = tkind::STR;
-			t.val = sub(src, start + 1, i - 1);
+			match (scan_string(src, i, line)) {
+			case let end: size =>
+				i = end;
+				t.kind = tkind::STR;
+				t.val = sub(src, start + 1, i - 1);
+			case failed =>
+				if (!checking) return failed;
+				// dsh check: note it and carry on after the line
+				record();
+				for (i < len(src) && src[i] != '\n') i += 1;
+				depth = 0;    // brackets opened on a broken line don't count
+				t.kind = tkind::STR;
+				t.val = "";
+			};
 		} else if (c == '\'') {
 			let k = i + 1;
 			for (k < len(src) && src[k] != '\'' && src[k] != '\n') k += 1;

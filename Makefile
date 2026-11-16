@@ -21,7 +21,17 @@ install-dsh: dsh-hare
 	@if [ -f $(HOME)/dsh/dsh.py ]; then ln -sf $(HOME)/dsh/dsh.py $(HOME)/.local/bin/dsh-py; fi
 	@echo "⚡ dsh er nu Hare-versionen ($$($(HOME)/.local/bin/dsh --version | grep -o '0\.[0-9]*-hare'))"
 
+# Farver til .Dash i nano og Kate/KWrite
+NANO_DIR = $(HOME)/.local/share/nano
+KATE_DIR = $(HOME)/.local/share/org.kde.syntax-highlighting/syntax
+install-syntax:
+	install -Dm644 syntax/dash.nanorc $(NANO_DIR)/dash.nanorc
+	@touch $(HOME)/.nanorc
+	@grep -qs 'dash.nanorc' $(HOME)/.nanorc || echo 'include "$(NANO_DIR)/dash.nanorc"' >> $(HOME)/.nanorc
+	install -Dm644 syntax/dash.xml $(KATE_DIR)/dash.xml
+	@echo "🎨 farver installeret — åbn en .Dash-fil i nano eller Kate"
+
 clean:
 	rm -f dsh-hare
 
-.PHONY: test bench install install-dsh clean
+.PHONY: test bench install install-dsh install-syntax clean

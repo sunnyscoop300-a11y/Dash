@@ -26,5 +26,12 @@ done
 if ./dsh-hare tests/basis.Dash >/dev/null 2>&1; then ok=$((ok+1)); else bad=$((bad+1)); echo "✘ tests/basis.Dash"; fi
 rm -f /tmp/ap.txt
 if [ "$(./dsh-hare tests/features.Dash 2>&1)" = "$(cat tests/features.forventet)" ]; then ok=$((ok+1)); else bad=$((bad+1)); echo "✘ tests/features.Dash (se diff med tests/features.forventet)"; fi
+# dsh check: den ødelagte fil skal give præcis disse fejl og forslag
+out=$(./dsh-hare check tests/ødelagt.Dash 2>&1)
+for want in "linje 3: kommandoen '⚡'" "mangler der et # foran" "mangler der et komma i slutningen af linje 11" \
+	"mente du 'har_brave'" "er linjen blevet delt" "mente du 'echo'" "mente du 'urls'" "mente du 'len'"; do
+	case "$out" in *"$want"*) ok=$((ok+1));; *) bad=$((bad+1)); echo "✘ check mangler: $want";; esac
+done
+if ./dsh-hare check tests/basis.Dash >/dev/null 2>&1; then ok=$((ok+1)); else bad=$((bad+1)); echo "✘ check fandt fejl i basis.Dash"; fi
 echo "$ok ok, $bad fejl"
 [ "$bad" -eq 0 ]

@@ -228,7 +228,10 @@ fn eval(x: *expr, e: *env) (value | failed) = {
 	case let v: e_var =>
 		match (env_find(e, v.name)) {
 		case let p: *value => return *p;
-		case void => return dief(v.line, "ukendt variabel '{}' — den er løbet sin vej", v.name);
+		case void =>
+			dief(v.line, "ukendt variabel '{}' — den er løbet sin vej", v.name): void;
+			sethint(hint_from(v.name, visible_names(e)));
+			return failed;
 		};
 	case let l: e_list =>
 		let items: []value = [];
@@ -306,6 +309,20 @@ fn eval(x: *expr, e: *env) (value | failed) = {
 	};
 };
 
+// Every variable name the code can see here (for "mente du …?").
+fn visible_names(e: *env) []str = {
+	let out: []str = [];
+	let cur: nullable *env = e;
+	for (true) {
+		const c = match (cur) {
+		case null => return out;
+		case let c: *env => yield c;
+		};
+		append(out, c.names...)!;
+		cur = c.parent;
+	};
+};
+
 fn call_fn(f: *func, args: []value, line: int) (value | failed) = {
 	if (len(args) != len(f.params)) {
 		return dief(line, "{}() vil have {} argumenter, fik {}", f.name, len(f.params), len(args));
@@ -338,7 +355,10 @@ fn eval_part(p: part, e: *env, line: int) (value | failed) = {
 	case let n: p_var =>
 		match (env_find(e, n)) {
 		case let v: *value => return *v;
-		case void => return dief(line, "ukendt variabel '{}' — den er løbet sin vej", n: str);
+		case void =>
+			dief(line, "ukendt variabel '{}' — den er løbet sin vej", n: str): void;
+			sethint(hint_from(n, visible_names(e)));
+			return failed;
 		};
 	case let x: p_expr => return eval(x, e);
 	case let c: p_cap => return capture(c, e, line);
