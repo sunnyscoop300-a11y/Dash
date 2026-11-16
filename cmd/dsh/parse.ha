@@ -244,9 +244,19 @@ fn command(p: *parser, start: token, try_: bool) (s_cmd | failed) = {
 	if (start.kind == tkind::EOF) return die(start.line, "forventede en kommando");
 	const end = cmd_end(p.src, start.pos, start.line)?;
 	for (peek(p).kind != tkind::EOF && peek(p).pos < end) next(p);
+	// a trailing '&' runs the line in the background
+	let text = p.src[start.pos..end];
+	let n = len(text);
+	for (n > 0 && (text[n - 1] == ' ' || text[n - 1] == '\t')) n -= 1;
+	let bg = false;
+	if (n > 0 && text[n - 1] == '&' && (n < 2 || text[n - 2] != '&')) {
+		bg = true;
+		text = text[..n - 1];
+	};
 	return s_cmd {
-		stages = parse_command(p.src[start.pos..end], start.line)?,
+		stages = parse_command(text, start.line)?,
 		try_ = try_,
+		bg = bg,
 		line = start.line,
 	};
 };

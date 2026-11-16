@@ -10,7 +10,8 @@ const HINT_SPLIT: str = "er linjen blevet delt i to? en streng skal stå på én
 
 const BUILTIN_FNS: [_]str = ["print", "len", "str", "int", "float", "type", "range",
 	"env", "exists", "is_dir", "is_file", "which", "read", "write", "append",
-	"glob", "input", "now", "sleep", "round", "abs", "min", "max", "cwd"];
+	"glob", "input", "now", "sleep", "round", "abs", "min", "max", "cwd",
+	"ask", "menu", "progress"];
 
 const BUILTIN_CMDS: [_]str = ["echo", "cd", "exit", "fail"];
 

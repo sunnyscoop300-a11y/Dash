@@ -30,7 +30,7 @@ fn exec_stmt(s: *stmt, e: *env) (flow | failed) = {
 	case let x: s_expr =>
 		eval(x.e, e)?;
 	case let c: s_cmd =>
-		run_cmd(c.stages, e, c.line, false, c.try_)?;
+		if (c.bg) run_bg(c.stages, e, c.line)? else run_cmd(c.stages, e, c.line, false, c.try_)?;
 	case let i: s_if =>
 		const inner = newenv(e);
 		defer freeenv(inner);
@@ -165,9 +165,11 @@ fn run_parallel(f: *s_for, e: *env, items: []value, n: size) (flow | failed) = {
 	const t0 = time::now(time::clock::MONOTONIC);
 	flush_out();
 	let running = 0z, bad = 0z;
+	let runners: []exec::process = [];
+	defer free(runners);
 	for (let x .. items) {
 		if (running >= n) {
-			if (!wait_one()) bad += 1;
+			if (!wait_one(&runners)) bad += 1;
 			running -= 1;
 		};
 		match (exec::fork()) {
@@ -189,14 +191,15 @@ fn run_parallel(f: *s_for, e: *env, items: []value, n: size) (flow | failed) = {
 				report_error();
 				os::exit(1);
 			};
-		case exec::process =>
+		case let pid: exec::process =>
+			append(runners, pid)!;
 			running += 1;
 		case let err: exec::error =>
 			return dief(f.line, "kunne ikke starte en løber: {}", exec::strerror(err));
 		};
 	};
 	for (running > 0; running -= 1) {
-		if (!wait_one()) bad += 1;
+		if (!wait_one(&runners)) bad += 1;
 	};
 	if (bad > 0) return dief(f.line, "{} af {} løbere snublede", bad, len(items));
 	if (is_tty(os::stderr_file) && os::tryenv("DSH_QUIET", "") != "1") {
@@ -208,12 +211,21 @@ fn run_parallel(f: *s_for, e: *env, items: []value, n: size) (flow | failed) = {
 	return flow::NORMAL;
 };
 
-fn wait_one() bool = {
-	match (exec::waitany()) {
-	case let r: (exec::process, exec::status) =>
-		let st = r.1;
-		return exec::check(&st) is void;
-	case => return false;
+// Waits for one of the parallel runners. Background jobs (&) that end in
+// the meantime are reaped and ignored.
+fn wait_one(runners: *[]exec::process) bool = {
+	for (true) {
+		match (exec::waitany()) {
+		case let r: (exec::process, exec::status) =>
+			for (let i = 0z; i < len(runners); i += 1) {
+				if (runners[i] == r.0) {
+					delete(runners[i]);
+					let st = r.1;
+					return exec::check(&st) is void;
+				};
+			};
+		case => return false;
+		};
 	};
 };
 

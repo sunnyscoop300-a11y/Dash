@@ -26,6 +26,19 @@ done
 if ./dsh-hare tests/basis.Dash >/dev/null 2>&1; then ok=$((ok+1)); else bad=$((bad+1)); echo "✘ tests/basis.Dash"; fi
 rm -f /tmp/ap.txt
 if [ "$(./dsh-hare tests/features.Dash 2>&1)" = "$(cat tests/features.forventet)" ]; then ok=$((ok+1)); else bad=$((bad+1)); echo "✘ tests/features.Dash (se diff med tests/features.forventet)"; fi
+# v0.5: & (baggrund), ask, menu, progress
+s=$(date +%s%N); out=$(./dsh-hare -e 'sleep 2 &
+echo straks'); e=$(date +%s%N)
+check "$out" "straks" "& kører i baggrunden"
+if [ $(( (e-s)/1000000 )) -lt 1000 ]; then ok=$((ok+1)); else bad=$((bad+1)); echo "✘ & ventede på sleep"; fi
+check "$(./dsh-hare -e 'sh -c "echo støj; echo fejl >&2" &
+sleep 0.2
+echo stille' 2>&1)" "stille" "& skjuler output"
+check "$(printf 'j\n' | ./dsh-hare -e 'print(ask("ok?"))' | tail -c 5)" "true" "ask ja"
+check "$(printf '\n' | ./dsh-hare -e 'print(ask("ok?", true))' | tail -c 5)" "true" "ask standard ja"
+check "$(printf '7\n2\n' | ./dsh-hare -e 'print(menu(["a", "b"]))' | tail -c 2)" "b" "menu"
+check "$(./dsh-hare -e 'progress(50, "x")')" "  ██████████░░░░░░░░░░  50%  x" "progress"
+
 # dsh check: den ødelagte fil skal give præcis disse fejl og forslag
 out=$(./dsh-hare check tests/ødelagt.Dash 2>&1)
 for want in "linje 3: kommandoen '⚡'" "mangler der et # foran" "mangler der et komma i slutningen af linje 11" \

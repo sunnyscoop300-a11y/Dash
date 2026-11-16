@@ -22,6 +22,7 @@
       <item>is_file</item><item>which</item><item>read</item><item>write</item><item>append</item>
       <item>glob</item><item>input</item><item>now</item><item>sleep</item><item>round</item>
       <item>abs</item><item>min</item><item>max</item><item>cwd</item>
+      <item>ask</item><item>menu</item><item>progress</item>
     </list>
     <contexts>
       <context name="Normal" attribute="Normal Text" lineEndContext="#stay">
@@ -38,7 +39,7 @@
         <Float attribute="Number"/>
         <Int attribute="Number"/>
         <RegExpr attribute="Function" String="[A-Za-z_][A-Za-z0-9_]*(?=\()"/>
-        <AnyChar attribute="Operator" String="|&lt;&gt;"/>
+        <AnyChar attribute="Operator" String="|&lt;&gt;&amp;"/>
       </context>
       <context name="String" attribute="String" lineEndContext="#pop">
         <RegExpr attribute="Escape" String="\\[nter0\\&quot;{$]"/>

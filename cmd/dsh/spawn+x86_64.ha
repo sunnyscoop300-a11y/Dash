@@ -10,7 +10,7 @@ use types::c;
 	path: *const c::char,
 	argv: *[*]nullable *const c::char,
 	envp: *[*]nullable *u8,
-	fds: *[3]int,
+	fds: *[4]int,
 ) i64;
 
 // One child: the program, its arguments, and where fd 0/1/2 come from
@@ -19,6 +19,7 @@ type spawnspec = struct {
 	path: str,
 	args: []str,
 	fds: [3]int,
+	detach: bool,    // background job: own session (setsid)
 };
 
 type spawn_err = !int;    // errno
@@ -35,7 +36,8 @@ fn spawn(sp: *spawnspec) (exec::process | spawn_err) = {
 	for (let a .. sp.args) append(argv, c::fromstr(a)!)!;
 	append(argv, null)!;
 
-	const r = vfork_exec(cpath, argv: *[*]nullable *const c::char, rt::envp, &sp.fds);
+	let fds: [4]int = [sp.fds[0], sp.fds[1], sp.fds[2], if (sp.detach) 1 else 0];
+	const r = vfork_exec(cpath, argv: *[*]nullable *const c::char, rt::envp, &fds);
 	if (r < 0) return (-r): int: spawn_err;
 	return r: int: exec::process;
 };

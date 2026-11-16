@@ -226,11 +226,96 @@ fn call(name: str, args: []value, line: int) (value | failed) = {
 	case "min" => return extreme(name, args, false, line);
 	case "max" => return extreme(name, args, true, line);
 	case "cwd" => return strings::dup(os::getcwd())!;
+	case "ask" => return ask(args, line);
+	case "menu" => return menu(args, line);
+	case "progress" => return progress(args, line);
 	case =>
 		dief(line, "ukendt funktion '{}()'", name): void;
 		sethint(hint_from(name, BUILTIN_FNS));
 		return failed;
 	};
+};
+
+// --- ask / menu / progress ---
+
+fn tty_col(code: str) str = if (is_tty(os::stdout_file)) code else "";
+
+fn read_answer() (str | void) = {
+	flush_out();
+	match (bufio::read_line(os::stdin_file)) {
+	case let b: []u8 => return strings::trim(strings::fromutf8_unsafe(b));
+	case => return;
+	};
+};
+
+// ask("Slet filen?")        → true/false, Enter = nej
+// ask("Fortsæt?", true)     → Enter = ja
+fn ask(args: []value, line: int) (value | failed) = {
+	if (len(args) < 1) return die(line, "ask() vil have et spørgsmål");
+	const standard = len(args) > 1 && truthy(args[1]);
+	fmt::printf("{}?{} {} {} ", tty_col("\x1b[1;38;5;208m"), tty_col("\x1b[0m"),
+		tostr(args[0]), if (standard) "[J/n]" else "[j/N]")!;
+	const a = match (read_answer()) {
+	case let s: str => yield casemap(s, false);
+	case void =>
+		fmt::println()!;
+		return standard;
+	};
+	if (a == "") return standard;
+	return a == "j" || a == "ja" || a == "y" || a == "yes";
+};
+
+// menu(["jade", "bines"], "Vælg et spil") → det valgte, eller nil (Enter)
+fn menu(args: []value, line: int) (value | failed) = {
+	if (len(args) < 1) return die(line, "menu() vil have en liste");
+	const items = match (args[0]) {
+	case let l: *list => yield l.items;
+	case => return dief(line, "menu() vil have en liste, fik {}", typename(args[0]));
+	};
+	if (len(items) == 0) return die(line, "menu() med en tom liste");
+	const acc = tty_col("\x1b[1;38;5;208m"), rst = tty_col("\x1b[0m");
+	if (len(args) > 1) fmt::printfln("{}{}{}", tty_col("\x1b[1m"), tostr(args[1]), rst)!;
+	for (let i = 0z; i < len(items); i += 1) {
+		fmt::printfln("  {}{:2}{}  {}", acc, i + 1, rst, tostr(items[i]))!;
+	};
+	for (true) {
+		fmt::printf("Vælg 1-{} (Enter = afbryd): ", len(items))!;
+		const a = match (read_answer()) {
+		case let s: str => yield s;
+		case void =>
+			fmt::println()!;
+			return nilv;
+		};
+		if (a == "") return nilv;
+		match (strconv::stoi64(a)) {
+		case let n: i64 =>
+			if (n >= 1 && n <= len(items): i64) return items[n - 1];
+		case => void;
+		};
+		fmt::printfln("{}  ✘ skriv et tal mellem 1 og {}{}", tty_col("\x1b[31m"), len(items), rst)!;
+	};
+};
+
+// progress(42, "henter...") → den lilla bjælke på samme linje; ny linje ved 100
+fn progress(args: []value, line: int) (value | failed) = {
+	if (len(args) < 1) return die(line, "progress() vil have et tal (0-100)");
+	let pct = int_arg("progress", args[0], line)?;
+	if (pct < 0) pct = 0;
+	if (pct > 100) pct = 100;
+	const fill = (pct / 5): size;
+	let bar: []u8 = [];
+	defer free(bar);
+	for (let i = 0z; i < 20; i += 1) {
+		append(bar, strings::toutf8(if (i < fill) "█" else "░")...)!;
+	};
+	const tekst = if (len(args) > 1) tostr(args[1]) else "";
+	const tty = is_tty(os::stdout_file);
+	fmt::printf("{}  {}{}{} {:3}%  {}", if (tty) "\r\x1b[K" else "",
+		tty_col("\x1b[38;5;141m"), strings::fromutf8_unsafe(bar), tty_col("\x1b[0m"),
+		pct, tekst)!;
+	if (pct >= 100 || !tty) fmt::println()!;
+	flush_out();
+	return nilv;
 };
 
 // --- properties: .len .name .first ... ---

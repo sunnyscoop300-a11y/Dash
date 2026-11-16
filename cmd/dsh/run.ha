@@ -74,6 +74,24 @@ fn open_out(path: str, app: bool, line: int) (io::file | failed) = {
 	};
 };
 
+// cmd & — starts the pipeline in its own session and goes on at once.
+// Output goes to /dev/null unless it is redirected, so no noise in the
+// terminal (no more setsid -f … > /dev/null 2> /dev/null).
+fn run_bg(stages: []stage, e: *env, line: int) (void | failed) = {
+	const devnull = match (os::open("/dev/null", fs::flag::RDWR)) {
+	case let f: io::file => yield f;
+	case => return die(line, "kan ikke åbne /dev/null");
+	};
+	bg_null = devnull: int;
+	defer {
+		bg_null = -1;
+		close(devnull);
+	};
+	run_cmd(stages, e, line, false, true)?;
+};
+
+let bg_null = -1;    // set while starting a background job
+
 // Runs a pipeline. Returns the output when capturing, otherwise the exit code.
 fn run_cmd(stages: []stage, e: *env, line: int, cap: bool, try_: bool) ((str | int) | failed) = {
 	let argv: [][]str = [];
@@ -140,7 +158,8 @@ fn run_cmd(stages: []stage, e: *env, line: int, cap: bool, try_: bool) ((str | i
 		const st = &stages[i];
 		const args = argv[i];
 		const last = i == len(stages) - 1;
-		let sp = spawnspec { path = resolve(args[0]), args = args, fds = [-1, -1, -1] };
+		let sp = spawnspec { path = resolve(args[0]), args = args, fds = [-1, -1, -1], detach = bg_null >= 0 };
+		if (bg_null >= 0) sp.fds = [bg_null, bg_null, bg_null];
 		if (!strings::contains(sp.path, "/")) {
 			dief(line, "kommandoen '{}' findes ikke — selv med superfart", args[0]): void;
 			sethint(command_hint(args, visible_names(e)));
@@ -222,6 +241,12 @@ fn run_cmd(stages: []stage, e: *env, line: int, cap: bool, try_: bool) ((str | i
 		close(r);
 		out = strings::rtrim(strings::fromutf8_unsafe(data), '\n');
 	case void => void;
+	};
+
+	if (bg_null >= 0) {
+		// background: don't wait — the jobs live on in their own session
+		define(root, "status", 0i64);
+		return 0;
 	};
 
 	// pipefail: the rightmost failing stage decides

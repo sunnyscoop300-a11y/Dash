@@ -49,7 +49,22 @@ Alt fra Python-prototypen — de samme scripts giver det samme output:
   .get .has`
 - egenskaber: `.len .first .last .name .stem .ext .dir .keys .values`
 - funktioner: `print len str int float type range env exists is_dir is_file
-  which read write append glob input now sleep round min max abs cwd`
+  which read write append glob input now sleep round min max abs cwd ask menu progress`
+
+## Nyt i 0.5
+
+```
+flatpak run com.brave.Browser $urls &          # baggrund, uden støj i terminalen
+if ask("Slet de gamle filer?") { rm -rf $gamle }
+let spil = menu(["jade", "bines", "gothecer"], "Vælg et spil")
+progress(42, "henter EnderOS...")
+```
+
+- `cmd &` starter i baggrunden i sin egen session (som `setsid -f`), og
+  output forsvinder — med mindre du selv sender det til en fil.
+- `ask(spørgsmål [, standard])` → `true`/`false`. Enter = standard (nej).
+- `menu(liste [, titel])` → det valgte element, eller `nil` ved Enter.
+- `progress(pct [, tekst])` → bjælken på samme linje, ny linje ved 100.
 
 ## Find fejl før du kører
 
