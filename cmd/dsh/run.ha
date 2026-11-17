@@ -78,16 +78,28 @@ fn open_out(path: str, app: bool, line: int) (io::file | failed) = {
 // Output goes to /dev/null unless it is redirected, so no noise in the
 // terminal (no more setsid -f … > /dev/null 2> /dev/null).
 fn run_bg(stages: []stage, e: *env, line: int) (void | failed) = {
+	bg_begin(line)?;
+	defer bg_end();
+	run_cmd(stages, e, line, false, true)?;
+};
+
+fn run_bg_x(stages: []xstage, line: int) (void | failed) = {
+	bg_begin(line)?;
+	defer bg_end();
+	run_x(stages, null, line, false, true)?;
+};
+
+fn bg_begin(line: int) (void | failed) = {
 	const devnull = match (os::open("/dev/null", fs::flag::RDWR)) {
 	case let f: io::file => yield f;
 	case => return die(line, "kan ikke åbne /dev/null");
 	};
 	bg_null = devnull: int;
-	defer {
-		bg_null = -1;
-		close(devnull);
-	};
-	run_cmd(stages, e, line, false, true)?;
+};
+
+fn bg_end() void = {
+	if (bg_null >= 0) close(bg_null: io::file);
+	bg_null = -1;
 };
 
 let bg_null = -1;    // set while starting a background job
@@ -105,15 +117,60 @@ fn reap_bg() void = {
 	};
 };
 
+// A pipeline stage with every word already expanded to plain strings.
+// The interpreter makes these from the syntax tree; Violet's compiled
+// programs build them directly.
+type xstage = struct {
+	args: []str,
+	out: (str | void),
+	out_app: bool,
+	err: (str | void),
+	err_app: bool,
+	inp: (str | void),
+};
+
+fn opt_word(w: nullable *word, e: *env, line: int) ((str | void) | failed) = {
+	match (w) {
+	case let w: *word => return one(w, e, line)?;
+	case null => return void;
+	};
+};
+
 // Runs a pipeline. Returns the output when capturing, otherwise the exit code.
 fn run_cmd(stages: []stage, e: *env, line: int, cap: bool, try_: bool) ((str | int) | failed) = {
-	reap_bg();
-	let argv: [][]str = [];
+	let xs: []xstage = [];
+	defer free(xs);
 	for (let st .. stages) {
 		let a: []str = [];
 		for (let w .. st.args) expand(&w, e, line, &a)?;
 		if (len(a) == 0) return die(line, "tom kommando");
-		append(argv, a)!;
+		let x = xstage { args = a, out = void, err = void, inp = opt_word(st.inp, e, line)?, ... };
+		match (st.out) {
+		case let r: *redir =>
+			x.out = one(&r.target, e, line)?;
+			x.out_app = r.app;
+		case null => void;
+		};
+		match (st.err) {
+		case let r: *redir =>
+			x.err = one(&r.target, e, line)?;
+			x.err_app = r.app;
+		case null => void;
+		};
+		append(xs, x)!;
+	};
+	return run_x(xs, e, line, cap, try_);
+};
+
+// Runs expanded stages. `e` is only used for "mente du …?" hints.
+fn run_x(stages: []xstage, e: nullable *env, line: int, cap: bool, try_: bool) ((str | int) | failed) = {
+	reap_bg();
+	if (len(stages) == 0 || len(stages[0].args) == 0) return die(line, "tom kommando");
+	let argv: [][]str = [];
+	defer free(argv);
+	for (let st .. stages) {
+		if (len(st.args) == 0) return die(line, "tom kommando");
+		append(argv, st.args)!;
 	};
 	const name = argv[0][0];
 
@@ -124,11 +181,11 @@ fn run_cmd(stages: []stage, e: *env, line: int, cap: bool, try_: bool) ((str | i
 			const text = strings::concat(strings::join(" ", argv[0][1..]...)!, "\n")!;
 			if (cap) return strings::rtrim(text, '\n');
 			match (stages[0].out) {
-			case let r: *redir =>
-				const f = open_out(one(&r.target, e, line)?, r.app, line)?;
+			case let path: str =>
+				const f = open_out(path, stages[0].out_app, line)?;
 				io_ok(io::writeall(f, strings::toutf8(text)));
 				close(f);
-			case null =>
+			case void =>
 				io_ok(io::writeall(os::stdout, strings::toutf8(text)));
 			};
 			return 0;
@@ -182,7 +239,11 @@ fn run_cmd(stages: []stage, e: *env, line: int, cap: bool, try_: bool) ((str | i
 				return if (cap) "" else 127;
 			};
 			dief(line, "kommandoen '{}' findes ikke — selv med superfart", args[0]): void;
-			sethint(command_hint(args, visible_names(e)));
+			const names: []str = match (e) {
+			case let e: *env => yield visible_names(e);
+			case null => yield [];
+			};
+			sethint(command_hint(args, names));
 			return failed;
 		};
 
@@ -192,15 +253,14 @@ fn run_cmd(stages: []stage, e: *env, line: int, cap: bool, try_: bool) ((str | i
 			sp.fds[0] = r: int;
 		case void =>
 			match (st.inp) {
-			case let w: *word =>
-				const path = one(w, e, line)?;
+			case let path: str =>
 				const f = match (os::open(path)) {
 				case let f: io::file => yield f;
 				case => return dief(line, "kan ikke læse '{}'", path);
 				};
 				append(files, f)!;
 				sp.fds[0] = f: int;
-			case null =>
+			case void =>
 				if (input is []u8 && i == first) {
 					const (r, w) = exec::pipe();
 					sp.fds[0] = r: int;
@@ -214,11 +274,11 @@ fn run_cmd(stages: []stage, e: *env, line: int, cap: bool, try_: bool) ((str | i
 		let next_read: (io::file | void) = void;
 		let my_write: (io::file | void) = void;
 		match (st.out) {
-		case let r: *redir =>
-			const f = open_out(one(&r.target, e, line)?, r.app, line)?;
+		case let path: str =>
+			const f = open_out(path, st.out_app, line)?;
 			append(files, f)!;
 			sp.fds[1] = f: int;
-		case null =>
+		case void =>
 			if (!last || cap) {
 				const (r, w) = exec::pipe();
 				sp.fds[1] = w: int;
@@ -229,11 +289,11 @@ fn run_cmd(stages: []stage, e: *env, line: int, cap: bool, try_: bool) ((str | i
 
 		// stderr
 		match (st.err) {
-		case let r: *redir =>
-			const f = open_out(one(&r.target, e, line)?, r.app, line)?;
+		case let path: str =>
+			const f = open_out(path, st.err_app, line)?;
 			append(files, f)!;
 			sp.fds[2] = f: int;
-		case null => void;
+		case void => void;
 		};
 
 		match (spawn(&sp)) {

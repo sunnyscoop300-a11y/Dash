@@ -581,17 +581,7 @@ fn types_main(src: []u8) never = {
 	};
 
 	// kør analysen, indtil intet ændrer sig mere
-	let rounds = 0;
-	for (true) {
-		changed = false;
-		stack = stack[..0];
-		next_scope = 0;
-		cur_fn = -1;
-		push_scope();
-		tstmts(prog);
-		rounds += 1;
-		if (!changed || rounds >= 100) break;
-	};
+	const rounds = infer(prog);
 
 	fmt::printfln("{}💜 violet types{} {}  {}({} gennemløb){}", vcol("\x1b[1;38;5;141m"),
 		vreset(), script_name, vdim(), rounds, vreset())!;

@@ -85,29 +85,53 @@ Finder *alle* fejl på én gang uden at køre noget — og foreslår rettelser:
 
 De samme "mente du …?"-forslag kommer også når et script fejler undervejs.
 
-## Violet 💜 — Dash til native kode (trin 1: typer)
+## Violet 💜 — Dash til native kode
 
-Violet er Dash' lillesøster: hun skal oversætte `.Dash` til en rigtig native
-binær. Første trin er **type-inferens** — at finde ud af, hvilken type hver
-variabel og hver fn har, uden at køre scriptet:
+Violet er Dash' lillesøster: hun oversætter et `.Dash`-script til en rigtig
+native binær. Hun skriver scriptet om til Hare-kode og bygger det med
+`hare build` (så Hare skal være installeret):
 
 ```
-dsh types kapløb.Dash      # eller bare: violet kapløb.Dash
+violet kapløb.Dash            # → ./kapløb
+violet kapløb.Dash -o løb     # vælg selv navnet
+violet types kapløb.Dash      # vis typerne (trin 1)
+violet hare kapløb.Dash       # vis den Hare-kode, hun laver
+```
+
+(`dsh build`, `dsh types` og `dsh hare` gør det samme.)
+
+**Typerne** bestemmer, hvor hurtig koden bliver. Violet finder typen af hver
+variabel uden at køre scriptet:
+
+```
 💜 violet types kapløb.Dash  (2 gennemløb)
   globalt
     ✔ runder      int
-    ✔ gammel      float
+    ~ ny_dsh      str|nil
   fn løb(hvem: str) → float
     ✔ tider       list[float]
   13 af 15 variabler har én fast type (86%)
 ```
 
-`✔` betyder én fast type: den kan blive et rent `i64`, `f64` eller en streng i
-maskinkoden. `~` betyder at værdien kan være flere ting (fx `str|nil` fra
-`env()` eller `num` fra `7 / 2`, der giver 3.5, mens `6 / 3` giver 2), og så
-skal Violet bruge en dynamisk værdi dér.
+`✔` bliver et rent `i64`, `f64`, `str` eller `bool` i maskinkoden, og
+`for i in range(…)` med et heltal bliver en rigtig maskinløkke. `~` bliver
+en dynamisk værdi, som i fortolkeren (fx `str|nil` fra `env()`, eller `num`
+fra `7 / 2`, der giver 3.5, mens `6 / 3` giver 2).
 
-`make install-dsh` laver også `violet` som et link til `dsh`.
+Kommandoer, pipes, builtins, `try`, `&`, `parallel` og fejlbeskederne kører
+gennem dsh' egen kode, der følger med ind i binæren — så programmet opfører
+sig som `dsh`, bare hurtigere:
+
+```
+                         sh   dsh-hare     violet
+100.000 regnestykker  133 ms     24 ms     1.5 ms
+fib(24) (rekursion)       –     63 ms     2.2 ms
+1000 kommandoer       973 ms    973 ms     951 ms
+```
+
+Det kan Violet ikke endnu (brug `dsh` til de scripts): en fn brugt som værdi
+(andet end i `.map(f)`/`.filter(f)`), en fn inde i en fn og `parallel` inde
+i `parallel`.
 
 ## Farver i nano og Kate
 

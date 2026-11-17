@@ -1,6 +1,7 @@
 HARE = hare
 
-dsh-hare: cmd/dsh/*.ha cmd/dsh/*.s
+dsh-hare: cmd/dsh/*.ha cmd/dsh/*.s tools/embed.sh
+	@sh tools/embed.sh
 	$(HARE) build -lc -o $@ cmd/dsh/
 
 test: dsh-hare

@@ -34,8 +34,18 @@ check "$(echo "$vt" | grep -c 'navn  *str$')" "1" "violet: str"
 check "$(echo "$vt" | grep -c 'l  *list\[float\]$')" "1" "violet: list fra push"
 check "$(echo "$vt" | grep -c 'fn dobbelt(x: int) → int')" "1" "violet: fn-typer fra kald"
 check "$(echo "$vt" | grep -c '~ h  *num$')" "1" "violet: 7 / 2 er int eller float"
-check "$(ln -sf "$PWD/dsh-hare" /tmp/violet && /tmp/violet tests/basis.Dash | grep -c '100%')" "1" "violet-navnet"
+check "$(ln -sf "$PWD/dsh-hare" /tmp/violet && /tmp/violet types tests/basis.Dash | grep -c 'variabler har')" "1" "violet-navnet"
 rm -f /tmp/violet-test.Dash /tmp/violet
+# 0.7: Violet trin 2 — native binærer (kun hvis hare findes)
+if command -v hare > /dev/null; then
+	printf 'let s = 0\nfor i in range(1, 11) { s += i }\necho "sum: $s"\nfn fib(n) {\n  if n < 2 { return n }\n  return fib(n - 1) + fib(n - 2)\n}\nprint(fib(15), 7 / 2, 6 / 3)\nlet l = []\nfor x in ["a", "b"] { l.push(x.upper()) }\necho "{l.join("-")} $(echo hej | tr a-z A-Z)"\ntry false\necho "status {status}"\nlet m = {"a": 1}\nm.b = 2\nprint(m, m.len, args)\n' > /tmp/violet-b.Dash
+	./dsh-hare build /tmp/violet-b.Dash -o /tmp/violet-b > /dev/null 2>&1
+	check "$(/tmp/violet-b x y 2>&1)" "$(./dsh-hare /tmp/violet-b.Dash x y 2>&1)" "violet build: samme output som dsh"
+	./dsh-hare build tests/basis.Dash -o /tmp/violet-basis > /dev/null 2>&1
+	check "$(DSH_QUIET=1 /tmp/violet-basis 2>&1 | sort)" "$(DSH_QUIET=1 ./dsh-hare tests/basis.Dash 2>&1 | sort)" "violet build: basis.Dash"
+	check "$(printf 'let x = 1 / 0\n' > /tmp/violet-f.Dash; ./dsh-hare build /tmp/violet-f.Dash -o /tmp/violet-f > /dev/null 2>&1; /tmp/violet-f 2>&1 | head -1 | grep -c 'division med nul')" "1" "violet build: fejlbesked"
+	rm -f /tmp/violet-b /tmp/violet-b.Dash /tmp/violet-basis /tmp/violet-f /tmp/violet-f.Dash
+fi
 # v0.5: & (baggrund), ask, menu, progress
 s=$(date +%s%N); out=$(./dsh-hare -e 'sleep 2 &
 echo straks'); e=$(date +%s%N)
