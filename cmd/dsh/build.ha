@@ -65,7 +65,8 @@ fn hare_main(path: str) never = {
 	os::exit(0);
 };
 
-fn build_main(path: str, out: str) never = {
+// small: byg i release-tilstand (-R) og fjern fejlsøgningsinfo med strip.
+fn build_main(path: str, out: str, small: bool) never = {
 	const code = violet_compile(path);
 	const dir = temp::dir();
 	const work = fmt::asprintf("{}/violet-{}", dir, exec::self(): int)!;
@@ -79,7 +80,11 @@ fn build_main(path: str, out: str) never = {
 	write_text(strings::concat(work, "/prog.ha")!, code);
 
 	fmt::printfln("{}💜 violet{} {} → {}", col("\x1b[1;38;5;141m"), reset(), path, out)!;
-	let cmd = match (exec::cmd("hare", "build", "-q", "-lc", "-o", out, work)) {
+	let hargs: []str = [];
+	append(hargs, ["build", "-q"]...)!;
+	if (small) append(hargs, "-R")!;
+	append(hargs, ["-lc", "-o", out, work]...)!;
+	let cmd = match (exec::cmd("hare", hargs...)) {
 	case let c: exec::command => yield c;
 	case => fail_and_exit("hare findes ikke — Violet skal bruge Hare for at bygge");
 	};
@@ -94,7 +99,22 @@ fn build_main(path: str, out: str) never = {
 		os::exit(1);
 	};
 	match (os::rmdirall(work)) { case => void; };
-	fmt::printfln("  {}✔ færdig:{} {}{}", col("\x1b[1;32m"), reset(),
-		if (strings::contains(out, "/")) "" else "./", out)!;
+	if (small) {
+		match (exec::cmd("strip", out)) {
+		case let c: exec::command =>
+			match (exec::start(&c)) {
+			case let p: exec::process => match (exec::wait(&p)) { case => void; };
+			case => void;
+			};
+		case => fmt::errorln("  (strip findes ikke — binæren er bygget, men ikke gjort mindre)")!;
+		};
+	};
+	let kb = "";
+	match (os::stat(out)) {
+	case let st: fs::filestat => kb = fmt::asprintf(" ({} KB)", st.sz / 1024)!;
+	case => void;
+	};
+	fmt::printfln("  {}✔ færdig:{} {}{}{}{}{}", col("\x1b[1;32m"), reset(),
+		if (strings::contains(out, "/")) "" else "./", out, dim(), kb, reset())!;
 	os::exit(0);
 };

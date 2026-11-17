@@ -94,6 +94,7 @@ native binær. Hun skriver scriptet om til Hare-kode og bygger det med
 ```
 violet kapløb.Dash            # → ./kapløb
 violet kapløb.Dash -o løb     # vælg selv navnet
+violet kapløb.Dash --strip    # mindre fil (release-tilstand + strip): 1275 → 747 KB
 violet types kapløb.Dash      # vis typerne (trin 1)
 violet hare kapløb.Dash       # vis den Hare-kode, hun laver
 ```

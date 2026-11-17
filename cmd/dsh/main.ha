@@ -8,7 +8,7 @@ export fn main() void = {
 	let args = os::args;
 	// startet som "violet": violet fil.Dash bygger, violet types/hare fil.Dash
 	if (strings::hassuffix(args[0], "violet")) {
-		if (len(args) < 2) fail_and_exit("brug: violet fil.Dash [-o navn]   |   violet types fil.Dash   |   violet hare fil.Dash");
+		if (len(args) < 2) fail_and_exit("brug: violet fil.Dash [-o navn] [--strip]   |   violet types fil.Dash   |   violet hare fil.Dash");
 		let a: []str = [];
 		append(a, args[0])!;
 		if (args[1] != "types" && args[1] != "hare" && args[1] != "build") append(a, "build")!;
@@ -18,7 +18,17 @@ export fn main() void = {
 	if (len(args) > 2 && args[1] == "hare") hare_main(args[2]);
 	if (len(args) > 2 && args[1] == "build") {
 		let out = "";
-		if (len(args) > 4 && args[3] == "-o") out = args[4];
+		let small = false;
+		for (let i = 3z; i < len(args); i += 1) {
+			if (args[i] == "-o" && i + 1 < len(args)) {
+				i += 1;
+				out = args[i];
+			} else if (args[i] == "-s" || args[i] == "--strip") {
+				small = true;
+			} else {
+				fail_and_exit(strings::concat("ukendt valg: ", args[i], " (brug -o navn og/eller --strip)")!);
+			};
+		};
 		if (out == "") {
 			// fil.Dash → fil (bytevis, så æ ø å ikke forskubber noget)
 			const b = strings::toutf8(args[2]);
@@ -30,7 +40,7 @@ export fn main() void = {
 		};
 		// aldrig skrive oven i selve scriptet
 		if (out == args[2]) out = strings::concat(out, ".bin")!;
-		build_main(args[2], out);
+		build_main(args[2], out, small);
 	};
 	if (len(args) > 1 && (args[1] == "-v" || args[1] == "--version")) {
 		version();

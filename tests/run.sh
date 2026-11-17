@@ -44,7 +44,9 @@ if command -v hare > /dev/null; then
 	./dsh-hare build tests/basis.Dash -o /tmp/violet-basis > /dev/null 2>&1
 	check "$(DSH_QUIET=1 /tmp/violet-basis 2>&1 | sort)" "$(DSH_QUIET=1 ./dsh-hare tests/basis.Dash 2>&1 | sort)" "violet build: basis.Dash"
 	check "$(printf 'let x = 1 / 0\n' > /tmp/violet-f.Dash; ./dsh-hare build /tmp/violet-f.Dash -o /tmp/violet-f > /dev/null 2>&1; /tmp/violet-f 2>&1 | head -1 | grep -c 'division med nul')" "1" "violet build: fejlbesked"
-	rm -f /tmp/violet-b /tmp/violet-b.Dash /tmp/violet-basis /tmp/violet-f /tmp/violet-f.Dash
+	./dsh-hare build /tmp/violet-f.Dash -o /tmp/violet-s --strip > /dev/null 2>&1
+	check "$(/tmp/violet-s 2>&1 | head -1 | grep -c 'division med nul')" "1" "violet build --strip"
+	rm -f /tmp/violet-b /tmp/violet-b.Dash /tmp/violet-basis /tmp/violet-f /tmp/violet-f.Dash /tmp/violet-s
 fi
 # v0.5: & (baggrund), ask, menu, progress
 s=$(date +%s%N); out=$(./dsh-hare -e 'sleep 2 &
