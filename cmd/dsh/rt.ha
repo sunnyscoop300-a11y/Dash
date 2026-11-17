@@ -167,14 +167,17 @@ fn get_status() value = {
 };
 
 // Programmets egne argumenter. På Android startes programmer i app-mappen
-// som "/system/bin/linker64 /sti/program args…"; Android's libc retter
-// normalt argv bagefter, men vi kører uden libc — så spring linker64 over.
+// gennem linker64 ("linker64 /sti/program args…"); Android's libc retter
+// normalt argv bagefter, men vi kører uden libc. Hvordan argv[0] ser ud,
+// afhænger af termux-exec-versionen, så kig på /proc/self/exe i stedet.
 fn prog_args() []str = {
 	if (len(os::args) == 0) return [];
 	let first = 1z;
-	if (len(os::args) > 1 && strings::hassuffix(os::args[0], "/linker64")
-			&& strings::hasprefix(os::args[1], "/")) {
-		first = 2;
+	// kører vi gennem linker64? så er /proc/self/exe linker64 selv
+	match (os::readlink("/proc/self/exe")) {
+	case let exe: str =>
+		if (strings::hassuffix(exe, "/linker64") && len(os::args) > 1) first = 2;
+	case => void;
 	};
 	return os::args[first..];
 };
