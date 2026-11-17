@@ -48,6 +48,28 @@ if command -v hare > /dev/null; then
 	check "$(/tmp/violet-s 2>&1 | head -1 | grep -c 'division med nul')" "1" "violet build --strip"
 	rm -f /tmp/violet-b /tmp/violet-b.Dash /tmp/violet-basis /tmp/violet-f /tmp/violet-f.Dash /tmp/violet-s
 fi
+# 0.8: violet run (cache) og --arch
+if command -v hare > /dev/null; then
+	export XDG_CACHE_HOME=/tmp/violet-cache-test
+	rm -rf "$XDG_CACHE_HOME"
+	printf 'let s = 0\nfor i in range(100) { s += i }\nprint(s, args)\n' > /tmp/violet-r.Dash
+	ln -sf "$PWD/dsh-hare" /tmp/violet
+	check "$(/tmp/violet run /tmp/violet-r.Dash a 2>/dev/null)" "4950 [\"a\"]" "violet run: første gang (bygger)"
+	check "$(ls "$XDG_CACHE_HOME/violet" | grep -c 'violet-r.Dash-')" "1" "violet run: binær i cachen"
+	check "$(/tmp/violet run /tmp/violet-r.Dash b)" "4950 [\"b\"]" "violet run: fra cachen"
+	rm -f /tmp/ap.txt; a=$(/tmp/violet run tests/features.Dash 2>/dev/null)
+	rm -f /tmp/ap.txt; b=$(./dsh-hare tests/features.Dash 2>/dev/null)
+	rm -f /tmp/ap.txt
+	check "$a" "$b" "violet run: falder tilbage til dsh"
+	rm -rf "$XDG_CACHE_HOME" /tmp/violet-r.Dash /tmp/violet
+	unset XDG_CACHE_HOME
+	if command -v aarch64-linux-gnu-gcc > /dev/null && command -v qemu-aarch64-static > /dev/null; then
+		printf 'let s = 0\nfor i in range(100) { s += i }\necho "arm: $s"\n' > /tmp/violet-a.Dash
+		./dsh-hare build /tmp/violet-a.Dash --arch aarch64 -o /tmp/violet-a > /dev/null 2>&1
+		check "$(qemu-aarch64-static /tmp/violet-a)" "arm: 4950" "violet --arch aarch64 (qemu)"
+		rm -f /tmp/violet-a /tmp/violet-a.Dash
+	fi
+fi
 # v0.5: & (baggrund), ask, menu, progress
 s=$(date +%s%N); out=$(./dsh-hare -e 'sleep 2 &
 echo straks'); e=$(date +%s%N)

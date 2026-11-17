@@ -20,6 +20,7 @@ install-dsh: dsh-hare
 	rm -f $(HOME)/.local/bin/dsh
 	install -Dm755 dsh-hare $(HOME)/.local/bin/dsh
 	ln -sf dsh $(HOME)/.local/bin/violet
+	ln -sf dsh $(HOME)/.local/bin/violet-run
 	@if [ -f $(HOME)/dsh/dsh.py ]; then ln -sf $(HOME)/dsh/dsh.py $(HOME)/.local/bin/dsh-py; fi
 	@echo "⚡ dsh er nu Hare-versionen ($$($(HOME)/.local/bin/dsh --version | grep -o '[0-9.]*-hare'))"
 

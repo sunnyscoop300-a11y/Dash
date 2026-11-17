@@ -6,27 +6,52 @@ use strings;
 
 export fn main() void = {
 	let args = os::args;
-	// startet som "violet": violet fil.Dash bygger, violet types/hare fil.Dash
+	// startet som "violet-run" (til #!-linjen): samme som violet run
+	if (strings::hassuffix(args[0], "violet-run")) {
+		if (len(args) < 2) fail_and_exit("brug: violet-run fil.Dash [args...]");
+		let a: []str = [];
+		append(a, [args[0], "run"]...)!;
+		append(a, args[1..]...)!;
+		args = a;
+	};
+	// startet som "violet": violet fil.Dash bygger, violet types/hare/run fil.Dash
 	if (strings::hassuffix(args[0], "violet")) {
-		if (len(args) < 2) fail_and_exit("brug: violet fil.Dash [-o navn] [--strip]   |   violet types fil.Dash   |   violet hare fil.Dash");
+		if (len(args) < 2) fail_and_exit("brug: violet fil.Dash [-o navn] [--strip] [--arch aarch64]\n      violet run fil.Dash [args...]   |   violet types fil.Dash   |   violet hare fil.Dash");
 		let a: []str = [];
 		append(a, args[0])!;
-		if (args[1] != "types" && args[1] != "hare" && args[1] != "build") append(a, "build")!;
+		if (args[1] != "types" && args[1] != "hare" && args[1] != "build" && args[1] != "run") {
+			append(a, "build")!;
+		};
 		append(a, args[1..]...)!;
+		args = a;
+	};
+	// violet run: kør den oversatte binær (bygges kun, når scriptet er ændret).
+	// Kan scriptet ikke oversættes, kører fortolkeren det i stedet.
+	if (len(args) > 1 && args[1] == "run") {
+		if (len(args) < 3) fail_and_exit("brug: violet run fil.Dash [args...]");
+		run_main(args[2], args[3..]);
+		let a: []str = [];
+		append(a, args[0])!;
+		append(a, args[2..]...)!;
 		args = a;
 	};
 	if (len(args) > 2 && args[1] == "hare") hare_main(args[2]);
 	if (len(args) > 2 && args[1] == "build") {
 		let out = "";
 		let small = false;
+		let arch = "";
 		for (let i = 3z; i < len(args); i += 1) {
 			if (args[i] == "-o" && i + 1 < len(args)) {
 				i += 1;
 				out = args[i];
 			} else if (args[i] == "-s" || args[i] == "--strip") {
 				small = true;
+			} else if ((args[i] == "-a" || args[i] == "--arch") && i + 1 < len(args)) {
+				i += 1;
+				arch = args[i];
+				check_arch(arch);
 			} else {
-				fail_and_exit(strings::concat("ukendt valg: ", args[i], " (brug -o navn og/eller --strip)")!);
+				fail_and_exit(strings::concat("ukendt valg: ", args[i], " (brug -o navn, --strip, --arch aarch64)")!);
 			};
 		};
 		if (out == "") {
@@ -40,7 +65,7 @@ export fn main() void = {
 		};
 		// aldrig skrive oven i selve scriptet
 		if (out == args[2]) out = strings::concat(out, ".bin")!;
-		build_main(args[2], out, small);
+		build_main(args[2], out, small, arch);
 	};
 	if (len(args) > 1 && (args[1] == "-v" || args[1] == "--version")) {
 		version();
@@ -48,7 +73,7 @@ export fn main() void = {
 	};
 	if (len(args) < 2) {
 		fmt::errorln("⚡ dsh — hurtigere end sh\n")!;
-		fmt::errorln("brug: dsh script.Dash [args...]\n      dsh check script.Dash\n      dsh types script.Dash   (Violet: typer)\n      dsh build script.Dash   (Violet: native binær)\n      dsh -e 'kode'\n      dsh --version")!;
+		fmt::errorln("brug: dsh script.Dash [args...]\n      dsh check script.Dash\n      dsh types script.Dash   (Violet: typer)\n      dsh build script.Dash   (Violet: native binær)\n      dsh run script.Dash     (Violet: byg ved ændring og kør)\n      dsh -e 'kode'\n      dsh --version")!;
 		os::exit(2);
 	};
 

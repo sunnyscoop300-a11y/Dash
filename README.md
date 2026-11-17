@@ -95,11 +95,29 @@ native binær. Hun skriver scriptet om til Hare-kode og bygger det med
 violet kapløb.Dash            # → ./kapløb
 violet kapløb.Dash -o løb     # vælg selv navnet
 violet kapløb.Dash --strip    # mindre fil (release-tilstand + strip): 1275 → 747 KB
+violet run kapløb.Dash        # byg kun hvis scriptet er ændret, og kør binæren
+violet kapløb.Dash --arch aarch64   # til telefonen (Termux) eller en Raspberry Pi
 violet types kapløb.Dash      # vis typerne (trin 1)
 violet hare kapløb.Dash       # vis den Hare-kode, hun laver
 ```
 
 (`dsh build`, `dsh types` og `dsh hare` gør det samme.)
+
+**violet run** gemmer binæren i `~/.cache/violet/` med et fingeraftryk af
+scriptet. Første gang bygger hun (et par sekunder), derefter starter
+binæren direkte — et script med en million regnestykker: 271 ms med dsh,
+4 ms med `violet run`. Ændrer du scriptet, bygger hun igen af sig selv.
+Kan scriptet ikke oversættes, kører dsh det bare. Sæt det i #!-linjen, så
+bliver dine scripts native uden at du tænker over det:
+
+```
+#!/usr/bin/env violet-run
+```
+
+**--arch** bygger til en anden processor: `aarch64` (telefoner, Raspberry
+Pi) eller `riscv64`. Binæren bliver statisk, så den ikke skal bruge noget
+på den anden maskine. Det kræver krydsoversætteren
+(`sudo pacman -S aarch64-linux-gnu-gcc`).
 
 **Typerne** bestemmer, hvor hurtig koden bliver. Violet finder typen af hver
 variabel uden at køre scriptet:

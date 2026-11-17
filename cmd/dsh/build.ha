@@ -10,6 +10,9 @@ use os;
 use os::exec;
 use strings;
 use temp;
+use crypto::sha256;
+use encoding::hex;
+use hash;
 
 fn read_script(path: str) []u8 = {
 	const f = match (os::open(path)) {
@@ -36,18 +39,26 @@ fn parse_script(src: []u8) []stmt = {
 	};
 };
 
-fn violet_compile(path: str) str = {
+// Oversætter et script. Kan det ikke oversættes, er resultatet void, og
+// grundene ligger i cerrs.
+fn try_compile(path: str) (str | void) = {
 	script_name = path;
 	script_src = read_script(path);
 	const prog = parse_script(script_src);
 	const code = compile_program(prog, path, script_src);
-	if (len(cerrs) > 0) {
+	if (len(cerrs) > 0) return;
+	return code;
+};
+
+fn violet_compile(path: str) str = {
+	match (try_compile(path)) {
+	case let code: str => return code;
+	case void =>
 		fmt::errorfln("{}💜✘ violet{} {} kan ikke oversættes endnu:", red(), reset(), path)!;
 		for (let e .. cerrs) fmt::errorfln("   {}", e)!;
 		fmt::errorfln("{}   (scriptet kører stadig fint med dsh){}", dim(), reset())!;
 		os::exit(1);
 	};
-	return code;
 };
 
 fn write_text(path: str, text: str) void = {
@@ -65,29 +76,35 @@ fn hare_main(path: str) never = {
 	os::exit(0);
 };
 
-// small: byg i release-tilstand (-R) og fjern fejlsøgningsinfo med strip.
-fn build_main(path: str, out: str, small: bool) never = {
-	const code = violet_compile(path);
-	const dir = temp::dir();
-	const work = fmt::asprintf("{}/violet-{}", dir, exec::self(): int)!;
+// Bygger Hare-koden til en binær. small: release-tilstand (-R) + strip.
+// arch: "" for denne maskine, ellers fx "aarch64". Fejl skrives kun, når
+// quiet er false; koden bliver så liggende til fejlsøgning.
+fn hare_build(code: str, out: str, small: bool, arch: str, quiet: bool) bool = {
+	const work = fmt::asprintf("{}/violet-{}", temp::dir(), exec::self(): int)!;
 	match (os::mkdirs(work, 0o755)) {
 	case void => void;
-	case let e: fs::error => fail_and_exit(fmt::asprintf("kan ikke lave {}: {}", work, fs::strerror(e))!);
+	case let e: fs::error =>
+		if (!quiet) fmt::errorfln("kan ikke lave {}: {}", work, fs::strerror(e))!;
+		return false;
 	};
 	for (let i = 0z; i < len(RT_NAMES); i += 1) {
 		write_text(strings::concat(work, "/", RT_NAMES[i])!, RT_SRCS[i]);
 	};
 	write_text(strings::concat(work, "/prog.ha")!, code);
 
-	fmt::printfln("{}💜 violet{} {} → {}", col("\x1b[1;38;5;141m"), reset(), path, out)!;
 	let hargs: []str = [];
 	append(hargs, ["build", "-q"]...)!;
 	if (small) append(hargs, "-R")!;
+	if (arch != "") append(hargs, ["-a", arch]...)!;
 	append(hargs, ["-lc", "-o", out, work]...)!;
 	let cmd = match (exec::cmd("hare", hargs...)) {
 	case let c: exec::command => yield c;
-	case => fail_and_exit("hare findes ikke — Violet skal bruge Hare for at bygge");
+	case =>
+		if (!quiet) fmt::errorln("hare findes ikke — Violet skal bruge Hare for at bygge")!;
+		return false;
 	};
+	cross_env(&cmd, arch);
+	if (quiet) exec::nullstd(&cmd)!;
 	const ok = match (exec::start(&cmd)) {
 	case let p: exec::process =>
 		const st = exec::wait(&p)!;
@@ -95,20 +112,32 @@ fn build_main(path: str, out: str, small: bool) never = {
 	case => yield false;
 	};
 	if (!ok) {
-		fmt::errorfln("{}💜✘ hare build fejlede{} — koden ligger i {}", red(), reset(), work)!;
-		os::exit(1);
+		if (!quiet) fmt::errorfln("{}💜✘ hare build fejlede{} — koden ligger i {}", red(), reset(), work)!;
+		return false;
 	};
 	match (os::rmdirall(work)) { case => void; };
 	if (small) {
-		match (exec::cmd("strip", out)) {
+		const strip = if (arch == "" || arch == host_arch()) "strip"
+			else strings::concat(gnu_prefix(arch), "strip")!;
+		match (exec::cmd(strip, out)) {
 		case let c: exec::command =>
+			exec::nullstd(&c)!;
 			match (exec::start(&c)) {
 			case let p: exec::process => match (exec::wait(&p)) { case => void; };
 			case => void;
 			};
-		case => fmt::errorln("  (strip findes ikke — binæren er bygget, men ikke gjort mindre)")!;
+		case =>
+			if (!quiet) fmt::errorfln("  ({} findes ikke — binæren er bygget, men ikke gjort mindre)", strip)!;
 		};
 	};
+	return true;
+};
+
+fn build_main(path: str, out: str, small: bool, arch: str) never = {
+	const code = violet_compile(path);
+	fmt::printfln("{}💜 violet{} {} → {}{}", col("\x1b[1;38;5;141m"), reset(), path, out,
+		if (arch == "") "" else fmt::asprintf("  ({})", arch)!)!;
+	if (!hare_build(code, out, small, arch, false)) os::exit(1);
 	let kb = "";
 	match (os::stat(out)) {
 	case let st: fs::filestat => kb = fmt::asprintf(" ({} KB)", st.sz / 1024)!;
@@ -117,4 +146,140 @@ fn build_main(path: str, out: str, small: bool) never = {
 	fmt::printfln("  {}✔ færdig:{} {}{}{}{}{}", col("\x1b[1;32m"), reset(),
 		if (strings::contains(out, "/")) "" else "./", out, dim(), kb, reset())!;
 	os::exit(0);
+};
+
+// --- krydsoversættelse (violet fil.Dash --arch aarch64)
+
+fn host_arch() str = os::arch_name(os::architecture());
+
+fn gnu_prefix(arch: str) str = strings::concat(arch, "-linux-gnu-")!;
+
+// Til en anden arkitektur bygges binæren statisk: så har den ingen
+// afhængigheder og kører både i Termux på en telefon og på en Raspberry Pi.
+// Hare finder selv aarch64-linux-gnu-gcc osv.
+fn cross_env(cmd: *exec::command, arch: str) void = {
+	if (arch == "" || arch == host_arch()) return;
+	exec::setenv(cmd, "LDFLAGS", "-static")!;
+};
+
+fn check_arch(arch: str) void = {
+	if (arch != "aarch64" && arch != "riscv64" && arch != "x86_64") {
+		fail_and_exit(strings::concat("ukendt arkitektur '", arch,
+			"' — brug aarch64 (telefon, Raspberry Pi), riscv64 eller x86_64")!);
+	};
+	if (arch == host_arch()) return;
+	match (exec::lookup(strings::concat(gnu_prefix(arch), "gcc")!)) {
+	case str => void;
+	case => fail_and_exit(fmt::asprintf("krydsoversætteren {}gcc mangler — på Arch: sudo pacman -S {}-linux-gnu-gcc",
+		gnu_prefix(arch), arch)!);
+	};
+};
+
+// --- violet run: byg kun når scriptet er ændret, og kør så binæren
+
+fn cache_dir() str = {
+	match (os::getenv("XDG_CACHE_HOME")) {
+	case let d: str => if (len(d) > 0) return strings::concat(d, "/violet")!;
+	case void => void;
+	};
+	return strings::concat(os::tryenv("HOME", "/tmp"), "/.cache/violet")!;
+};
+
+// Filnavnet i cachen: scriptets navn + et fingeraftryk af indhold, sti og
+// version, så en ny Violet eller en ændring i scriptet giver en ny binær.
+fn cache_key(path: str, src: []u8) (str, str) = {
+	let h = sha256::sha256();
+	hash::write(&h, strings::toutf8(VERSION));
+	hash::write(&h, [0]);
+	hash::write(&h, strings::toutf8(path));
+	hash::write(&h, [0]);
+	hash::write(&h, src);
+	let sum: [sha256::SZ]u8 = [0...];
+	hash::sum(&h, sum);
+	const hex = hex::encodestr(sum[..8])!;
+	// kun bogstaver og tal fra navnet
+	let base: []u8 = [];
+	const b = strings::toutf8(path);
+	let start = 0z;
+	for (let i = 0z; i < len(b); i += 1) if (b[i] == '/') start = i + 1;
+	for (let c .. b[start..]) {
+		if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+				|| c == '-' || c == '_' || c == '.') append(base, c)!;
+	};
+	const name = strings::fromutf8_unsafe(base);
+	return (name, strings::concat(name, "-", hex)!);
+};
+
+// Fjerner gamle binærer for samme script (andet fingeraftryk).
+fn cache_clean(dir: str, name: str, keep: str) void = {
+	const it = match (os::iter(dir)) {
+	case let it: *fs::iterator => yield it;
+	case => return;
+	};
+	defer fs::finish(it);
+	const prefix = strings::concat(name, "-")!;
+	for (true) {
+		const ent = match (fs::next(it)) {
+		case let e: fs::dirent => yield e;
+		case => break;
+		};
+		if (!strings::hasprefix(ent.name, prefix)) continue;
+		if (strings::hasprefix(ent.name, keep)) continue;
+		// kun fingeraftryk med 16 hex-tegn efter navnet
+		const rest = strings::sub(ent.name, len(prefix), strings::end);
+		if (len(rest) < 16) continue;
+		match (os::remove(strings::concat(dir, "/", ent.name)!)) { case => void; };
+	};
+};
+
+fn exec_bin(bin: str, rest: []str) never = {
+	flush_out();
+	let cmd = match (exec::cmd(bin, rest...)) {
+	case let c: exec::command => yield c;
+	case => fail_and_exit(strings::concat("kan ikke starte ", bin)!);
+	};
+	const err = exec::exec(&cmd);
+	fail_and_exit(fmt::asprintf("kan ikke starte {}: {}", bin, exec::strerror(err))!);
+};
+
+// Returnerer kun, hvis scriptet skal køres af fortolkeren i stedet.
+fn run_main(path: str, rest: []str) void = {
+	const src = read_script(path);
+	const dir = cache_dir();
+	const (name, key) = cache_key(path, src);
+	const bin = strings::concat(dir, "/", key)!;
+	const marker = strings::concat(bin, ".dsh")!;
+
+	if (os::exists(bin)) exec_bin(bin, rest);
+	if (os::exists(marker)) return;           // kendt: kan ikke oversættes
+	if (!(exec::lookup("hare") is str)) return;  // ingen Hare: fortolk
+
+	match (os::mkdirs(dir, 0o755)) { case => void; };
+	const tty = is_tty(os::stderr_file);
+	const code = match (try_compile(path)) {
+	case let c: str => yield c;
+	case void =>
+		// husk det, så næste gang starter fortolkeren med det samme
+		write_text(marker, strings::join("\n", cerrs...)!);
+		if (tty) {
+			fmt::errorfln("{}💜 violet: {} kan ikke oversættes endnu ({}) — kører med dsh{}",
+				dim(), path, cerrs[0], reset())!;
+		};
+		return;
+	};
+	if (tty) fmt::errorfln("{}💜 violet bygger {} …{}", dim(), path, reset())!;
+	const tmp = fmt::asprintf("{}.tmp-{}", bin, exec::self(): int)!;
+	if (!hare_build(code, tmp, true, "", true)) {
+		match (os::remove(tmp)) { case => void; };
+		write_text(marker, "hare build fejlede");
+		if (tty) fmt::errorfln("{}💜 violet: hare build fejlede — kører med dsh (prøv: violet {}){}",
+			dim(), path, reset())!;
+		return;
+	};
+	match (os::rename(tmp, bin)) {
+	case void => void;
+	case => return;
+	};
+	cache_clean(dir, name, key);
+	exec_bin(bin, rest);
 };
