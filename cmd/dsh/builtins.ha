@@ -156,7 +156,22 @@ fn call(name: str, args: []value, line: int) (value | failed) = {
 		return os::exists(expanduser(tostr(args[0])));
 	case "is_dir", "is_file" =>
 		need(name, args, 1, line)?;
-		match (os::stat(expanduser(tostr(args[0])))) {
+		// os::stat kigger på selve et symlink — følg det, som test -d gør
+		// (fx ~/storage/pictures i Termux, der peger ind i Android)
+		let p = expanduser(tostr(args[0]));
+		match (os::stat(p)) {
+		case let st: fs::filestat =>
+			if (fs::islink(st.mode)) {
+				match (os::realpath(p)) {
+				case let real: str => p = real;
+				case fs::error => return false;
+				};
+			} else {
+				return if (name == "is_dir") fs::isdir(st.mode) else fs::isfile(st.mode);
+			};
+		case fs::error => return false;
+		};
+		match (os::stat(p)) {
 		case let st: fs::filestat =>
 			return if (name == "is_dir") fs::isdir(st.mode) else fs::isfile(st.mode);
 		case fs::error => return false;

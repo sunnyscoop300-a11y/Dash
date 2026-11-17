@@ -26,6 +26,10 @@ done
 if ./dsh-hare tests/basis.Dash >/dev/null 2>&1; then ok=$((ok+1)); else bad=$((bad+1)); echo "✘ tests/basis.Dash"; fi
 rm -f /tmp/ap.txt
 if [ "$(./dsh-hare tests/features.Dash 2>&1)" = "$(cat tests/features.forventet)" ]; then ok=$((ok+1)); else bad=$((bad+1)); echo "✘ tests/features.Dash (se diff med tests/features.forventet)"; fi
+# 0.9.3: is_dir/is_file følger symlinks
+rm -rf /tmp/dsh-st && mkdir -p /tmp/dsh-st/rigtig && ln -s rigtig /tmp/dsh-st/link && touch /tmp/dsh-st/fil && ln -s fil /tmp/dsh-st/fillink
+check "$(./dsh-hare -e 'print(is_dir("/tmp/dsh-st/link"), is_file("/tmp/dsh-st/fillink"), is_dir("/tmp/dsh-st/fillink"))')" "true true false" "is_dir/is_file følger symlinks"
+rm -rf /tmp/dsh-st
 # 0.6: Violet trin 1 — type-inferens
 printf 'let n = 0\nlet navn = "x"\nlet l = []\nl.push(1.5)\nfn dobbelt(x) { return x * 2 }\nlet d = dobbelt(n)\nlet h = 7 / 2\n' > /tmp/violet-test.Dash
 vt=$(./dsh-hare types /tmp/violet-test.Dash)
