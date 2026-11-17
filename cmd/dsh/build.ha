@@ -92,18 +92,32 @@ fn hare_build(code: str, out: str, small: bool, arch: str, quiet: bool) bool = {
 	};
 	write_text(strings::concat(work, "/prog.ha")!, code);
 
+	// android: aarch64 uden libc, linket som PIE til Android's linker64
+	const android = arch == "android";
 	let hargs: []str = [];
 	append(hargs, ["build", "-q"]...)!;
-	if (small) append(hargs, "-R")!;
-	if (arch != "") append(hargs, ["-a", arch]...)!;
-	append(hargs, ["-lc", "-o", out, work]...)!;
+	if (small || android) append(hargs, "-R")!;
+	if (android) {
+		append(hargs, ["-a", "aarch64"]...)!;
+	} else if (arch != "") {
+		append(hargs, ["-a", arch]...)!;
+	};
+	if (!android) append(hargs, "-lc")!;
+	append(hargs, ["-o", out, work]...)!;
 	let cmd = match (exec::cmd("hare", hargs...)) {
 	case let c: exec::command => yield c;
 	case =>
 		if (!quiet) fmt::errorln("hare findes ikke — Violet skal bruge Hare for at bygge")!;
 		return false;
 	};
-	cross_env(&cmd, arch);
+	if (android) {
+		match (android_env(&cmd, work)) {
+		case void => void;
+		case => return false;
+		};
+	} else {
+		cross_env(&cmd, arch);
+	};
 	if (quiet) exec::nullstd(&cmd)!;
 	const ok = match (exec::start(&cmd)) {
 	case let p: exec::process =>
@@ -116,8 +130,10 @@ fn hare_build(code: str, out: str, small: bool, arch: str, quiet: bool) bool = {
 		return false;
 	};
 	match (os::rmdirall(work)) { case => void; };
-	if (small) {
+	match (os::rmdirall(strings::concat(work, "-ld")!)) { case => void; };
+	if (small || android) {
 		const strip = if (arch == "" || arch == host_arch()) "strip"
+			else if (arch == "android") "aarch64-linux-gnu-strip"
 			else strings::concat(gnu_prefix(arch), "strip")!;
 		match (exec::cmd(strip, out)) {
 		case let c: exec::command =>
@@ -171,9 +187,15 @@ fn cross_env(cmd: *exec::command, arch: str) void = {
 };
 
 fn check_arch(arch: str) void = {
+	if (arch == "android") {
+		match (exec::lookup("aarch64-linux-gnu-ld")) {
+		case str => return;
+		case => fail_and_exit("aarch64-linux-gnu-ld mangler — på Arch: sudo pacman -S aarch64-linux-gnu-binutils");
+		};
+	};
 	if (arch != "aarch64" && arch != "riscv64" && arch != "x86_64") {
 		fail_and_exit(strings::concat("ukendt arkitektur '", arch,
-			"' — brug aarch64 (telefon, Raspberry Pi), riscv64 eller x86_64")!);
+			"' — brug android (Termux), aarch64 (Raspberry Pi), riscv64 eller x86_64")!);
 	};
 	if (arch == host_arch()) return;
 	match (exec::lookup(strings::concat(gnu_prefix(arch), "gcc")!)) {
@@ -290,4 +312,42 @@ fn run_main(path: str, rest: []str) void = {
 	};
 	cache_clean(dir, name, key);
 	exec_bin(bin, rest);
+};
+
+// --- Android (violet fil.Dash --arch android)
+//
+// Android kører kun programmer gennem sin egen loader, /system/bin/linker64,
+// og den kan ikke starte glibc-programmer. Hare kan køre helt uden libc, kun
+// med Linux-systemkald, så Violet bygger uden libc og linker selv: en PIE med
+// linker64 som loader og kun relative relokeringer, som linker64 udfører,
+// før Hares egen opstart tager over.
+//
+// .init_array omdøbes, så linker64 ikke også kører Hares @init-funktioner —
+// det gør Hares opstart selv (via __init_array_start/_end).
+def ANDROID_LD: str = `#!/bin/sh
+# Lavet af Violet: linker et Hare-program som en PIE til Android's linker64.
+ld=aarch64-linux-gnu-ld
+sc="@DIR@/android.ld"
+"$ld" -pie --verbose | sed -n '/^=======/,/^=======/p' | sed '1d;$d' \
+	| sed 's/^  \.init_array    :/  .hare_init_array :/; s/^  \.fini_array    :/  .hare_fini_array :/' > "$sc"
+interp="${VIOLET_INTERP:-/system/bin/linker64}"
+skip=0
+for a do
+	shift
+	if [ "$skip" = 1 ]; then skip=0; continue; fi
+	if [ "$a" = "-T" ]; then skip=1; continue; fi
+	set -- "$@" "$a"
+done
+exec "$ld" -pie -z text -z now -z noexecstack --hash-style=both \
+	--dynamic-linker="$interp" -e _start -T "$sc" "$@"
+`;
+
+fn android_env(cmd: *exec::command, work: str) (void | fs::error) = {
+	const dir = strings::concat(work, "-ld")!;
+	os::mkdirs(dir, 0o755)?;
+	const ld = strings::concat(dir, "/ld")!;
+	write_text(ld, strings::replace(ANDROID_LD, "@DIR@", dir)!);
+	os::chmod(ld, 0o755)?;
+	exec::setenv(cmd, "AS", "aarch64-linux-gnu-as")!;
+	exec::setenv(cmd, "LD", ld)!;
 };

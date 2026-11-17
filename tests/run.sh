@@ -67,6 +67,9 @@ if command -v hare > /dev/null; then
 		printf 'let s = 0\nfor i in range(100) { s += i }\necho "arm: $s"\n' > /tmp/violet-a.Dash
 		./dsh-hare build /tmp/violet-a.Dash --arch aarch64 -o /tmp/violet-a > /dev/null 2>&1
 		check "$(qemu-aarch64-static /tmp/violet-a)" "arm: 4950" "violet --arch aarch64 (qemu)"
+		# android: uden libc; i qemu bruges glibc's loader i stedet for linker64
+		VIOLET_INTERP=/lib/ld-linux-aarch64.so.1 ./dsh-hare build /tmp/violet-a.Dash --arch android -o /tmp/violet-a > /dev/null 2>&1
+		check "$(qemu-aarch64-static -L /usr/aarch64-linux-gnu /tmp/violet-a)" "arm: 4950" "violet --arch android (qemu)"
 		rm -f /tmp/violet-a /tmp/violet-a.Dash
 	fi
 fi

@@ -96,7 +96,8 @@ violet kapløb.Dash            # → ./kapløb
 violet kapløb.Dash -o løb     # vælg selv navnet
 violet kapløb.Dash --strip    # mindre fil (release-tilstand + strip): 1275 → 747 KB
 violet run kapløb.Dash        # byg kun hvis scriptet er ændret, og kør binæren
-violet kapløb.Dash --arch aarch64   # til telefonen (Termux) eller en Raspberry Pi
+violet kapløb.Dash --arch android   # til telefonen: kører direkte i Termux
+violet kapløb.Dash --arch aarch64   # til en Raspberry Pi eller proot-Linux på telefonen
 violet types kapløb.Dash      # vis typerne (trin 1)
 violet hare kapløb.Dash       # vis den Hare-kode, hun laver
 ```
@@ -113,6 +114,13 @@ bliver dine scripts native uden at du tænker over det:
 ```
 #!/usr/bin/env violet-run
 ```
+
+**--arch android** bygger til Termux på en Android-telefon. Android kører
+kun programmer gennem sin egen loader (`/system/bin/linker64`), og den kan
+ikke starte glibc-programmer. Så Violet bygger uden C-bibliotek — Hare kan
+klare sig med rene Linux-systemkald — og linker selv binæren som en PIE med
+linker64 som loader. Kommandoer startes med fork + execve. Kræver kun
+`aarch64-linux-gnu-binutils`.
 
 **--arch** bygger til en anden processor: `aarch64` (telefoner, Raspberry
 Pi) eller `riscv64`. Binæren bliver statisk, så den ikke skal bruge noget
