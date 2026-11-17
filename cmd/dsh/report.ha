@@ -4,7 +4,7 @@ use io;
 use os;
 use strings;
 
-def VERSION: str = "0.8.1-hare";
+def VERSION: str = "0.8.2-hare";
 
 let script_name = "dsh";
 let script_src: []u8 = [];
@@ -51,7 +51,7 @@ fn version() void = {
 		"        __",
 		"       / /",
 		"      / /___",
-		"     /___  /      dsh 0.8.1-hare",
+		"     /___  /      dsh 0.8.2-hare",
 		"        / /       hurtigere end sh",
 		"       / /",
 		"      /_/",

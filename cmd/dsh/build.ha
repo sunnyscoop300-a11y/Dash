@@ -156,10 +156,12 @@ fn gnu_prefix(arch: str) str = strings::concat(arch, "-linux-gnu-")!;
 
 // Til en anden arkitektur bygges binæren statisk: så har den ingen
 // afhængigheder og kører både i Termux på en telefon og på en Raspberry Pi.
+// Den skal være static-pie: Android kører kun position-uafhængige programmer
+// (en almindelig statisk binær giver "unexpected e_type: 2" i Termux).
 // Hare finder selv aarch64-linux-gnu-gcc osv.
 fn cross_env(cmd: *exec::command, arch: str) void = {
 	if (arch == "" || arch == host_arch()) return;
-	exec::setenv(cmd, "LDFLAGS", "-static")!;
+	exec::setenv(cmd, "LDFLAGS", "-static-pie")!;
 	// hare bruger $AS/$CC/$LD, hvis de er sat — også når de peger på
 	// værktøjerne til denne maskine. Sæt dem til krydsværktøjerne.
 	const pre = gnu_prefix(arch);
