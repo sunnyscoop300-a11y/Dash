@@ -166,11 +166,24 @@ fn get_status() value = {
 	};
 };
 
+// Programmets egne argumenter. På Android startes programmer i app-mappen
+// som "/system/bin/linker64 /sti/program args…"; Android's libc retter
+// normalt argv bagefter, men vi kører uden libc — så spring linker64 over.
+fn prog_args() []str = {
+	if (len(os::args) == 0) return [];
+	let first = 1z;
+	if (len(os::args) > 1 && strings::hassuffix(os::args[0], "/linker64")
+			&& strings::hasprefix(os::args[1], "/")) {
+		first = 2;
+	};
+	return os::args[first..];
+};
+
 // Starter et oversat program: samme opsætning som dsh laver for et script.
 fn rt_start(name: str, src: str) void = {
 	root = newenv(null);
 	let argl: []value = [];
-	if (len(os::args) > 1) for (let a .. os::args[1..]) append(argl, a)!;
+	for (let a .. prog_args()) append(argl, a)!;
 	define(root, "args", newlist(argl));
 	define(root, "script", name);
 	define(root, "status", 0i64);
