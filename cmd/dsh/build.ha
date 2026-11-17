@@ -160,6 +160,12 @@ fn gnu_prefix(arch: str) str = strings::concat(arch, "-linux-gnu-")!;
 fn cross_env(cmd: *exec::command, arch: str) void = {
 	if (arch == "" || arch == host_arch()) return;
 	exec::setenv(cmd, "LDFLAGS", "-static")!;
+	// hare bruger $AS/$CC/$LD, hvis de er sat — også når de peger på
+	// værktøjerne til denne maskine. Sæt dem til krydsværktøjerne.
+	const pre = gnu_prefix(arch);
+	exec::setenv(cmd, "AS", strings::concat(pre, "as")!)!;
+	exec::setenv(cmd, "CC", strings::concat(pre, "gcc")!)!;
+	exec::setenv(cmd, "LD", strings::concat(pre, "ld")!)!;
 };
 
 fn check_arch(arch: str) void = {
