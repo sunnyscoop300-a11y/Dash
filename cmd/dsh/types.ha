@@ -486,6 +486,11 @@ fn tstmt(s: *stmt) void = {
 
 // --- udskrift ---
 
+// Farver kun når udskriften går til en terminal (ikke i en pipe).
+fn vcol(code: str) str = if (is_tty(os::stdout_file)) code else "";
+fn vreset() str = vcol("\x1b[0m");
+fn vdim() str = vcol("\x1b[2m");
+
 // "str", "int|nil", "num" (int|float), "list[str]" ...
 fn bits_names(b: u16, out: *[]str) void = {
 	if (b == T_ANY) {
@@ -545,12 +550,12 @@ fn bind_cmp(a: const *opaque, b: const *opaque) int = {
 
 fn print_bind(i: size, w: size) void = {
 	const b = &binds[i];
-	const mark = if (is_static(b.t)) strings::concat(col("\x1b[1;32m"), "✔")!
-		else strings::concat(col("\x1b[1;38;5;208m"), "~")!;
+	const mark = if (is_static(b.t)) strings::concat(vcol("\x1b[1;32m"), "✔")!
+		else strings::concat(vcol("\x1b[1;38;5;208m"), "~")!;
 	let pad: []u8 = [];
 	defer free(pad);
 	for (let k = utf8_width(b.name); k < w; k += 1) append(pad, ' ')!;
-	fmt::printfln("    {}{} {}{}  {}", mark, reset(), b.name,
+	fmt::printfln("    {}{} {}{}  {}", mark, vreset(), b.name,
 		strings::fromutf8_unsafe(pad), tname(b.t))!;
 };
 
@@ -588,8 +593,8 @@ fn types_main(src: []u8) never = {
 		if (!changed || rounds >= 100) break;
 	};
 
-	fmt::printfln("{}💜 violet types{} {}  {}({} gennemløb){}", col("\x1b[1;38;5;141m"),
-		reset(), script_name, dim(), rounds, reset())!;
+	fmt::printfln("{}💜 violet types{} {}  {}({} gennemløb){}", vcol("\x1b[1;38;5;141m"),
+		vreset(), script_name, vdim(), rounds, vreset())!;
 
 	// bredde til navnekolonnen
 	let w = 4z;
@@ -602,7 +607,7 @@ fn types_main(src: []u8) never = {
 	};
 	sort::sort(glob: []opaque, size(size), &bind_cmp)!;
 	if (len(glob) > 0) {
-		fmt::printfln("  {}globalt{}", col("\x1b[1m"), reset())!;
+		fmt::printfln("  {}globalt{}", vcol("\x1b[1m"), vreset())!;
 		for (let i .. glob) print_bind(i, w);
 	};
 
@@ -619,9 +624,9 @@ fn types_main(src: []u8) never = {
 		for (let p .. fi.params) {
 			append(ps, strings::concat(binds[p].name, ": ", tname(binds[p].t))!)!;
 		};
-		const retm = if (is_static(fi.ret)) col("\x1b[1;32m") else col("\x1b[1;38;5;208m");
-		fmt::printfln("  {}fn {}{}({}) → {}{}{}", col("\x1b[1m"), fi.name, reset(),
-			strings::join(", ", ps...)!, retm, tname(fi.ret), reset())!;
+		const retm = if (is_static(fi.ret)) vcol("\x1b[1;32m") else vcol("\x1b[1;38;5;208m");
+		fmt::printfln("  {}fn {}{}({}) → {}{}{}", vcol("\x1b[1m"), fi.name, vreset(),
+			strings::join(", ", ps...)!, retm, tname(fi.ret), vreset())!;
 		let loc: []size = [];
 		for (let i = 0z; i < len(binds); i += 1) {
 			if (binds[i].owner == f: int && !binds[i].param && binds[i].t.b != T_FN) {
@@ -635,8 +640,8 @@ fn types_main(src: []u8) never = {
 	const pct = if (total == 0) 100 else fast * 100 / total;
 	fmt::println()!;
 	fmt::printfln("  {}{} af {} variabler har én fast type ({}%){}",
-		col("\x1b[1;38;5;141m"), fast, total, pct, reset())!;
+		vcol("\x1b[1;38;5;141m"), fast, total, pct, vreset())!;
 	fmt::printfln("  {}✔ = Violet kan bruge rene maskintyper   ~ = dynamisk værdi{}",
-		dim(), reset())!;
+		vdim(), vreset())!;
 	os::exit(0);
 };
