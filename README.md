@@ -85,6 +85,30 @@ Finder *alle* fejl på én gang uden at køre noget — og foreslår rettelser:
 
 De samme "mente du …?"-forslag kommer også når et script fejler undervejs.
 
+## Violet 💜 — Dash til native kode (trin 1: typer)
+
+Violet er Dash' lillesøster: hun skal oversætte `.Dash` til en rigtig native
+binær. Første trin er **type-inferens** — at finde ud af, hvilken type hver
+variabel og hver fn har, uden at køre scriptet:
+
+```
+dsh types kapløb.Dash      # eller bare: violet kapløb.Dash
+💜 violet types kapløb.Dash  (2 gennemløb)
+  globalt
+    ✔ runder      int
+    ✔ gammel      float
+  fn løb(hvem: str) → float
+    ✔ tider       list[float]
+  13 af 15 variabler har én fast type (86%)
+```
+
+`✔` betyder én fast type: den kan blive et rent `i64`, `f64` eller en streng i
+maskinkoden. `~` betyder at værdien kan være flere ting (fx `str|nil` fra
+`env()` eller `num` fra `7 / 2`, der giver 3.5, mens `6 / 3` giver 2), og så
+skal Violet bruge en dynamisk værdi dér.
+
+`make install-dsh` laver også `violet` som et link til `dsh`.
+
 ## Farver i nano og Kate
 
 ```

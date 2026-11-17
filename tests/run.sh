@@ -26,6 +26,16 @@ done
 if ./dsh-hare tests/basis.Dash >/dev/null 2>&1; then ok=$((ok+1)); else bad=$((bad+1)); echo "✘ tests/basis.Dash"; fi
 rm -f /tmp/ap.txt
 if [ "$(./dsh-hare tests/features.Dash 2>&1)" = "$(cat tests/features.forventet)" ]; then ok=$((ok+1)); else bad=$((bad+1)); echo "✘ tests/features.Dash (se diff med tests/features.forventet)"; fi
+# 0.6: Violet trin 1 — type-inferens
+printf 'let n = 0\nlet navn = "x"\nlet l = []\nl.push(1.5)\nfn dobbelt(x) { return x * 2 }\nlet d = dobbelt(n)\nlet h = 7 / 2\n' > /tmp/violet-test.Dash
+vt=$(./dsh-hare types /tmp/violet-test.Dash)
+check "$(echo "$vt" | grep -c '✔ n  *int$')" "1" "violet: int"
+check "$(echo "$vt" | grep -c 'navn  *str$')" "1" "violet: str"
+check "$(echo "$vt" | grep -c 'l  *list\[float\]$')" "1" "violet: list fra push"
+check "$(echo "$vt" | grep -c 'fn dobbelt(x: int) → int')" "1" "violet: fn-typer fra kald"
+check "$(echo "$vt" | grep -c '~ h  *num$')" "1" "violet: 7 / 2 er int eller float"
+check "$(ln -sf "$PWD/dsh-hare" /tmp/violet && /tmp/violet tests/basis.Dash | grep -c '100%')" "1" "violet-navnet"
+rm -f /tmp/violet-test.Dash /tmp/violet
 # v0.5: & (baggrund), ask, menu, progress
 s=$(date +%s%N); out=$(./dsh-hare -e 'sleep 2 &
 echo straks'); e=$(date +%s%N)

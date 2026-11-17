@@ -18,8 +18,9 @@ install: dsh-hare
 install-dsh: dsh-hare
 	rm -f $(HOME)/.local/bin/dsh
 	install -Dm755 dsh-hare $(HOME)/.local/bin/dsh
+	ln -sf dsh $(HOME)/.local/bin/violet
 	@if [ -f $(HOME)/dsh/dsh.py ]; then ln -sf $(HOME)/dsh/dsh.py $(HOME)/.local/bin/dsh-py; fi
-	@echo "⚡ dsh er nu Hare-versionen ($$($(HOME)/.local/bin/dsh --version | grep -o '0\.[0-9]*-hare'))"
+	@echo "⚡ dsh er nu Hare-versionen ($$($(HOME)/.local/bin/dsh --version | grep -o '[0-9.]*-hare'))"
 
 # Farver til .Dash i nano og Kate/KWrite
 NANO_DIR = $(HOME)/.local/share/nano
