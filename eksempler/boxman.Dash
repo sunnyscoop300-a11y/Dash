@@ -1,0 +1,507 @@
+#!/usr/bin/env dsh
+# boxman.Dash — BOXMAN 📦 — skub kasserne hen på de gule mål. Et 2D-spil i Dash med JJGui.
+#
+#   pile / WASD     gå (og skub)
+#   Z eller U       fortryd
+#   R               start banen forfra
+#   N / Enter       næste bane (når den er klaret)
+#   Esc             baneoversigt / luk
+#
+# Du kan kun skubbe — ikke trække — og kun én kasse ad gangen.
+# Bedste antal træk pr. bane gemmes i ~/.boxman
+
+window("Boxman", 800, 680)
+let W = width()
+let H = height()
+
+# '#' mur, '.' mål, '$' kasse, '*' kasse på mål, '@' Boxman, '+' Boxman på mål
+let BANER = [
+    {"navn": "Første skub", "kort": [
+        "#######",
+        "#     #",
+        "# @$ .#",
+        "#     #",
+        "#######"]},
+    {"navn": "To kasser", "kort": [
+        "########",
+        "#  .   #",
+        "# $##  #",
+        "# @  $.#",
+        "#      #",
+        "########"]},
+    {"navn": "Hjørnet", "kort": [
+        "#######",
+        "#.    #",
+        "#.$## #",
+        "# $ @ #",
+        "#   ###",
+        "#####  "]},
+    {"navn": "Lageret", "kort": [
+        "  ######",
+        "  #    #",
+        "### $$ #",
+        "#  .#. #",
+        "# @  $ #",
+        "#  .   #",
+        "########"]},
+    {"navn": "Gangen", "kort": [
+        "#########",
+        "#   #   #",
+        "# $   $ #",
+        "## # # ##",
+        "#. @   .#",
+        "#########"]},
+    {"navn": "Zigzag", "kort": [
+        "#######",
+        "#. #  #",
+        "#  $  #",
+        "# #$# #",
+        "#. @  #",
+        "#######"]},
+    {"navn": "Mesterprøven", "kort": [
+        "#########",
+        "#.  #  .#",
+        "# $   $ #",
+        "#  ###  #",
+        "#  #@#  #",
+        "# $   $ #",
+        "#.  #  .#",
+        "#########"]},
+    {"navn": "Ringen", "kort": [
+        " ####### ",
+        " #  .  # ",
+        "## $#$ ##",
+        "#.  @  .#",
+        "## $#$ ##",
+        " #  .  # ",
+        " ####### "]},
+]
+
+# ── gemte rekorder ──
+let GEM = "{env("HOME", ".")}/.boxman"
+let bedste = []
+for i in range(BANER.len) { bedste.push(0) }
+if exists(GEM) {
+    let l = read(GEM).trim().split(",")
+    for i in range(min(l.len, BANER.len)) {
+        if l[i].trim() != "" { bedste[i] = int(l[i]) }
+    }
+}
+fn gem() {
+    let s = []
+    for b in bedste { s.push(str(b)) }
+    write(GEM, s.join(",") + "\n")
+}
+
+# ── lyde ──
+let LYD_GÅ = sound("triangle", 520, 480, 0.03, 0.15)
+let LYD_SKUB = sound("square", 140, 110, 0.08, 0.25)
+let LYD_MÅL = sound("sine", 784, 1175, 0.12, 0.35)
+let LYD_BUMP = sound("noise", 400, 200, 0.05, 0.15)
+let LYD_SEJR = sound("triangle", 523, 1047, 0.5, 0.4)
+let LYD_FORTRYD = sound("sine", 600, 400, 0.06, 0.2)
+
+# ── banetilstand ──
+let nr = 0
+let mure = []
+let mål = []
+let kasser = []
+let bx = 0
+let by = 0
+let retning = [0, 1]
+let træk = 0
+let skub = 0
+let historik = []
+let anim = 0.0          # 0.12 → 0 mens Boxman glider en rude
+let anim_kasse = -1     # hvilken kasse glider med
+let klaret = false
+let tid = 0.0
+let skærm = "spil"
+let gnister = []
+let RUDE = 64
+let ox = 0
+let oy = 0
+let rækker = 0
+let søjler = 0
+
+fn er(liste, x, y) {
+    for p in liste {
+        if p[0] == x and p[1] == y { return true }
+    }
+    return false
+}
+
+fn kasse_ved(x, y) {
+    for i in range(kasser.len) {
+        if kasser[i][0] == x and kasser[i][1] == y { return i }
+    }
+    return -1
+}
+
+fn indlæs(i) {
+    nr = i
+    mure = []
+    mål = []
+    kasser = []
+    let kort = BANER[i].kort
+    rækker = kort.len
+    søjler = 0
+    for y in range(kort.len) {
+        let r = kort[y]
+        søjler = max(søjler, r.len)
+        for x in range(r.len) {
+            let c = r[x]
+            if c == "#" { mure.push([x, y]) }
+            if c == "." or c == "*" or c == "+" { mål.push([x, y]) }
+            if c == "$" or c == "*" { kasser.push([x, y]) }
+            if c == "@" or c == "+" {
+                bx = x
+                by = y
+            }
+        }
+    }
+    RUDE = int(min(64, min((W - 80) / søjler, (H - 190) / rækker)))
+    ox = int((W - søjler * RUDE) / 2)
+    oy = 110 + int((H - 190 - rækker * RUDE) / 2)
+    træk = 0
+    skub = 0
+    historik = []
+    anim = 0.0
+    klaret = false
+    tid = 0.0
+    gnister = []
+    retning = [0, 1]
+    skærm = "spil"
+}
+
+fn kopi() {
+    let k = []
+    for p in kasser { k.push([p[0], p[1]]) }
+    return {"x": bx, "y": by, "kasser": k, "træk": træk, "skub": skub}
+}
+
+fn alle_på_mål() {
+    for k in kasser {
+        if not er(mål, k[0], k[1]) { return false }
+    }
+    return true
+}
+
+fn gnist(x, y, n) {
+    for i in range(n) {
+        let v = random() * 6.283
+        let f = 60 + random() * 160
+        gnister.push({"x": x, "y": y, "vx": cos(v) * f, "vy": sin(v) * f - 80, "liv": 0.6 + random() * 0.6,
+                      "farve": ["#ffcf3a", "#ff7ab6", "#7dff9a", "#7ac8ff", "#ffffff"][random(5)]})
+    }
+}
+
+fn gå(dx, dy) {
+    if klaret { return nil }
+    retning = [dx, dy]
+    let nx = bx + dx
+    let ny = by + dy
+    if er(mure, nx, ny) {
+        play(LYD_BUMP, 0.5)
+        return nil
+    }
+    let k = kasse_ved(nx, ny)
+    anim_kasse = -1
+    if k >= 0 {
+        let kx = nx + dx
+        let ky = ny + dy
+        if er(mure, kx, ky) or kasse_ved(kx, ky) >= 0 {
+            play(LYD_BUMP, 0.5)
+            return nil
+        }
+        historik.push(kopi())
+        kasser[k] = [kx, ky]
+        skub += 1
+        anim_kasse = k
+        if er(mål, kx, ky) {
+            play(LYD_MÅL)
+            gnist(ox + kx * RUDE + RUDE / 2, oy + ky * RUDE + RUDE / 2, 14)
+        } else {
+            play(LYD_SKUB)
+        }
+    } else {
+        historik.push(kopi())
+        play(LYD_GÅ, 0.5)
+    }
+    bx = nx
+    by = ny
+    træk += 1
+    anim = 0.12
+    if alle_på_mål() {
+        klaret = true
+        play(LYD_SEJR)
+        for i in range(5) { gnist(W / 2 - 200 + i * 100, H / 2, 20) }
+        if bedste[nr] == 0 or træk < bedste[nr] {
+            bedste[nr] = træk
+            gem()
+        }
+    }
+}
+
+fn fortryd() {
+    if historik.len == 0 or klaret { return nil }
+    let s = historik.pop()
+    bx = s.x
+    by = s.y
+    kasser = s.kasser
+    træk = s.træk
+    skub = s.skub
+    anim = 0.0
+    play(LYD_FORTRYD)
+}
+
+# ── tegning ──
+fn mur(x, y) {
+    rect(x, y + 6, RUDE, RUDE - 6, "#3a2f55")
+    rect(x, y, RUDE, RUDE - 8, "#6a5a9a")
+    rect(x + 3, y + 3, RUDE - 6, RUDE - 16, "#7d6db2")
+    # mursten
+    let h = (RUDE - 16) / 3
+    for r in range(3) {
+        rect(x + 3, y + 3 + r * h + h - 1, RUDE - 6, 2, "#5a4a88")
+        let skæv = 0
+        if r % 2 == 1 { skæv = (RUDE - 6) / 4 }
+        rect(x + 3 + skæv + (RUDE - 6) / 2, y + 3 + r * h, 2, h, "#5a4a88")
+    }
+}
+
+fn gulv(x, y, mørk) {
+    let c = "#e8dcc0"
+    if mørk { c = "#ddd0b0" }
+    rect(x, y, RUDE, RUDE, c)
+}
+
+fn målfelt(x, y) {
+    let m = RUDE / 2
+    let puls = int(sin(tid * 4) * 2)
+    circle(x + m, y + m, RUDE / 3 + puls, "#f0c040")
+    circle(x + m, y + m, RUDE / 3 - 5 + puls, "#e8dcc0")
+    circle(x + m, y + m, RUDE / 7, "#f0c040")
+}
+
+fn kasse(x, y, på_mål) {
+    let s = 5
+    let træ = "#c8843a"
+    let lys = "#e0a058"
+    let mørk = "#8a5420"
+    if på_mål {
+        træ = "#4ab866"
+        lys = "#7ad890"
+        mørk = "#2a7a40"
+    }
+    rect(x + s + 2, y + s + 5, RUDE - 2 * s, RUDE - 2 * s, "#9a8a6a")
+    rect(x + s, y + s, RUDE - 2 * s, RUDE - 2 * s, mørk)
+    rect(x + s + 3, y + s + 3, RUDE - 2 * s - 6, RUDE - 2 * s - 6, træ)
+    # planker og kryds
+    let a = x + s + 3
+    let b = y + s + 3
+    let l = RUDE - 2 * s - 6
+    rect(a, b, l, 4, lys)
+    rect(a, b + l - 4, l, 4, mørk)
+    for d in range(-2, 3) {
+        line(a + d, b, a + l + d, b + l, mørk)
+        line(a + l + d, b, a + d, b + l, mørk)
+    }
+    if på_mål { text(x + RUDE / 2 - 4, y + RUDE / 2 - 8, "v", "#ffffff") }
+}
+
+fn boxman(x, y) {
+    let m = RUDE / 2
+    let s = RUDE / 64.0
+    let hop = 0
+    if anim > 0 { hop = int(sin(anim / 0.12 * 3.14) * 4 * s) }
+    let bund = y + RUDE - 6
+    # skygge
+    round_rect(x + m - int(18 * s), bund - 4, int(36 * s), 8, 4, "#b0a080")
+    # ben
+    rect(x + m - int(12 * s), bund - int(16 * s) - hop, int(9 * s), int(14 * s), "#2a3448")
+    rect(x + m + int(3 * s), bund - int(16 * s) - hop, int(9 * s), int(14 * s), "#2a3448")
+    # krop
+    rect(x + m - int(15 * s), bund - int(34 * s) - hop, int(30 * s), int(20 * s), "#3a7bd5")
+    rect(x + m - int(15 * s), bund - int(22 * s) - hop, int(30 * s), int(3 * s), "#ffcf3a")
+    # det firkantede hoved
+    let hx = x + m - int(16 * s)
+    let hy = bund - int(64 * s) - hop
+    let hs = int(32 * s)
+    rect(hx - 1, hy - 1, hs + 2, hs + 2, "#8a5a2a")
+    rect(hx, hy, hs, hs, "#ffc83a")
+    rect(hx, hy, hs, int(7 * s), "#e0a020")
+    # øjne kigger i gå-retningen
+    let ex = retning[0] * int(4 * s)
+    let ey = retning[1] * int(3 * s)
+    if retning[1] != -1 {
+        rect(hx + int(8 * s) + ex, hy + int(13 * s) + ey, int(5 * s), int(6 * s), "#1a1a2a")
+        rect(hx + int(19 * s) + ex, hy + int(13 * s) + ey, int(5 * s), int(6 * s), "#1a1a2a")
+        rect(hx + int(12 * s) + ex, hy + int(23 * s) + ey, int(8 * s), int(2 * s) + 1, "#a03030")
+    }
+}
+
+fn tegn_bane() {
+    clear("#2a2440")
+    # baggrundsmønster
+    for i in range(0, W, 40) { rect(i, 0, 1, H, "#2f2848") }
+    let fx = -retning[0] * anim / 0.12 * RUDE
+    let fy = -retning[1] * anim / 0.12 * RUDE
+    for y in range(rækker) {
+        let r = BANER[nr].kort[y]
+        # gulv kun inde i banen: mellem første og sidste mur på rækken
+        let første = -1
+        let sidste = -1
+        for x in range(r.len) {
+            if r[x] == "#" {
+                if første < 0 { første = x }
+                sidste = x
+            }
+        }
+        for x in range(r.len) {
+            let px = ox + x * RUDE
+            let py = oy + y * RUDE
+            if x > første and x < sidste and r[x] != "#" {
+                gulv(px, py, (x + y) % 2 == 0)
+                if er(mål, x, y) { målfelt(px, py) }
+            }
+        }
+    }
+    for y in range(rækker) {
+        let r = BANER[nr].kort[y]
+        for x in range(r.len) {
+            if r[x] == "#" { mur(ox + x * RUDE, oy + y * RUDE) }
+        }
+    }
+    for i in range(kasser.len) {
+        let k = kasser[i]
+        let kx = ox + k[0] * RUDE
+        let ky = oy + k[1] * RUDE
+        if i == anim_kasse and anim > 0 {
+            kx += int(fx)
+            ky += int(fy)
+        }
+        kasse(kx, ky, er(mål, k[0], k[1]))
+    }
+    boxman(ox + bx * RUDE + int(fx), oy + by * RUDE + int(fy))
+}
+
+fn tegn_hud() {
+    text(28, 22, "BOXMAN", "#ffcf3a", 4)
+    text(30, 76, "Bane {nr + 1}/{BANER.len}: {BANER[nr].navn}", "#c8c0ff", 2)
+    let på = 0
+    for k in kasser { if er(mål, k[0], k[1]) { på += 1 } }
+    let info = "Træk {træk}   Skub {skub}   Kasser {på}/{kasser.len}"
+    text(W - text_width(info, 2) - 28, 26, info, "#ffffff", 2)
+    if bedste[nr] > 0 {
+        let b = "Rekord: {bedste[nr]} træk"
+        text(W - text_width(b, 1) - 28, 62, b, "#7dff9a", 1)
+    }
+    text(28, H - 30, "pile: gå   Z: fortryd   R: forfra   Esc: baner", "#8a80b0", 1)
+}
+
+fn tegn_gnister(dt) {
+    let ny = []
+    for g in gnister {
+        g.liv -= dt
+        if g.liv <= 0 { continue }
+        g.x += g.vx * dt
+        g.y += g.vy * dt
+        g.vy += 300 * dt
+        rect(int(g.x), int(g.y), 5, 5, g.farve)
+        ny.push(g)
+    }
+    gnister = ny
+}
+
+fn tegn_sejr() {
+    round_rect(W / 2 - 236, H / 2 - 96, 480, 200, 22, "#120e22")
+    round_rect(W / 2 - 240, H / 2 - 100, 480, 200, 22, "#3a2f6a")
+    let s = "KLARET!"
+    text((W - text_width(s, 5)) / 2, H / 2 - 80, s, "#ffcf3a", 5)
+    let t = "{træk} træk · {skub} skub"
+    text((W - text_width(t, 2)) / 2, H / 2 - 4, t, "#ffffff", 2)
+    if bedste[nr] == træk {
+        text((W - text_width("Ny rekord!", 2)) / 2, H / 2 + 28, "Ny rekord!", "#7dff9a", 2)
+    }
+    let n = "Enter: næste bane"
+    if nr == BANER.len - 1 { n = "Alle baner klaret! Enter: oversigt" }
+    text((W - text_width(n, 1)) / 2, H / 2 + 70, n, "#c8c0ff", 1)
+}
+
+fn tegn_oversigt() {
+    clear("#2a2440")
+    text((W - text_width("BOXMAN", 6)) / 2, 40, "BOXMAN", "#ffcf3a", 6)
+    let u = "Skub alle kasserne hen på de gule mål"
+    text((W - text_width(u, 2)) / 2, 150, u, "#c8c0ff", 2)
+    for i in range(BANER.len) {
+        let x = 90 + (i % 4) * 160
+        let y = 230 + int(i / 4) * 170
+        let m = mouse()
+        let over = m[0] >= x and m[0] < x + 140 and m[1] >= y and m[1] < y + 140
+        let bg = "#3a2f6a"
+        if over { bg = "#5a48a0" }
+        round_rect(x + 3, y + 5, 140, 140, 16, "#120e22")
+        round_rect(x, y, 140, 140, 16, bg)
+        text(x + (140 - text_width("{i + 1}", 4)) / 2, y + 16, "{i + 1}", "#ffffff", 4)
+        text(x + (140 - text_width(BANER[i].navn, 1)) / 2, y + 86, BANER[i].navn, "#c8c0ff", 1)
+        if bedste[i] > 0 {
+            let b = "{bedste[i]} træk"
+            text(x + (140 - text_width(b, 1)) / 2, y + 110, b, "#7dff9a", 1)
+        }
+        if over and clicked() { indlæs(i) }
+    }
+    text(28, H - 30, "Klik en bane · Esc lukker", "#8a80b0", 1)
+}
+
+indlæs(0)
+let skud = env("JJ_SKUD", "")
+let scene = env("JJ_SCENE", "spil")
+if skud != "" {
+    if scene == "oversigt" { skærm = "oversigt" }
+    if scene == "spil" {
+        indlæs(3)
+        gå(1, 0)
+        gå(0, -1)
+    }
+    if scene == "klaret" {
+        indlæs(0)
+        gå(1, 0)
+        gå(1, 0)
+    }
+}
+
+let tæller = 0.0
+while frame() {
+    let dt = min(delta(), 0.05)
+    tid += dt
+    if anim > 0 { anim = max(0.0, anim - dt) }
+    if skærm == "oversigt" {
+        if pressed("esc") { break }
+        tegn_oversigt()
+    } else {
+        if pressed("esc") { skærm = "oversigt" }
+        if not klaret {
+            if pressed("left") or pressed("a") { gå(-1, 0) }
+            if pressed("right") or pressed("d") { gå(1, 0) }
+            if pressed("up") or pressed("w") { gå(0, -1) }
+            if pressed("down") or pressed("s") { gå(0, 1) }
+            if pressed("z") or pressed("u") { fortryd() }
+        }
+        if pressed("r") { indlæs(nr) }
+        if klaret and (pressed("enter") or pressed("n") or pressed("space")) {
+            if nr < BANER.len - 1 { indlæs(nr + 1) } else { skærm = "oversigt" }
+        }
+        tegn_bane()
+        tegn_hud()
+        if klaret { tegn_sejr() }
+    }
+    tegn_gnister(dt)
+    if skud != "" {
+        tæller += dt
+        if tæller > 0.3 {
+            screenshot(skud)
+            break
+        }
+    }
+}

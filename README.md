@@ -223,6 +223,9 @@ Nye matematik-funktioner: `sin`, `cos`, `sqrt`, `floor`, `random()` (0-1),
 med tre baner, hop, glid, tog, bananskræller, P'er og en P STORE med outfits.
 Kører med `dsh` (~50 fps) og hurtigere bygget med Violet.
 
+**Eksempel:** `eksempler/boxman.Dash` — *Boxman*, et 2D-skubbespil: skub kasserne
+hen på de gule mål. 8 baner, fortryd (Z), rekorder pr. bane.
+
 Se `eksempler/jj-demo.Dash`. Violet bygger JJGui-scripts til native programmer
 (kun til samme maskine — ikke `--arch`). `make NOJJ=1` bygger dsh uden JJGui,
 `make HARE_ONLY=1` uden SDL2.
