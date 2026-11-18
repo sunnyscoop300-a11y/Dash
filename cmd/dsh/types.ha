@@ -352,6 +352,15 @@ fn tcall(c: *e_call) ty = {
 		return t(r & T_NUM);
 	case "menu" =>
 		return t((if (len(at) > 0) at[0].le else T_ANY) | T_NIL);
+	// JJGui
+	case "window", "frame", "button", "clicked", "right_clicked", "mouse_down", "key", "pressed" =>
+		return t(T_BOOL);
+	case "text_width", "wheel", "width", "height", "image", "sound", "sound_file" => return t(T_INT);
+	case "delta" => return t(T_FLOAT);
+	case "typed" => return t(T_STR);
+	case "mouse", "image_size" => return tlist(T_INT);
+	case "close_window", "clear", "rect", "outline", "round_rect", "circle", "line", "pixel",
+		"polygon", "text", "draw", "play", "screenshot" => return t(T_NIL);
 	case => return ANY;
 	};
 };

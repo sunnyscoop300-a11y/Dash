@@ -247,8 +247,16 @@ fn call(name: str, args: []value, line: int) (value | failed) = {
 	case "menu" => return menu(args, line);
 	case "progress" => return progress(args, line);
 	case =>
+		match (jj_call(name, args, line)) {
+		case let v: value => return v;
+		case failed => return failed;
+		case void => void;
+		};
 		dief(line, "ukendt funktion '{}()'", name): void;
-		sethint(hint_from(name, BUILTIN_FNS));
+		let cands: []str = [];
+		append(cands, BUILTIN_FNS...)!;
+		append(cands, JJ_FNS...)!;
+		sethint(hint_from(name, cands));
 		return failed;
 	};
 };

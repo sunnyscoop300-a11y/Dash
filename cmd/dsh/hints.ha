@@ -13,6 +13,13 @@ const BUILTIN_FNS: [_]str = ["print", "len", "str", "int", "float", "type", "ran
 	"glob", "input", "now", "sleep", "round", "abs", "min", "max", "cwd",
 	"ask", "menu", "progress"];
 
+// JJGui (jj-nojj.ha): vinduer, grafik, mus, tastatur og lyd.
+const JJ_FNS: [_]str = ["window", "frame", "close_window", "clear", "rect", "outline",
+	"round_rect", "circle", "line", "pixel", "polygon", "text", "text_width",
+	"button", "mouse", "clicked", "right_clicked", "mouse_down", "wheel", "key",
+	"pressed", "typed", "delta", "width", "height", "image", "draw", "image_size",
+	"sound", "sound_file", "play", "screenshot"];
+
 const BUILTIN_CMDS: [_]str = ["echo", "cd", "exit", "fail"];
 
 fn dieh(line: int, msg: str, hint: str) failed = {

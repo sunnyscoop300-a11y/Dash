@@ -160,6 +160,50 @@ Det kan Violet ikke endnu (brug `dsh` til de scripts): en fn brugt som værdi
 (andet end i `.map(f)`/`.filter(f)`), en fn inde i en fn og `parallel` inde
 i `parallel`.
 
+## JJGui 👶⚡ — vinduer og grafik i Dash
+
+JJGui (efter Jack-Jack) giver Dash vinduer, tegning, mus, tastatur og lyd.
+Motoren er [ViperGui](https://github.com/sunnyscoop300-a11y/vipergui) (i
+`viper/`): Wayland i ren Hare og SDL2 til X11.
+
+```
+window("Mit spil", 800, 600)
+let pling = sound("sine", 880, 1320, 0.12)
+while frame() {
+    clear("#202030")
+    let m = mouse()
+    circle(m[0], m[1], 20, "gold")
+    text(20, 20, "Hej fra Dash!", "white", 2)
+    if button("Klik", 350, 280) { play(pling) }
+    if key("esc") { break }
+}
+```
+
+| Funktion | Hvad den gør |
+|---|---|
+| `window(titel, b, h)` | åbner vinduet (ét pr. script) |
+| `frame()` | næste billede; `false` når vinduet lukkes |
+| `clear(farve)` | fylder hele vinduet |
+| `rect`, `outline(x, y, b, h, farve)` | firkant, fyldt / kant |
+| `round_rect(x, y, b, h, r, farve)` | firkant med runde hjørner |
+| `circle(x, y, r, farve)`, `line(x0, y0, x1, y1, farve)`, `pixel(x, y, farve)` | |
+| `polygon([[x, y], …], farve)` | fyldt mangekant |
+| `text(x, y, tekst, farve, størrelse)`, `text_width(tekst, størrelse)` | 8×16-skrift, størrelse 1, 2, 3 … |
+| `button(tekst, x, y)` | knap; `true` når den bliver klikket |
+| `mouse()` → `[x, y]`, `clicked()`, `right_clicked()`, `mouse_down()`, `wheel()` | mus |
+| `key(navn)` (holdes nede), `pressed(navn)` (lige trykket), `typed()` | tastatur: `"left"`, `"space"`, `"enter"`, `"esc"`, `"a"` … |
+| `delta()` | sekunder siden sidste billede |
+| `width()`, `height()` | vinduets størrelse |
+| `image(sti [, b, h])` → nr., `draw(nr, x, y)`, `image_size(nr)` | PNG-billeder |
+| `sound(bølge, fra-Hz, til-Hz, sek [, styrke])` → nr., `sound_file(sti.wav)`, `play(nr [, styrke, tonehøjde])` | lyd: `sine`, `square`, `triangle`, `saw`, `noise` |
+| `screenshot(sti.png)` | gem billedet |
+
+Farver: `"#ff8800"`, `"#f80"`, `0xff8800` eller et navn (`"gold"`, `"red"`, `"lilla"` …).
+
+Se `eksempler/jj-demo.Dash`. Violet bygger JJGui-scripts til native programmer
+(kun til samme maskine — ikke `--arch`). `make NOJJ=1` bygger dsh uden JJGui,
+`make HARE_ONLY=1` uden SDL2.
+
 ## Farver i nano og Kate
 
 ```

@@ -1,0 +1,115 @@
+#!/usr/bin/env dsh
+# jj-demo.Dash — JJGui's første skridt 👶⚡
+# En Cube Head løber hen ad vejen: ← → flytter, mellemrum hopper,
+# saml P'er og undgå bananskrællerne. Esc lukker.
+
+window("JJGui — Cube Head demo", 800, 500)
+
+let W = width()
+let H = height()
+let JORD = 400
+let x = 120.0
+let y = 0.0          # højde over jorden
+let vy = 0.0
+let p = 0
+let glid = 0.0       # sekunder tilbage på en bananskræl
+let t = 0.0
+let mønter = []
+let bananer = []
+for i in range(6) { mønter.push([300 + i * 170, 0]) }
+for i in range(2) { bananer.push(520 + i * 400) }
+
+let pling = sound("sine", 880, 1320, 0.12, 0.4)
+let hop = sound("triangle", 300, 600, 0.15, 0.4)
+let skrid = sound("saw", 400, 120, 0.4, 0.3)
+
+fn cube_head(cx, cy, ben) {
+    # krop og ben
+    rect(cx - 14, cy - 40, 28, 30, "#3a7bd5")
+    rect(cx - 12, cy - 10, 9, 10 + ben, "#2b2b3a")
+    rect(cx + 3, cy - 10, 9, 10 - ben, "#2b2b3a")
+    # det firkantede hoved
+    rect(cx - 20, cy - 80, 40, 40, "#f2c48d")
+    outline(cx - 20, cy - 80, 40, 40, "#8a5a2a")
+    rect(cx - 10, cy - 66, 6, 6, "black")
+    rect(cx + 5, cy - 66, 6, 6, "black")
+    rect(cx - 8, cy - 52, 16, 3, "#a03030")
+    rect(cx - 22, cy - 84, 44, 8, "#e04848")
+}
+
+while frame() {
+    if key("esc") { break }
+    let dt = delta()
+    t += dt
+
+    # styring (glider ukontrolleret på en bananskræl)
+    if glid > 0 {
+        glid -= dt
+        x += 260 * dt
+    } else {
+        if key("left") { x -= 220 * dt }
+        if key("right") { x += 220 * dt }
+    }
+    if pressed("space") and y == 0 {
+        vy = 520
+        play(hop)
+    }
+    vy -= 1400 * dt
+    y += vy * dt
+    if y < 0 {
+        y = 0
+        vy = 0
+    }
+    if x < 30 { x = 30 }
+    if x > W + 30 { x = 30 }
+
+    # verden
+    clear("#87c4ff")
+    circle(680, 80, 40, "#fff3a0")
+    rect(0, JORD, W, H - JORD, "#5a5a6a")
+    for i in range(10) {
+        rect(i * 90 - int(t * 120) % 90, JORD + 46, 50, 6, "#e8e8e8")
+    }
+
+    # P'er
+    for m in mønter {
+        if m[1] == 0 {
+            let my = JORD - 90 + int(abs(t * 3 + m[0]) * 10) % 6
+            circle(m[0], my, 14, "gold")
+            text(m[0] - 4, my - 8, "P", "#8a5a00")
+            if abs(m[0] - x) < 26 and y > 20 {
+                m[1] = 1
+                p += 1
+                play(pling)
+            }
+        }
+    }
+    # bananskræller
+    for b in bananer {
+        polygon([[b - 22, JORD], [b - 6, JORD - 18], [b, JORD - 8], [b + 6, JORD - 18], [b + 22, JORD], [b, JORD - 4]], "#ffd93a")
+        if abs(b - x) < 16 and y == 0 and glid <= 0 {
+            glid = 0.6
+            play(skrid)
+        }
+    }
+
+    let ben = 0
+    if y == 0 and glid <= 0 { ben = int(t * 14) % 2 * 8 - 4 }
+    cube_head(int(x), JORD - int(y), ben)
+
+    round_rect(14, 14, 150, 40, 10, "#203040")
+    text(28, 22, "P: {p}", "gold", 2)
+    if glid > 0 { text(int(x) - 40, JORD - int(y) - 110, "WHOAAA!", "red", 2) }
+    text(W - 330, 20, "pile: løb   mellemrum: hop   esc: luk", "#203040")
+    if button("Nulstil P'er", W - 150, H - 44) {
+        p = 0
+        for m in mønter { m[1] = 0 }
+    }
+
+    let skud = env("JJ_SKUD", "")
+    if skud != "" and t > 0.5 {
+        screenshot(skud)
+        break
+    }
+}
+echo "Du samlede {p} P'er ⚡"

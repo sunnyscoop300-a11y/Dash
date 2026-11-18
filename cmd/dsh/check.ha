@@ -182,9 +182,10 @@ fn walk_expr(x: *expr, n: *names) void = {
 		walk_expr(b.b, n);
 	case let u: e_un => walk_expr(u.a, n);
 	case let c: e_call =>
-		if (!has(n.fns, c.name) && !has(BUILTIN_FNS, c.name)) {
+		if (!has(n.fns, c.name) && !has(BUILTIN_FNS, c.name) && !has(JJ_FNS, c.name)) {
 			let cands: []str = [];
 			append(cands, BUILTIN_FNS...)!;
+			append(cands, JJ_FNS...)!;
 			append(cands, n.fns...)!;
 			record_at(c.line, fmt::asprintf("ukendt funktion '{}()'", c.name)!, hint_from(c.name, cands));
 		};

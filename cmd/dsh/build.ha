@@ -87,13 +87,30 @@ fn hare_build(code: str, out: str, small: bool, arch: str, quiet: bool) bool = {
 		if (!quiet) fmt::errorfln("kan ikke lave {}: {}", work, fs::strerror(e))!;
 		return false;
 	};
+	// programmet i work/prog, JJGui's motor (viper) i work/viper
+	const progdir = strings::concat(work, "/prog")!;
+	os::mkdirs(progdir, 0o755)!;
 	for (let i = 0z; i < len(RT_NAMES); i += 1) {
-		write_text(strings::concat(work, "/", RT_NAMES[i])!, RT_SRCS[i]);
+		write_text(strings::concat(progdir, "/", RT_NAMES[i])!, RT_SRCS[i]);
 	};
-	write_text(strings::concat(work, "/prog.ha")!, code);
+	write_text(strings::concat(progdir, "/prog.ha")!, code);
 
 	// android: aarch64 uden libc, linket som PIE til Android's linker64
 	const android = arch == "android";
+	const jj = uses_jj(code);
+	if (jj && (android || (arch != "" && arch != host_arch()))) {
+		if (!quiet) fmt::errorfln("{}💜✘ violet{} JJGui (vinduer og grafik) kan kun bygges til denne maskine, ikke til {}",
+			red(), reset(), arch)!;
+		return false;
+	};
+	if (jj) {
+		const vdir = strings::concat(work, "/viper")!;
+		os::mkdirs(vdir, 0o755)!;
+		for (let i = 0z; i < len(VIPER_NAMES); i += 1) {
+			write_text(strings::concat(vdir, "/", VIPER_NAMES[i])!, VIPER_SRCS[i]);
+		};
+	};
+	const sdl = jj && have_sdl();
 	let hargs: []str = [];
 	append(hargs, ["build", "-q"]...)!;
 	if (small || android) append(hargs, "-R")!;
@@ -102,14 +119,25 @@ fn hare_build(code: str, out: str, small: bool, arch: str, quiet: bool) bool = {
 	} else if (arch != "") {
 		append(hargs, ["-a", arch]...)!;
 	};
+	if (!jj) {
+		append(hargs, ["-T", "+nojj"]...)!;
+	} else if (!sdl) {
+		append(hargs, ["-T", "+nosdl"]...)!;
+	};
 	if (!android) append(hargs, "-lc")!;
-	append(hargs, ["-o", out, work]...)!;
+	if (sdl) append(hargs, "-lSDL2")!;
+	const absout = if (strings::hasprefix(out, "/")) out
+		else strings::concat(os::getcwd(), "/", out)!;
+	append(hargs, ["-o", absout, "prog"]...)!;
 	let cmd = match (exec::cmd("hare", hargs...)) {
 	case let c: exec::command => yield c;
 	case =>
 		if (!quiet) fmt::errorln("hare findes ikke — Violet skal bruge Hare for at bygge")!;
 		return false;
 	};
+	exec::chdir(&cmd, work);
+	const hp = os::tryenv("HAREPATH", "");
+	exec::setenv(&cmd, "HAREPATH", if (hp == "") work else strings::concat(hp, ":", work)!)!;
 	if (android) {
 		match (android_env(&cmd, work)) {
 		case void => void;
@@ -162,6 +190,24 @@ fn build_main(path: str, out: str, small: bool, arch: str) never = {
 	fmt::printfln("  {}✔ færdig:{} {}{}{}{}{}", col("\x1b[1;32m"), reset(),
 		if (strings::contains(out, "/")) "" else "./", out, dim(), kb, reset())!;
 	os::exit(0);
+};
+
+// Bruger programmet JJGui? (Violet kalder alle indbyggede funktioner via call())
+fn uses_jj(code: str) bool = {
+	for (let n .. JJ_FNS) {
+		if (strings::contains(code, strings::concat("call(\"", n, "\"")!)) return true;
+	};
+	return false;
+};
+
+// SDL2 til X11; findes den ikke, bruges kun ViperGui's egen Wayland-del.
+fn have_sdl() bool = {
+	const dirs = ["/usr/lib", "/usr/lib64", "/usr/lib/x86_64-linux-gnu",
+		"/usr/lib/aarch64-linux-gnu", "/usr/local/lib"];
+	for (let d .. dirs) {
+		if (os::exists(strings::concat(d, "/libSDL2.so")!)) return true;
+	};
+	return false;
 };
 
 // --- krydsoversættelse (violet fil.Dash --arch aarch64)

@@ -1,8 +1,19 @@
 HARE = hare
 
-dsh-hare: cmd/dsh/*.ha cmd/dsh/*.s tools/embed.sh
+# JJGui (vinduer og grafik) er med som standard: Wayland i ren Hare + SDL2 til X11.
+#   make HARE_ONLY=1   kun Wayland, ingen SDL2
+#   make NOJJ=1        helt uden JJGui (som før 0.10)
+ifdef NOJJ
+JJFLAGS = -T +nojj
+else ifdef HARE_ONLY
+JJFLAGS = -T +nosdl
+else
+JJFLAGS = -lSDL2
+endif
+
+dsh-hare: cmd/dsh/*.ha cmd/dsh/*.s viper/*.ha tools/embed.sh
 	@sh tools/embed.sh
-	$(HARE) build -lc -o $@ cmd/dsh/
+	$(HARE) build -lc $(JJFLAGS) -o $@ cmd/dsh/
 
 test: dsh-hare
 	./tests/run.sh
