@@ -200,6 +200,29 @@ while frame() {
 
 Farver: `"#ff8800"`, `"#f80"`, `0xff8800` eller et navn (`"gold"`, `"red"`, `"lilla"` …).
 
+### 3D
+
+JJGui har også et lille 3D-lag (software, ingen grafikkort nødvendigt):
+
+```
+camera(0, 3.3, -6.5, 13)                 # x, y, z, hældning° [, drejning°, synsvinkel°]
+fog("#8ccbff", 28, 95)                   # tåge fra 28 til 95 enheder væk (fog() slår den fra)
+floor3d(-3.6, 0, 3.6, 100, 0, "#55555f") # vandret flade; 7. argument = lag (striber oven på vejen)
+box3d(0, 0, 5, 1, 2, 1, "gold")          # kasse: x/z = midten, y = bunden, b/h/d — med lys og skygge
+circle3d(0, 1, 8, 0.35, "gold", "P")     # cirkel (med tekst), der altid vender mod kameraet
+let s = project(0, 1, 8)                 # [skærm-x, skærm-y, skala] eller nil
+render3d()                               # tegner det hele, forreste forrest
+```
+
+y peger op og z ind i skærmen. Tegn HUD (tekst, knapper) efter `render3d()`.
+
+Nye matematik-funktioner: `sin`, `cos`, `sqrt`, `floor`, `random()` (0-1),
+`random(n)` (0..n-1) og `random(a, b)` (a..b).
+
+**Eksempel:** `eksempler/cube-runner.Dash` — *Cube Head Runners*, et 3D-løbespil
+med tre baner, hop, glid, tog, bananskræller, P'er og en P STORE med outfits.
+Kører med `dsh` (~50 fps) og hurtigere bygget med Violet.
+
 Se `eksempler/jj-demo.Dash`. Violet bygger JJGui-scripts til native programmer
 (kun til samme maskine — ikke `--arch`). `make NOJJ=1` bygger dsh uden JJGui,
 `make HARE_ONLY=1` uden SDL2.

@@ -1,0 +1,655 @@
+#!/usr/bin/env dsh
+# cube-runner.Dash — CUBE HEAD RUNNERS 🟧🏃 — et 3D-løbespil skrevet i Dash med JJGui.
+#
+#   ← →  (eller A D)        skift bane
+#   ↑ / mellemrum / W        hop
+#   ↓ / S                    glid (under bommene)
+#   Esc                      menu / luk
+#
+# Saml P'er på vejen og køb nye outfits i P STORE. Pas på bananskrællerne:
+# rammer du én, glider du ukontrolleret et stykke!
+# P'er, outfits og rekord gemmes i ~/.cube-head-runners
+#
+# Kør:  dsh cube-runner.Dash      Byg:  violet cube-runner.Dash -o cube-runner
+
+window("Cube Head Runners", 960, 600)
+let W = width()
+let H = height()
+
+# ── outfits ──
+let OUTFITS = [
+    {"navn": "Voxel Runner", "pris": 0, "hud": "#ffc83a", "hår": "#e0a020", "trøje": "#d42a2a", "bukser": "#2a3448", "sko": "#e02a2a", "hat": "kasket", "hatfarve": "#d42a2a",
+     "hætte": true, "hovedtelefoner": true, "rygsæk": true, "striber": true, "såler": true},
+    {"navn": "Klassisk",   "pris": 0,   "hud": "#f2c48d", "hår": "#5a3a1a", "trøje": "#3a7bd5", "bukser": "#2b2b3a", "sko": "#f0f0f0", "hat": "ingen",  "hatfarve": "#000000"},
+    {"navn": "Rød Racer",  "pris": 50,  "hud": "#f2c48d", "hår": "#2a1a0a", "trøje": "#e04040", "bukser": "#303040", "sko": "#ffffff", "hat": "kasket", "hatfarve": "#e04040"},
+    {"navn": "Kokken",     "pris": 100, "hud": "#f6d2a8", "hår": "#c08040", "trøje": "#ffffff", "bukser": "#404040", "sko": "#202020", "hat": "kokkehue", "hatfarve": "#ffffff"},
+    {"navn": "Ninja",      "pris": 150, "hud": "#e8b080", "hår": "#101010", "trøje": "#1a1a22", "bukser": "#1a1a22", "sko": "#1a1a22", "hat": "pandebånd", "hatfarve": "#d02828"},
+    {"navn": "Bao Bolle",  "pris": 200, "hud": "#fbf6ea", "hår": "#fbf6ea", "trøje": "#fbf6ea", "bukser": "#e3d6bd", "sko": "#5cb33a", "hat": "løg",    "hatfarve": "#5cb33a"},
+    {"navn": "Neon Natt",  "pris": 250, "hud": "#f2c48d", "hår": "#ff3ea5", "trøje": "#18e0e0", "bukser": "#7a2cff", "sko": "#ff3ea5", "hat": "briller", "hatfarve": "#101010"},
+    {"navn": "Guld Konge", "pris": 300, "hud": "#f2c48d", "hår": "#6a3a10", "trøje": "#8a1ac8", "bukser": "#ffcf6a", "sko": "#ffcf6a", "hat": "krone",  "hatfarve": "#ffcf3a"},
+    {"navn": "Astronaut",  "pris": 400, "hud": "#f2c48d", "hår": "#3a2a1a", "trøje": "#e8e8f0", "bukser": "#d0d0dc", "sko": "#808090", "hat": "hjelm",  "hatfarve": "#bfe6ff"},
+    {"navn": "Tophat",     "pris": 500, "hud": "#f2c48d", "hår": "#202020", "trøje": "#202028", "bukser": "#202028", "sko": "#101010", "hat": "tophat", "hatfarve": "#151515"},
+]
+
+# ── gemt fremgang ──
+let GEM = "{env("HOME", ".")}/.cube-head-runners"
+let total_p = 0
+let rekord = 0
+let ejer = [0, 1]
+let valgt = 0
+
+fn indlæs() {
+    if not exists(GEM) { return nil }
+    for l in read(GEM).lines() {
+        let d = l.split("=")
+        if d.len < 2 { continue }
+        if d[0] == "p" { total_p = int(d[1]) }
+        if d[0] == "rekord" { rekord = int(d[1]) }
+        if d[0] == "valgt" { valgt = int(d[1]) }
+        if d[0] == "ejer" {
+            ejer = []
+            for x in d[1].split(",") {
+                if x.trim() != "" { ejer.push(int(x)) }
+            }
+        }
+    }
+    if not ejer.contains(0) { ejer.push(0) }
+    if not ejer.contains(1) { ejer.push(1) }
+    if valgt >= OUTFITS.len or not ejer.contains(valgt) { valgt = 0 }
+}
+
+fn gem() {
+    let e = []
+    for x in ejer { e.push(str(x)) }
+    write(GEM, "p={total_p}\nrekord={rekord}\nvalgt={valgt}\nejer={e.join(",")}\n")
+}
+indlæs()
+
+# ── lyde ──
+let LYD_P = sound("sine", 988, 1480, 0.09, 0.35)
+let LYD_HOP = sound("triangle", 260, 620, 0.16, 0.4)
+let LYD_GLID = sound("noise", 900, 300, 0.25, 0.25)
+let LYD_SKRID = sound("saw", 520, 140, 0.55, 0.3)
+let LYD_BONK = sound("square", 160, 60, 0.4, 0.45)
+let LYD_KØB = sound("triangle", 660, 1320, 0.25, 0.4)
+let LYD_KLIK = sound("triangle", 1100, 900, 0.03, 0.3)
+
+# ── farver og bane ──
+let BANE = [-2.2, 0.0, 2.2]
+let HIMMEL = "#8ccbff"
+let VEJ = "#55555f"
+let GRÆS = "#5aa04a"
+
+# ── spiltilstand ──
+let skærm = "titel"
+let t = 0.0
+let lane = 1
+let px = 0.0
+let py = 0.0
+let vy = 0.0
+let glid = 0.0
+let skrid = 0.0
+let fart = 14.0
+let afstand = 0.0
+let p_nu = 0
+let ting = []
+let næste = 30.0
+let huse = []
+let besked = ""
+let besked_t = 0.0
+let ny_rekord = false
+let butik_valg = 0
+
+# et 8 m stykke graffiti-mur (med afspærringer og måske en palme bagved)
+let GRAFFITI = ["#ff3ea5", "#18d0e0", "#ffd02a", "#7a2cff", "#2ad06a", "#ff7a1a", "#ffffff", "#1a1a2a"]
+fn ny_mur(side, z) {
+    let tags = []
+    let zz = 0.2
+    while zz < 7.0 {
+        let l = random(16, 34) / 10.0
+        if zz + l > 7.8 { l = 7.8 - zz }
+        tags.push({"y": random(4, 10) / 10.0, "h": random(10, 22) / 10.0, "z": zz, "l": l,
+                   "farve": GRAFFITI[random(GRAFFITI.len)], "indre": GRAFFITI[random(GRAFFITI.len)]})
+        zz += l + random(2, 8) / 10.0
+    }
+    let mur = ["#b8a890", "#a89a86", "#c0b4a0"][random(3)]
+    return {"side": side, "z": z, "mur": mur, "tags": tags, "palme": random(3) == 0}
+}
+
+fn nyt_løb() {
+    lane = 1
+    px = 0.0
+    py = 0.0
+    vy = 0.0
+    glid = 0.0
+    skrid = 0.0
+    fart = 14.0
+    afstand = 0.0
+    p_nu = 0
+    ting = []
+    næste = 30.0
+    huse = []
+    for i in range(14) {
+        huse.push(ny_mur(-1, i * 8.0 - 8))
+        huse.push(ny_mur(1, i * 8.0 - 8))
+    }
+    ny_rekord = false
+    skærm = "spil"
+}
+
+fn sig(s) {
+    besked = s
+    besked_t = 1.4
+}
+
+# ── forhindringer og P'er ──
+fn p_række(l, z, n, højde) {
+    for i in range(n) { ting.push({"type": "p", "lane": l, "z": z + i * 1.6, "y": højde, "taget": false}) }
+}
+
+fn spawn(z) {
+    let mønster = random(7)
+    let l = random(3)
+    let andre = []
+    for i in range(3) { if i != l { andre.push(i) } }
+    if mønster == 0 {
+        ting.push({"type": "hegn", "lane": l, "z": z})
+        p_række(l, z - 2.4, 4, 2.3)
+        p_række(andre[random(2)], z - 3, 5, 0.9)
+    } else if mønster == 1 {
+        ting.push({"type": "bom", "lane": l, "z": z})
+        p_række(l, z - 1.6, 3, 0.5)
+    } else if mønster == 2 {
+        let fri = random(3)
+        for i in range(3) {
+            if i != fri { ting.push({"type": "tog", "lane": i, "z": z + random(0, 4), "længde": 9 + random(0, 6)}) }
+        }
+        p_række(fri, z, 6, 0.9)
+    } else if mønster == 3 {
+        ting.push({"type": "tog", "lane": l, "z": z, "længde": 12})
+        ting.push({"type": "banan", "lane": andre[0], "z": z + 4})
+        p_række(andre[1], z, 7, 0.9)
+    } else if mønster == 4 {
+        ting.push({"type": "banan", "lane": l, "z": z})
+        ting.push({"type": "hegn", "lane": andre[random(2)], "z": z + 6})
+        p_række(l, z + 2, 5, 0.9)
+    } else if mønster == 5 {
+        ting.push({"type": "bom", "lane": andre[0], "z": z})
+        ting.push({"type": "hegn", "lane": andre[1], "z": z})
+        p_række(l, z - 2, 6, 0.9)
+    } else {
+        p_række(l, z, 8, 0.9)
+        ting.push({"type": "banan", "lane": andre[random(2)], "z": z + 5})
+    }
+}
+
+# ── tegning af en Cube Head (set bagfra) ──
+fn cube_head(x, y, z, o, fase, glider, i_luften) {
+    let sving = sin(fase) * 0.28
+    if i_luften { sving = 0.12 }
+    if glider {
+        # ligger ned og glider: ben frem, lav krop, hoved lavt
+        box3d(x - 0.17, y, z + 0.55, 0.28, 0.28, 0.75, o.bukser)
+        box3d(x + 0.17, y, z + 0.55, 0.28, 0.28, 0.75, o.bukser)
+        box3d(x, y, z, 0.75, 0.42, 0.7, o.trøje)
+        box3d(x - 0.5, y + 0.05, z - 0.15, 0.22, 0.22, 0.6, o.trøje)
+        box3d(x + 0.5, y + 0.05, z - 0.15, 0.22, 0.22, 0.6, o.trøje)
+        if o.get("rygsæk", false) { rygsæk(x, y + 0.42, z + 0.1) }
+        hoved(x, y + 0.3, z - 0.45, o)
+        return nil
+    }
+    # ben og sko (evt. med hvide såler)
+    let sy = y
+    if o.get("såler", false) {
+        box3d(x - 0.17, y, z + sving, 0.32, 0.06, 0.42, "#f4f4f4")
+        box3d(x + 0.17, y, z - sving, 0.32, 0.06, 0.42, "#f4f4f4")
+        sy = y + 0.05
+    }
+    box3d(x - 0.17, sy, z + sving, 0.3, 0.13, 0.38, o.sko)
+    box3d(x + 0.17, sy, z - sving, 0.3, 0.13, 0.38, o.sko)
+    box3d(x - 0.17, y + 0.12, z + sving * 0.8, 0.28, 0.58, 0.3, o.bukser)
+    box3d(x + 0.17, y + 0.12, z - sving * 0.8, 0.28, 0.58, 0.3, o.bukser)
+    # krop og arme
+    box3d(x, y + 0.68, z, 0.76, 0.8, 0.46, o.trøje)
+    box3d(x - 0.51, y + 0.82, z - sving, 0.22, 0.62, 0.24, o.trøje)
+    box3d(x + 0.51, y + 0.82, z + sving, 0.22, 0.62, 0.24, o.trøje)
+    box3d(x - 0.51, y + 0.7, z - sving, 0.2, 0.14, 0.22, o.hud)
+    box3d(x + 0.51, y + 0.7, z + sving, 0.2, 0.14, 0.22, o.hud)
+    if o.get("striber", false) {
+        box3d(x - 0.63, y + 0.86, z - sving, 0.02, 0.56, 0.07, "#ffffff")
+        box3d(x + 0.63, y + 0.86, z + sving, 0.02, 0.56, 0.07, "#ffffff")
+    }
+    if o.get("rygsæk", false) { rygsæk(x, y + 0.72, z - 0.33) }
+    hoved(x, y + 1.5, z, o)
+    if o.get("hætte", false) { box3d(x, y + 1.42, z - 0.24, 0.94, 0.38, 0.46, o.trøje) }
+    if o.get("hovedtelefoner", false) {
+        for s in [-1, 1] {
+            box3d(x + s * 0.5, y + 1.62, z, 0.18, 0.46, 0.46, "#f4f4f4")
+            box3d(x + s * 0.6, y + 1.74, z, 0.03, 0.22, 0.22, "#d42a2a")
+            box3d(x + s * 0.47, y + 2.06, z, 0.08, 0.34, 0.12, "#f4f4f4")
+        }
+    }
+}
+
+# rygsæk med et lille pixel-ikon (et Cube Head-ansigt) på bagsiden
+let IKON = [[1, 1, 1, 1, 1], [1, 0, 1, 0, 1], [1, 1, 1, 1, 1], [1, 1, 0, 1, 1], [1, 1, 1, 1, 1]]
+fn rygsæk(x, y, z) {
+    box3d(x, y, z, 0.62, 0.66, 0.22, "#24284a")
+    box3d(x, y + 0.6, z - 0.02, 0.5, 0.08, 0.2, "#30365e")
+    let p = 0.075
+    for r in range(IKON.len) {
+        let række = IKON[r]
+        for c in range(5) {
+            if række[c] == 1 {
+                box3d(x + (c - 2) * p, y + 0.52 - r * p - p, z - 0.12, p, p, 0.02, "#f4f4f4")
+            }
+        }
+    }
+}
+
+# det firkantede hoved + hat
+fn hoved(x, y, z, o) {
+    box3d(x, y, z, 0.82, 0.82, 0.82, o.hud)
+    box3d(x, y + 0.5, z + 0.05, 0.86, 0.36, 0.78, o.hår)
+    let h = o.hat
+    let c = o.hatfarve
+    if h == "kasket" {
+        box3d(x, y + 0.82, z, 0.88, 0.2, 0.88, c)
+        box3d(x, y + 0.82, z - 0.62, 0.7, 0.06, 0.42, c)
+    } else if h == "kokkehue" {
+        box3d(x, y + 0.82, z, 0.8, 0.14, 0.8, c)
+        box3d(x, y + 0.96, z, 0.66, 0.62, 0.66, c)
+    } else if h == "pandebånd" {
+        box3d(x, y + 0.5, z, 0.88, 0.12, 0.88, c)
+        box3d(x + 0.12, y + 0.42, z + 0.5, 0.12, 0.12, 0.3, c)
+        box3d(x - 0.1, y + 0.5, z + 0.56, 0.12, 0.12, 0.3, c)
+    } else if h == "løg" {
+        box3d(x - 0.15, y + 0.82, z, 0.12, 0.18, 0.12, c)
+        box3d(x + 0.18, y + 0.82, z + 0.1, 0.12, 0.14, 0.12, c)
+    } else if h == "briller" {
+        box3d(x, y + 0.4, z - 0.42, 0.9, 0.18, 0.06, c)
+        box3d(x, y + 0.82, z, 0.5, 0.3, 0.5, o.hår)
+    } else if h == "krone" {
+        box3d(x, y + 0.82, z, 0.86, 0.14, 0.86, c)
+        for dx in [-0.34, 0.0, 0.34] {
+            box3d(x + dx, y + 0.96, z - 0.34, 0.16, 0.22, 0.16, c)
+            box3d(x + dx, y + 0.96, z + 0.34, 0.16, 0.22, 0.16, c)
+        }
+        box3d(x, y + 1.0, z - 0.43, 0.14, 0.14, 0.04, "#e02050")
+    } else if h == "hjelm" {
+        box3d(x, y - 0.08, z, 1.04, 1.06, 1.04, c)
+        box3d(x, y + 0.98, z, 0.08, 0.3, 0.08, "#c0c0c8")
+        box3d(x, y + 1.28, z, 0.14, 0.14, 0.14, "#e04040")
+    } else if h == "tophat" {
+        box3d(x, y + 0.82, z, 1.0, 0.08, 1.0, c)
+        box3d(x, y + 0.9, z, 0.64, 0.66, 0.64, c)
+        box3d(x, y + 0.92, z, 0.66, 0.12, 0.66, "#a01818")
+    }
+}
+
+# ── verden ──
+fn tegn_verden(kx) {
+    clear(HIMMEL)
+    circle(W - 140, 90, 46, "#fff3a0")
+    camera(kx, 3.3, -6.5, 13)
+    fog(HIMMEL, 28, 95)
+    floor3d(-60, -10, 60, 110, 0, GRÆS)
+    floor3d(-4.7, -10, 4.7, 110, 0, "#8a8070", 1)
+    # tre togspor: grus, sveller der ruller, skinner
+    for x in BANE {
+        floor3d(x - 1.0, -10, x + 1.0, 110, 0, "#6e6458", 2)
+        floor3d(x - 0.62, -10, x - 0.5, 110, 0, "#d0d0d8", 4)
+        floor3d(x + 0.5, -10, x + 0.62, 110, 0, "#d0d0d8", 4)
+    }
+    let z = -8.0 - afstand % 1.25
+    while z < 70 {
+        for x in BANE { floor3d(x - 0.85, z, x + 0.85, z + 0.4, 0, "#7a4a28", 3) }
+        z += 1.25
+    }
+    # graffiti-mure, afspærringer og palmer
+    for h in huse {
+        if h.z > 100 { continue }
+        let sx = h.side
+        box3d(sx * 5.0, 0, h.z + 4, 0.6, 3.4, 8.0, h.mur)
+        for g in h.tags {
+            box3d(sx * 4.69, g.y, h.z + g.z + g.l / 2, 0.03, g.h, g.l, g.farve)
+            box3d(sx * 4.67, g.y + g.h * 0.25, h.z + g.z + g.l / 2, 0.03, g.h * 0.45, g.l * 0.7, g.indre)
+        }
+        for k in range(4) {
+            let c = "#e83030"
+            if k % 2 == 1 { c = "#f4f4f4" }
+            box3d(sx * 4.35, 0, h.z + k * 2 + 1, 0.5, 0.5, 2.0, c)
+        }
+        if h.palme {
+            let px_ = sx * 7.0
+            let pz = h.z + 4
+            box3d(px_, 0, pz, 0.36, 5.4, 0.36, "#8a6a3a")
+            box3d(px_, 5.3, pz, 3.4, 0.18, 0.7, "#3aa040")
+            box3d(px_, 5.3, pz, 0.7, 0.18, 3.4, "#3aa040")
+            box3d(px_ - 1.9, 4.9, pz, 0.7, 0.4, 0.6, "#2e8a36")
+            box3d(px_ + 1.9, 4.9, pz, 0.7, 0.4, 0.6, "#2e8a36")
+            box3d(px_, 4.9, pz - 1.9, 0.6, 0.4, 0.7, "#2e8a36")
+            box3d(px_, 4.9, pz + 1.9, 0.6, 0.4, 0.7, "#2e8a36")
+        }
+    }
+    for o in ting {
+        let x = BANE[o.lane]
+        if o.type == "p" {
+            if not o.taget { circle3d(x, o.y + sin(t * 4 + o.z) * 0.08, o.z, 0.34, "#ffcf3a", "P", "#8a5a00") }
+        } else if o.type == "hegn" {
+            box3d(x - 0.8, 0, o.z, 0.14, 0.9, 0.14, "#ffffff")
+            box3d(x + 0.8, 0, o.z, 0.14, 0.9, 0.14, "#ffffff")
+            box3d(x, 0.45, o.z, 1.8, 0.4, 0.12, "#e04040")
+        } else if o.type == "bom" {
+            box3d(x - 0.85, 0, o.z, 0.14, 1.9, 0.14, "#303038")
+            box3d(x + 0.85, 0, o.z, 0.14, 1.9, 0.14, "#303038")
+            box3d(x, 1.3, o.z, 1.84, 0.34, 0.16, "#ffcf3a")
+            box3d(x - 0.45, 1.3, o.z - 0.01, 0.3, 0.34, 0.16, "#202020")
+            box3d(x + 0.25, 1.3, o.z - 0.01, 0.3, 0.34, 0.16, "#202020")
+        } else if o.type == "tog" {
+            box3d(x, 0.15, o.z + o.længde / 2, 1.9, 2.5, o.længde, "#3a6fd0")
+            box3d(x, 2.65, o.z + o.længde / 2, 1.7, 0.12, o.længde - 0.2, "#c8ccd8")
+            box3d(x, 0.95, o.z + o.længde / 2, 1.94, 0.2, o.længde + 0.02, "#ff8a2a")
+            box3d(x, 1.2, o.z + o.længde / 2, 1.94, 0.1, o.længde + 0.02, "#ffffff")
+            box3d(x, 1.55, o.z - 0.02, 1.4, 0.7, 0.04, "#bfe6ff")
+            box3d(x - 0.62, 0.45, o.z - 0.02, 0.3, 0.2, 0.04, "#fff3a0")
+            box3d(x + 0.62, 0.45, o.z - 0.02, 0.3, 0.2, 0.04, "#fff3a0")
+        } else if o.type == "banan" {
+            box3d(x, 0, o.z, 0.7, 0.08, 0.2, "#ffd93a")
+            box3d(x - 0.3, 0, o.z - 0.12, 0.16, 0.08, 0.34, "#ffd93a")
+            box3d(x + 0.3, 0, o.z - 0.12, 0.16, 0.08, 0.34, "#ffd93a")
+            box3d(x, 0.04, o.z + 0.1, 0.12, 0.06, 0.12, "#6a4a10")
+        }
+    }
+}
+
+# ── spillets logik ──
+fn opdater(dt) {
+    t += dt
+    if besked_t > 0 { besked_t -= dt }
+    fart = min(31.0, fart + dt * 0.22)
+    let fremad = fart * dt
+    afstand += fremad
+
+    # styring (ikke mens man skrider på en banan)
+    if skrid > 0 {
+        skrid -= dt
+    } else {
+        if (pressed("left") or pressed("a")) and lane > 0 {
+            lane -= 1
+            play(LYD_KLIK, 0.5)
+        }
+        if (pressed("right") or pressed("d")) and lane < 2 {
+            lane += 1
+            play(LYD_KLIK, 0.5)
+        }
+        if (pressed("up") or pressed("space") or pressed("w")) and py == 0 {
+            vy = 9.2
+            glid = 0.0
+            play(LYD_HOP)
+        }
+        if (pressed("down") or pressed("s")) {
+            if py > 0 { vy = -16 }
+            if glid <= 0 { play(LYD_GLID) }
+            glid = 0.75
+        }
+    }
+    let mål = BANE[lane]
+    if skrid > 0 { mål = BANE[lane] + sin(t * 25) * 0.5 }
+    px += (mål - px) * min(1.0, dt * 14)
+    vy -= 26 * dt
+    py += vy * dt
+    if py <= 0 {
+        py = 0.0
+        vy = 0.0
+    }
+    if glid > 0 { glid -= dt }
+
+    # flyt verden
+    for h in huse {
+        h.z -= fremad
+        if h.z < -16 {
+            let n = ny_mur(h.side, h.z + 112)
+            h.z = n.z
+            h.mur = n.mur
+            h.tags = n.tags
+            h.palme = n.palme
+        }
+    }
+    næste -= fremad
+    if næste <= 0 {
+        spawn(75.0)
+        næste = 15 + random(0, 8) + fart * 0.3
+    }
+    let tilbage = []
+    for o in ting {
+        o.z -= fremad
+        let slut = o.z
+        if o.type == "tog" { slut = o.z + o.længde }
+        if slut > -8 { tilbage.push(o) }
+        if abs(BANE[o.lane] - px) > 1.0 { continue }
+        if o.type == "p" {
+            if not o.taget and abs(o.z) < 0.7 and abs(o.y - (py + 0.9)) < 1.2 {
+                o.taget = true
+                p_nu += 1
+                play(LYD_P, 0.6, 1 + (p_nu % 5) * 0.06)
+            }
+        } else if o.type == "banan" {
+            if abs(o.z) < 0.6 and py < 0.25 and skrid <= 0 and glid <= 0 {
+                skrid = 1.1
+                play(LYD_SKRID)
+                sig("WHOAAA! Bananskræl!")
+            }
+        } else if o.type == "hegn" {
+            if abs(o.z) < 0.45 and py < 0.95 { return "et hegn" }
+        } else if o.type == "bom" {
+            if abs(o.z) < 0.4 and glid <= 0 { return "en bom" }
+        } else if o.type == "tog" {
+            if o.z < 0.5 and o.z + o.længde > -0.5 { return "et tog" }
+        }
+    }
+    ting = tilbage
+    return nil
+}
+
+fn slut_løb(hvad) {
+    play(LYD_BONK)
+    total_p += p_nu
+    let m = int(afstand)
+    if m > rekord {
+        rekord = m
+        ny_rekord = true
+    }
+    gem()
+    besked = "Du løb ind i {hvad}"
+    skærm = "slut"
+}
+
+# ── knapper i stil med spillet ──
+fn knap(s, x, y, b, h, farve) {
+    let m = mouse()
+    let over = m[0] >= x and m[0] < x + b and m[1] >= y and m[1] < y + h
+    round_rect(x + 3, y + 4, b, h, 12, "#00000060")
+    if over { round_rect(x, y, b, h, 12, "#ffffff") } else { round_rect(x, y, b, h, 12, farve) }
+    round_rect(x + 3, y + 3, b - 6, h - 6, 10, farve)
+    text(x + (b - text_width(s, 2)) / 2, y + (h - 32) / 2, s, "#ffffff", 2)
+    return over and clicked()
+}
+
+fn midt(s, y, farve, str_) {
+    text((W - text_width(s, str_)) / 2 + 2, y + 2, s, "#00000080", str_)
+    text((W - text_width(s, str_)) / 2, y, s, farve, str_)
+}
+
+fn p_tæller(x, y, n) {
+    round_rect(x, y, 170, 46, 12, "#203040")
+    circle(x + 24, y + 23, 15, "#ffcf3a")
+    text(x + 19, y + 15, "P", "#8a5a00", 1)
+    text(x + 48, y + 8, "{n}", "#ffcf3a", 2)
+}
+
+# orbit-kamera rundt om en figur ved (0, 0, 0)
+fn orbit(vinkel, afst, høj) {
+    let a = vinkel * 3.14159265 / 180
+    camera(-afst * sin(a), høj, -afst * cos(a), 16, vinkel, 50)
+}
+
+fn tegn_titel() {
+    clear(HIMMEL)
+    fog(HIMMEL, 30, 60)
+    orbit(t * 40, 7.5, 3.4)
+    floor3d(-4, -4, 4, 4, 0, GRÆS)
+    floor3d(-1.6, -1.6, 1.6, 1.6, 0, VEJ, 1)
+    cube_head(0, 0, 0, OUTFITS[valgt], t * 6, false, false)
+    render3d()
+    midt("CUBE HEAD", 40, "#ffcf3a", 6)
+    midt("RUNNERS", 136, "#ffffff", 4)
+    p_tæller(20, H - 66, total_p)
+    text(W - 230, H - 50, "Rekord: {rekord} m", "#203040", 2)
+    if knap("LØB!", W / 2 - 300, H - 150, 260, 70, "#e04848") or pressed("enter") or pressed("space") { nyt_løb() }
+    if knap("P STORE", W / 2 + 40, H - 150, 260, 70, "#7a2cff") or pressed("p") {
+        butik_valg = valgt
+        skærm = "butik"
+    }
+}
+
+fn tegn_butik() {
+    clear("#2a1f4a")
+    fog()
+    orbit(t * 50, 7.0, 3.0)
+    floor3d(-1.4, -1.4, 1.4, 1.4, 0, "#3f2f6a")
+    cube_head(0, 0, 0, OUTFITS[butik_valg], t * 5, false, false)
+    render3d()
+    text(24, 20, "P STORE", "#ffcf3a", 4)
+    p_tæller(W - 200, 20, total_p)
+    # liste
+    let y0 = 92
+    for i in range(OUTFITS.len) {
+        let o = OUTFITS[i]
+        let y = y0 + i * 41
+        let m = mouse()
+        let over = m[0] >= 24 and m[0] < 384 and m[1] >= y and m[1] < y + 38
+        let bg = "#3a2c66"
+        if i == butik_valg { bg = "#5a44a0" }
+        if over { bg = "#6a54b8" }
+        round_rect(24, y, 360, 38, 10, bg)
+        rect(36, y + 7, 24, 24, o.trøje)
+        rect(40, y + 11, 16, 16, o.hud)
+        text(72, y + 3, o.navn, "#ffffff", 2)
+        if ejer.contains(i) {
+            if i == valgt { text(326, y + 11, "PÅ", "#7dff9a", 1) } else { text(326, y + 11, "EJER", "#c8c0ff", 1) }
+        } else {
+            circle(316, y + 19, 10, "#ffcf3a")
+            text(312, y + 11, "P", "#8a5a00", 1)
+            text(332, y + 11, "{o.pris}", "#ffcf3a", 1)
+        }
+        if over and clicked() {
+            butik_valg = i
+            play(LYD_KLIK, 0.6)
+        }
+    }
+    if pressed("up") and butik_valg > 0 { butik_valg -= 1 }
+    if pressed("down") and butik_valg < OUTFITS.len - 1 { butik_valg += 1 }
+    let o = OUTFITS[butik_valg]
+    let bx = W - 320
+    text(bx, H - 200, o.navn, "#ffffff", 3)
+    if ejer.contains(butik_valg) {
+        if butik_valg == valgt {
+            text(bx, H - 140, "Du har den på!", "#7dff9a", 2)
+        } else if knap("TAG PÅ", bx, H - 150, 280, 60, "#2a9a5a") or pressed("enter") {
+            valgt = butik_valg
+            gem()
+            play(LYD_KLIK)
+        }
+    } else if total_p >= o.pris {
+        if knap("KØB  {o.pris} P", bx, H - 150, 280, 60, "#e0a020") or pressed("enter") {
+            total_p -= o.pris
+            ejer.push(butik_valg)
+            valgt = butik_valg
+            gem()
+            play(LYD_KØB)
+            sig("Ny outfit: {o.navn}!")
+        }
+    } else {
+        text(bx, H - 140, "Mangler {o.pris - total_p} P", "#ff8080", 2)
+    }
+    if knap("TILBAGE", 24, H - 76, 220, 56, "#404060") or pressed("esc") { skærm = "titel" }
+    if besked_t > 0 { midt(besked, H - 260, "#ffcf3a", 2) }
+}
+
+let vis_fps = env("CUBE_FPS", "") != ""
+let fps = 0.0
+
+fn tegn_hud() {
+    p_tæller(20, 18, p_nu)
+    if vis_fps { text(20, 74, "{round(fps)} fps", "#203040", 2) }
+    round_rect(W - 230, 18, 210, 46, 12, "#203040")
+    text(W - 214, 26, "{int(afstand)} m", "#ffffff", 2)
+    if besked_t > 0 { midt(besked, 150, "#ff5050", 3) }
+}
+
+fn tegn_slut() {
+    round_rect(W / 2 - 296, 116, 600, 380, 24, "#101820")
+    round_rect(W / 2 - 300, 110, 600, 380, 24, "#203040")
+    midt("BONK!", 140, "#ff5050", 6)
+    midt(besked, 245, "#ffffff", 2)
+    midt("{int(afstand)} m   ·   {p_nu} P", 295, "#ffcf3a", 3)
+    if ny_rekord { midt("NY REKORD!", 350, "#7dff9a", 3) } else { midt("Rekord: {rekord} m", 355, "#c8c8d8", 2) }
+    if knap("IGEN", W / 2 - 270, 410, 250, 60, "#e04848") or pressed("enter") or pressed("space") { nyt_løb() }
+    if knap("MENU", W / 2 + 20, 410, 250, 60, "#404060") { skærm = "titel" }
+}
+
+# ── testbilleder: JJ_SKUD=fil.png JJ_SCENE=titel|spil|butik|slut ──
+let skud = env("JJ_SKUD", "")
+let scene = env("JJ_SCENE", "titel")
+if skud != "" and scene != "titel" {
+    nyt_løb()
+    spawn(18.0)
+    spawn(40.0)
+    afstand = 123.0
+    p_nu = 17
+    if scene == "butik" {
+        skærm = "butik"
+        butik_valg = 6
+        total_p = 420
+    }
+    if scene == "slut" {
+        besked = "Du løb ind i et tog"
+        skærm = "slut"
+    }
+}
+
+while frame() {
+    let dt = min(delta(), 0.05)
+    if delta() > 0 { fps = fps * 0.9 + (1 / delta()) * 0.1 }
+    if skærm == "spil" {
+        if pressed("esc") { skærm = "titel" }
+        let ramt = nil
+        if skud == "" { ramt = opdater(dt) } else { t += dt }
+        tegn_verden(px * 0.6)
+        cube_head(px, py, 0, OUTFITS[valgt], t * fart * 0.9, glid > 0, py > 0)
+        render3d()
+        tegn_hud()
+        if ramt != nil { slut_løb(ramt) }
+    } else if skærm == "slut" {
+        t += dt
+        tegn_verden(px * 0.6)
+        cube_head(px, py, 0, OUTFITS[valgt], 0, false, false)
+        render3d()
+        tegn_hud()
+        tegn_slut()
+    } else if skærm == "butik" {
+        t += dt
+        if besked_t > 0 { besked_t -= dt }
+        tegn_butik()
+    } else {
+        t += dt
+        if pressed("esc") { break }
+        tegn_titel()
+    }
+    if skud != "" and t > 0.4 {
+        screenshot(skud)
+        break
+    }
+}
+gem()

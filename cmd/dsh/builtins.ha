@@ -6,6 +6,7 @@ use fs;
 use glob;
 use io;
 use math;
+use math::random;
 use os;
 use os::exec;
 use path;
@@ -90,6 +91,9 @@ fn write_file(name: str, args: []value, flags: fs::flag, line: int) (value | fai
 	close(f);
 	return nilv;
 };
+
+let rng: random::random = 0;
+let rng_ready = false;
 
 fn call(name: str, args: []value, line: int) (value | failed) = {
 	switch (name) {
@@ -234,6 +238,39 @@ fn call(name: str, args: []value, line: int) (value | failed) = {
 		if (len(args) < 2) return math::roundf64(x): i64;
 		const k = math::powf64(10.0, int_arg(name, args[1], line)?: f64);
 		return math::roundf64(x * k) / k;
+	case "sin" =>
+		need(name, args, 1, line)?;
+		return math::sinf64(num_arg(name, args[0], line)?);
+	case "cos" =>
+		need(name, args, 1, line)?;
+		return math::cosf64(num_arg(name, args[0], line)?);
+	case "sqrt" =>
+		need(name, args, 1, line)?;
+		const x = num_arg(name, args[0], line)?;
+		if (x < 0.0) return dief(line, "sqrt() af et negativt tal ({})", ftostr(x));
+		return math::sqrtf64(x);
+	case "floor" =>
+		need(name, args, 1, line)?;
+		return math::floorf64(num_arg(name, args[0], line)?): i64;
+	case "random" =>
+		// random() → 0.0-1.0, random(n) → 0..n-1, random(a, b) → a..b
+		if (!rng_ready) {
+			const a = time::now(time::clock::REALTIME), b = time::now(time::clock::MONOTONIC);
+			rng = random::init((a.sec: u64 * 1000000007) ^ a.nsec: u64 ^ (b.nsec: u64 << 20));
+			rng_ready = true;
+		};
+		switch (len(args)) {
+		case 0 => return random::f64rand(&rng);
+		case 1 =>
+			const n = int_arg(name, args[0], line)?;
+			if (n <= 0) return dief(line, "random({}): tallet skal være over 0", n);
+			return random::u64n(&rng, n: u64): i64;
+		case 2 =>
+			const a = int_arg(name, args[0], line)?, b = int_arg(name, args[1], line)?;
+			if (b < a) return dief(line, "random({}, {}): det andet tal skal være størst", a, b);
+			return a + random::u64n(&rng, (b - a + 1): u64): i64;
+		case => return die(line, "random() vil have 0-2 argumenter");
+		};
 	case "abs" =>
 		need(name, args, 1, line)?;
 		match (args[0]) {

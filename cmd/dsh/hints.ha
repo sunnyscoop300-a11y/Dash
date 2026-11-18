@@ -11,14 +11,15 @@ const HINT_SPLIT: str = "er linjen blevet delt i to? en streng skal stå på én
 const BUILTIN_FNS: [_]str = ["print", "len", "str", "int", "float", "type", "range",
 	"env", "exists", "is_dir", "is_file", "which", "read", "write", "append",
 	"glob", "input", "now", "sleep", "round", "abs", "min", "max", "cwd",
-	"ask", "menu", "progress"];
+	"ask", "menu", "progress", "sin", "cos", "sqrt", "floor", "random"];
 
 // JJGui (jj-nojj.ha): vinduer, grafik, mus, tastatur og lyd.
 const JJ_FNS: [_]str = ["window", "frame", "close_window", "clear", "rect", "outline",
 	"round_rect", "circle", "line", "pixel", "polygon", "text", "text_width",
 	"button", "mouse", "clicked", "right_clicked", "mouse_down", "wheel", "key",
 	"pressed", "typed", "delta", "width", "height", "image", "draw", "image_size",
-	"sound", "sound_file", "play", "screenshot"];
+	"sound", "sound_file", "play", "screenshot",
+	"camera", "fog", "box3d", "floor3d", "circle3d", "project", "render3d"];
 
 const BUILTIN_CMDS: [_]str = ["echo", "cd", "exit", "fail"];
 

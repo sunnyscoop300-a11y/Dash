@@ -133,6 +133,7 @@ fn jj_call(name: str, args: []value, line: int) (value | failed | void) = {
 		match (viper::open(title, w, h)) {
 		case let win: *viper::window =>
 			jj_win = win;
+			cam_focal(win);
 		case let e: viper::error =>
 			return dief(line, "window(): kan ikke åbne et vindue: {}", viper::strerror(e));
 		case nomem =>
@@ -316,7 +317,7 @@ fn jj_call(name: str, args: []value, line: int) (value | failed | void) = {
 		case void => return nilv: value;
 		case => return dief(line, "screenshot(): kan ikke gemme '{}'", p);
 		};
-	case => return;
+	case => return jj3_call(name, args, line);
 	};
 };
 

@@ -332,7 +332,9 @@ fn tcall(c: *e_call) ty = {
 	};
 
 	switch (c.name) {
-	case "len", "int" => return t(T_INT);
+	case "len", "int", "floor" => return t(T_INT);
+	case "sin", "cos", "sqrt" => return t(T_FLOAT);
+	case "random" => return t(if (len(at) == 0) T_FLOAT else T_INT);
 	case "float", "now" => return t(T_FLOAT);
 	case "str", "type", "read", "cwd" => return t(T_STR);
 	case "exists", "is_dir", "is_file", "ask" => return t(T_BOOL);
@@ -359,8 +361,10 @@ fn tcall(c: *e_call) ty = {
 	case "delta" => return t(T_FLOAT);
 	case "typed" => return t(T_STR);
 	case "mouse", "image_size" => return tlist(T_INT);
+	case "project" => return t(T_LIST | T_NIL);
 	case "close_window", "clear", "rect", "outline", "round_rect", "circle", "line", "pixel",
-		"polygon", "text", "draw", "play", "screenshot" => return t(T_NIL);
+		"polygon", "text", "draw", "play", "screenshot",
+		"camera", "fog", "box3d", "floor3d", "circle3d", "render3d" => return t(T_NIL);
 	case => return ANY;
 	};
 };
