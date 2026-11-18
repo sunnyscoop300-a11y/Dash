@@ -6,6 +6,7 @@
 #   R               start banen forfra
 #   N / Enter       næste bane (når den er klaret)
 #   Esc             baneoversigt / luk
+#   Touch / mus     tryk i den retning Boxman skal gå, og brug knapperne forneden
 #
 # Du kan kun skubbe — ikke trække — og kun én kasse ad gangen.
 # Bedste antal træk pr. bane gemmes i ~/.boxman
@@ -397,7 +398,42 @@ fn tegn_hud() {
         let b = "Rekord: {bedste[nr]} træk"
         text(W - text_width(b, 1) - 28, 62, b, "#7dff9a", 1)
     }
-    text(28, H - 30, "pile: gå   Z: fortryd   R: forfra   Esc: baner", "#8a80b0", 1)
+    text(28, H - 30, "pile eller tryk: gå", "#8a80b0", 1)
+}
+
+# knapper forneden (til touch): returnerer hvilken der blev trykket på
+let KNAPPER = ["Fortryd", "Forfra", "Baner"]
+fn tegn_knapper() {
+    let m = mouse()
+    let valgt = ""
+    for i in range(KNAPPER.len) {
+        let x = W - 3 * 144 - 20 + i * 144
+        let y = H - 54
+        let over = m[0] >= x and m[0] < x + 134 and m[1] >= y and m[1] < y + 42
+        let bg = "#3a2f6a"
+        if over { bg = "#5a48a0" }
+        round_rect(x, y, 134, 42, 12, bg)
+        text(x + (134 - text_width(KNAPPER[i], 2)) / 2, y + 5, KNAPPER[i], "#ffffff", 2)
+        if over and clicked() { valgt = KNAPPER[i] }
+    }
+    return valgt
+}
+
+# tryk på banen: gå ét skridt i retning af trykket
+fn touch_gå() {
+    if not clicked() { return nil }
+    let m = mouse()
+    if m[1] > H - 60 or m[1] < 100 { return nil }
+    let cx = ox + bx * RUDE + RUDE / 2
+    let cy = oy + by * RUDE + RUDE / 2
+    let dx = m[0] - cx
+    let dy = m[1] - cy
+    if abs(dx) < RUDE / 3 and abs(dy) < RUDE / 3 { return nil }
+    if abs(dx) > abs(dy) {
+        if dx > 0 { gå(1, 0) } else { gå(-1, 0) }
+    } else {
+        if dy > 0 { gå(0, 1) } else { gå(0, -1) }
+    }
 }
 
 fn tegn_gnister(dt) {
@@ -424,8 +460,8 @@ fn tegn_sejr() {
     if bedste[nr] == træk {
         text((W - text_width("Ny rekord!", 2)) / 2, H / 2 + 28, "Ny rekord!", "#7dff9a", 2)
     }
-    let n = "Enter: næste bane"
-    if nr == BANER.len - 1 { n = "Alle baner klaret! Enter: oversigt" }
+    let n = "Tryk eller Enter: næste bane"
+    if nr == BANER.len - 1 { n = "Alle baner klaret! Tryk: oversigt" }
     text((W - text_width(n, 1)) / 2, H / 2 + 70, n, "#c8c0ff", 1)
 }
 
@@ -489,12 +525,18 @@ while frame() {
             if pressed("z") or pressed("u") { fortryd() }
         }
         if pressed("r") { indlæs(nr) }
-        if klaret and (pressed("enter") or pressed("n") or pressed("space")) {
-            if nr < BANER.len - 1 { indlæs(nr + 1) } else { skærm = "oversigt" }
-        }
+        let næste = klaret and (pressed("enter") or pressed("n") or pressed("space") or clicked())
+        if not klaret { touch_gå() }
         tegn_bane()
         tegn_hud()
+        let k = tegn_knapper()
+        if k == "Fortryd" { fortryd() }
+        if k == "Forfra" { indlæs(nr) }
+        if k == "Baner" { skærm = "oversigt" }
         if klaret { tegn_sejr() }
+        if næste and k == "" {
+            if nr < BANER.len - 1 { indlæs(nr + 1) } else { skærm = "oversigt" }
+        }
     }
     tegn_gnister(dt)
     if skud != "" {

@@ -98,11 +98,8 @@ fn hare_build(code: str, out: str, small: bool, arch: str, quiet: bool) bool = {
 	// android: aarch64 uden libc, linket som PIE til Android's linker64
 	const android = arch == "android";
 	const jj = uses_jj(code);
-	if (jj && (android || (arch != "" && arch != host_arch()))) {
-		if (!quiet) fmt::errorfln("{}💜✘ violet{} JJGui (vinduer og grafik) kan kun bygges til denne maskine, ikke til {}",
-			red(), reset(), arch)!;
-		return false;
-	};
+	// JJGui til en anden maskine (fx telefonen): uden SDL2, med X11/Wayland i ren Hare
+	const cross = android || (arch != "" && arch != host_arch());
 	if (jj) {
 		const vdir = strings::concat(work, "/viper")!;
 		os::mkdirs(vdir, 0o755)!;
@@ -110,7 +107,7 @@ fn hare_build(code: str, out: str, small: bool, arch: str, quiet: bool) bool = {
 			write_text(strings::concat(vdir, "/", VIPER_NAMES[i])!, VIPER_SRCS[i]);
 		};
 	};
-	const sdl = jj && have_sdl();
+	const sdl = jj && !cross && have_sdl();
 	let hargs: []str = [];
 	append(hargs, ["build", "-q"]...)!;
 	if (small || android) append(hargs, "-R")!;

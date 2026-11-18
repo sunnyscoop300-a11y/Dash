@@ -226,9 +226,26 @@ Kører med `dsh` (~50 fps) og hurtigere bygget med Violet.
 **Eksempel:** `eksempler/boxman.Dash` — *Boxman*, et 2D-skubbespil: skub kasserne
 hen på de gule mål. 8 baner, fortryd (Z), rekorder pr. bane.
 
-Se `eksempler/jj-demo.Dash`. Violet bygger JJGui-scripts til native programmer
-(kun til samme maskine — ikke `--arch`). `make NOJJ=1` bygger dsh uden JJGui,
+Se `eksempler/jj-demo.Dash`. `make NOJJ=1` bygger dsh uden JJGui,
 `make HARE_ONLY=1` uden SDL2.
+
+Motoren finder selv en skærm: Wayland (ren Hare), ellers SDL2, ellers **X11 i ren
+Hare** (`VIPER_BACKEND=wayland|sdl|x11` tvinger et valg).
+
+### JJGui på telefonen (Termux:X11)
+
+Violet kan bygge JJGui-scripts til telefonen. De bruger X11-delen i ren Hare og
+åbner et rigtigt vindue i appen **Termux:X11** — touch virker som museklik, og
+vinduet zoomes op, så det fylder skærmen (`VIPER_SCALE=2` vælger selv zoom):
+
+```
+# på pc'en
+violet spil.Dash --arch android -o spil
+# i Termux (med Termux:X11-appen installeret)
+pkg install x11-repo && pkg install termux-x11
+termux-x11 :0 &
+DISPLAY=:0 ./spil
+```
 
 ## Farver i nano og Kate
 

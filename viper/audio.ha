@@ -51,11 +51,15 @@ export type audio = struct {
 };
 
 // Players tried in order; each reads raw s16le mono 44100 Hz from stdin.
-const players: [3][]str = [
+const players: [4][]str = [
 	["pw-cat", "--playback", "--raw", "--rate=44100", "--channels=1",
 		"--format=s16", "--latency=40ms", "-"],
+	// "/dev/stdin" as the file: pacat/paplay then use it as the stream name.
+	// Without it, Termux' PulseAudio fails with "Failed to set media name".
+	["pacat", "--playback", "--format=s16le", "--rate=44100", "--channels=1",
+		"--latency-msec=40", "/dev/stdin"],
 	["paplay", "--raw", "--format=s16le", "--rate=44100", "--channels=1",
-		"--latency-msec=40"],
+		"--latency-msec=40", "/dev/stdin"],
 	["aplay", "-q", "-t", "raw", "-f", "S16_LE", "-r", "44100", "-c", "1",
 		"-B", "60000"],
 ];
@@ -92,12 +96,22 @@ fn start_player(a: *audio, from: size) void = {
 };
 
 fn spawn(a: *audio, argv: []str) bool = {
-	match (exec::lookup(argv[0])) {
-	case str => void;
+	const full = match (exec::lookup(argv[0])) {
+	case let p: str => yield p;
 	case => return false;
 	};
+	// Android: programs under /data may not be exec'ed directly (W^X), only
+	// through the system linker, the way Termux itself does it (termux-exec).
+	let args: []str = [];
+	defer free(args);
+	let prog = argv[0];
+	if (os::exists("/system/bin/linker64") && strings::hasprefix(full, "/data/")) {
+		prog = "/system/bin/linker64";
+		append(args, full)!;
+	};
+	append(args, argv[1..]...)!;
 	const (rd, wr) = exec::pipe();
-	let cmd = match (exec::cmd(argv[0], argv[1..]...)) {
+	let cmd = match (exec::cmd(prog, args...)) {
 	case let c: exec::command => yield c;
 	case =>
 		match (io::close(rd)) { case => void; };

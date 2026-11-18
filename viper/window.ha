@@ -39,7 +39,7 @@ export def RIGHT_BUTTON: u8 = 2;
 export def MIDDLE_BUTTON: u8 = 4;
 
 // The backend behind a window (internal to ViperGui).
-export type backend = (*sdl_backend | *wl_backend);
+export type backend = (*sdl_backend | *wl_backend | *x11_backend);
 
 // A ViperGui window. Owns a software framebuffer that everything draws into.
 export type window = struct {
@@ -92,16 +92,18 @@ export type window = struct {
 export fn backend_name(win: *window) str = match (win.be) {
 case *wl_backend => yield "wayland";
 case *sdl_backend => yield "sdl";
+case *x11_backend => yield "x11";
 };
 
 // Opens a window of the given size. Free it with [[close]].
 //
-// On a Wayland session the pure-Hare Wayland backend is used; otherwise (or
-// with VIPER_BACKEND=sdl) SDL2. VIPER_BACKEND=wayland forces Wayland.
+// On a Wayland session the pure-Hare Wayland backend is used; otherwise SDL2,
+// and without SDL2 (Hare-only builds, Android with Termux:X11) the pure-Hare
+// X11 backend. VIPER_BACKEND=wayland, sdl or x11 forces one of them.
 export fn open(title: str, width: int, height: int) (*window | error | nomem) = {
 	const want = os::tryenv("VIPER_BACKEND", "");
 	const wayland = want == "wayland"
-		|| (want != "sdl" && os::getenv("WAYLAND_DISPLAY") is str);
+		|| (want == "" && os::getenv("WAYLAND_DISPLAY") is str);
 
 	let be: (backend | void) = void;
 	let wl_err = "";
@@ -116,16 +118,33 @@ export fn open(title: str, width: int, height: int) (*window | error | nomem) = 
 			return nomem;
 		};
 	};
-	if (be is void) {
+	let sdl_err = "";
+	if (be is void && want != "x11") {
 		match (sdl_open(title, width, height)) {
 		case let b: *sdl_backend =>
 			be = b;
 		case let e: error =>
-			// Report the Wayland problem if that was the first choice.
+			if (want == "sdl") return e;
+			sdl_err = e;
+		case nomem =>
+			return nomem;
+		};
+	};
+	if (be is void && os::getenv("DISPLAY") is str) {
+		match (x11_open(title, width, height)) {
+		case let b: *x11_backend =>
+			be = b;
+		case let e: error =>
 			return if (len(wl_err) > 0) wl_err: error else e;
 		case nomem =>
 			return nomem;
 		};
+	};
+	if (be is void) {
+		// Report the most useful problem: Wayland if that was the first choice.
+		return if (len(wl_err) > 0) wl_err: error
+			else if (len(sdl_err) > 0) sdl_err: error
+			else "ingen skærm fundet (hverken WAYLAND_DISPLAY eller DISPLAY er sat)": error;
 	};
 
 	const pixels: []u32 = alloc([0u32...], (width * height): size)?;
@@ -150,6 +169,7 @@ export fn close(win: *window) void = {
 	match (win.be) {
 	case let be: *sdl_backend => sdl_close(be);
 	case let be: *wl_backend => wl_close(be);
+	case let be: *x11_backend => x11_close(be);
 	};
 	free(win.pixels);
 	free(win);
@@ -179,6 +199,7 @@ export fn frame(win: *window) bool = {
 	const alive = match (win.be) {
 	case let be: *sdl_backend => yield sdl_poll(win, be);
 	case let be: *wl_backend => yield wl_poll(win, be);
+	case let be: *x11_backend => yield x11_poll(win, be);
 	};
 	if (!alive) return false;
 	latch_input(win);
@@ -196,6 +217,7 @@ export fn present(win: *window) void = {
 	match (win.be) {
 	case let be: *sdl_backend => sdl_present(win, be);
 	case let be: *wl_backend => wl_present(win, be);
+	case let be: *x11_backend => x11_present(win, be);
 	};
 };
 
@@ -296,6 +318,7 @@ export fn show_cursor(win: *window, on: bool) void = {
 	match (win.be) {
 	case let be: *sdl_backend => sdl_cursor(be, on);
 	case let be: *wl_backend => wl_cursor(win, be);
+	case *x11_backend => void;
 	};
 };
 
