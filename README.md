@@ -224,7 +224,8 @@ med tre baner, hop, glid, tog, bananskræller, P'er og en P STORE med outfits.
 Kører med `dsh` (~50 fps) og hurtigere bygget med Violet.
 
 **Eksempel:** `eksempler/boxman.Dash` — *Boxman*, et 2D-skubbespil: skub kasserne
-hen på de gule mål. 8 baner, fortryd (Z), rekorder pr. bane.
+hen på de gule mål. 20 baner (alle tjekket løsbare, 2-42 træk), fortryd (Z),
+rekorder pr. bane og touch-styring.
 
 Se `eksempler/jj-demo.Dash`. `make NOJJ=1` bygger dsh uden JJGui,
 `make HARE_ONLY=1` uden SDL2.

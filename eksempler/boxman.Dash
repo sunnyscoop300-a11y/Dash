@@ -30,6 +30,22 @@ let BANER = [
         "# @  $.#",
         "#      #",
         "########"]},
+    {"navn": "Kassehjørnet", "kort": [
+        "##########",
+        "#      #*#",
+        "#  #   # #",
+        "# .   #  #",
+        "## $    *#",
+        "#@*      #",
+        "##########"]},
+    {"navn": "Pakkeriet", "kort": [
+        "#########",
+        "#   # # #",
+        "#  #.   #",
+        "# # $ * #",
+        "#.$.  $ #",
+        "##  @   #",
+        "#########"]},
     {"navn": "Hjørnet", "kort": [
         "#######",
         "#.    #",
@@ -37,6 +53,46 @@ let BANER = [
         "# $ @ #",
         "#   ###",
         "#####  "]},
+    {"navn": "Tætpakket", "kort": [
+        "#######",
+        "##. $ #",
+        "#.@$  #",
+        "#$.   #",
+        "# $  ##",
+        "# .   #",
+        "#######"]},
+    {"navn": "Smøget", "kort": [
+        "#########",
+        "#  #    #",
+        "#  $ #  #",
+        "# .$$   #",
+        "#.# +#* #",
+        "#########"]},
+    {"navn": "Rodebutikken", "kort": [
+        "#########",
+        "# @     #",
+        "#$.$$   #",
+        "#    $  #",
+        "#..   . #",
+        "#   # # #",
+        "#########"]},
+    {"navn": "Labyrinten", "kort": [
+        "########",
+        "#  @  ##",
+        "# $#.  #",
+        "#$  $ .#",
+        "#  .   #",
+        "#  $   #",
+        "#.   ###",
+        "########"]},
+    {"navn": "Firkløveret", "kort": [
+        "#######",
+        "#   . #",
+        "# $ $@#",
+        "#.  # #",
+        "# $   #",
+        "# $.. #",
+        "#######"]},
     {"navn": "Lageret", "kort": [
         "  ######",
         "  #    #",
@@ -45,6 +101,13 @@ let BANER = [
         "# @  $ #",
         "#  .   #",
         "########"]},
+    {"navn": "Sideløbet", "kort": [
+        "##########",
+        "#     * ##",
+        "#  $# # +#",
+        "#.$   # $#",
+        "# .  #   #",
+        "##########"]},
     {"navn": "Gangen", "kort": [
         "#########",
         "#   #   #",
@@ -52,13 +115,14 @@ let BANER = [
         "## # # ##",
         "#. @   .#",
         "#########"]},
-    {"navn": "Zigzag", "kort": [
-        "#######",
-        "#. #  #",
-        "#  $  #",
-        "# #$# #",
-        "#. @  #",
-        "#######"]},
+    {"navn": "Bunkeren", "kort": [
+        "##########",
+        "#      ###",
+        "#$##$ .  #",
+        "#.       #",
+        "##. $$#  #",
+        "## # + ###",
+        "##########"]},
     {"navn": "Mesterprøven", "kort": [
         "#########",
         "#.  #  .#",
@@ -68,6 +132,22 @@ let BANER = [
         "# $   $ #",
         "#.  #  .#",
         "#########"]},
+    {"navn": "Zigzag", "kort": [
+        "#######",
+        "#. #  #",
+        "#  $  #",
+        "# #$# #",
+        "#. @  #",
+        "#######"]},
+    {"navn": "Storlageret", "kort": [
+        "##########",
+        "#     .  #",
+        "# .    .##",
+        "#  $    .#",
+        "# #@# $  #",
+        "#  # $  $#",
+        "#        #",
+        "##########"]},
     {"navn": "Ringen", "kort": [
         " ####### ",
         " #  .  # ",
@@ -76,22 +156,51 @@ let BANER = [
         "## $#$ ##",
         " #  .  # ",
         " ####### "]},
+    {"navn": "Lagerchefen", "kort": [
+        "########",
+        "#.$.   #",
+        "# $    #",
+        "#.##$  #",
+        "#  . $ #",
+        "#   #@##",
+        "########"]},
+    {"navn": "Finalen", "kort": [
+        "#########",
+        "#      @#",
+        "# # ##$.#",
+        "# ...#  #",
+        "#    $  #",
+        "#    $#$#",
+        "#       #",
+        "#########"]},
 ]
 
 # ── gemte rekorder ──
 let GEM = "{env("HOME", ".")}/.boxman"
 let bedste = []
 for i in range(BANER.len) { bedste.push(0) }
+# én linje pr. bane: navn=træk (gamle filer med "2,0,0,…" læses også)
 if exists(GEM) {
-    let l = read(GEM).trim().split(",")
-    for i in range(min(l.len, BANER.len)) {
-        if l[i].trim() != "" { bedste[i] = int(l[i]) }
+    let indhold = read(GEM).trim()
+    if indhold.contains("=") {
+        for l in indhold.lines() {
+            let d = l.split("=")
+            if d.len < 2 { continue }
+            for i in range(BANER.len) {
+                if BANER[i].navn == d[0] { bedste[i] = int(d[1]) }
+            }
+        }
+    } else {
+        let l = indhold.split(",")
+        if l.len > 0 and l[0].trim() != "" { bedste[0] = int(l[0]) }
     }
 }
 fn gem() {
     let s = []
-    for b in bedste { s.push(str(b)) }
-    write(GEM, s.join(",") + "\n")
+    for i in range(BANER.len) {
+        if bedste[i] > 0 { s.push("{BANER[i].navn}={bedste[i]}") }
+    }
+    write(GEM, s.join("\n") + "\n")
 }
 
 # ── lyde ──
@@ -467,23 +576,26 @@ fn tegn_sejr() {
 
 fn tegn_oversigt() {
     clear("#2a2440")
-    text((W - text_width("BOXMAN", 6)) / 2, 40, "BOXMAN", "#ffcf3a", 6)
-    let u = "Skub alle kasserne hen på de gule mål"
-    text((W - text_width(u, 2)) / 2, 150, u, "#c8c0ff", 2)
+    text((W - text_width("BOXMAN", 6)) / 2, 30, "BOXMAN", "#ffcf3a", 6)
+    let klarede = 0
+    for b in bedste { if b > 0 { klarede += 1 } }
+    let u = "Skub kasserne hen på de gule mål  ·  {klarede}/{BANER.len} klaret"
+    text((W - text_width(u, 2)) / 2, 140, u, "#c8c0ff", 2)
     for i in range(BANER.len) {
-        let x = 90 + (i % 4) * 160
-        let y = 230 + int(i / 4) * 170
+        let x = 50 + (i % 5) * 142
+        let y = 196 + int(i / 5) * 112
         let m = mouse()
-        let over = m[0] >= x and m[0] < x + 140 and m[1] >= y and m[1] < y + 140
+        let over = m[0] >= x and m[0] < x + 130 and m[1] >= y and m[1] < y + 100
         let bg = "#3a2f6a"
+        if bedste[i] > 0 { bg = "#2f5a4a" }
         if over { bg = "#5a48a0" }
-        round_rect(x + 3, y + 5, 140, 140, 16, "#120e22")
-        round_rect(x, y, 140, 140, 16, bg)
-        text(x + (140 - text_width("{i + 1}", 4)) / 2, y + 16, "{i + 1}", "#ffffff", 4)
-        text(x + (140 - text_width(BANER[i].navn, 1)) / 2, y + 86, BANER[i].navn, "#c8c0ff", 1)
+        round_rect(x + 3, y + 5, 130, 100, 14, "#120e22")
+        round_rect(x, y, 130, 100, 14, bg)
+        text(x + (130 - text_width("{i + 1}", 3)) / 2, y + 8, "{i + 1}", "#ffffff", 3)
+        text(x + (130 - text_width(BANER[i].navn, 1)) / 2, y + 60, BANER[i].navn, "#c8c0ff", 1)
         if bedste[i] > 0 {
             let b = "{bedste[i]} træk"
-            text(x + (140 - text_width(b, 1)) / 2, y + 110, b, "#7dff9a", 1)
+            text(x + (130 - text_width(b, 1)) / 2, y + 78, b, "#7dff9a", 1)
         }
         if over and clicked() { indlæs(i) }
     }
