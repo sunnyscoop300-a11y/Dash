@@ -1,0 +1,321 @@
+#!/usr/bin/env dsh
+# serietracker.Dash — hold styr på en series afsnit 📺 (JJGui, virker også på telefonen)
+#
+#   serietracker.Dash serie.txt      åbn en serie fra en datafil
+#   serietracker.Dash                vælg blandt filerne i ~/.config/serietracker/
+#
+# Klik på feltet foran et afsnit (eller mellemrum) = set / ikke set,
+# klik på stjernerne (eller 1-5) = bedømmelse, pile/scroll = flyt, Esc = luk.
+# Fremgangen gemmes i ~/.config/serietracker/<titel>.fremgang
+#
+# Datafilen (kun hos dig — seriens data hører ikke til i koden):
+#   titel=Min serie
+#   under=Kanal · år
+#   farve=#c8102e          (accentfarve)
+#   blå=#14233f            (baggrund)
+#   S1E1|Titel|2026-07-26|Kort beskrivelse
+
+let MAPPE = "{env("HOME", ".")}/.config/serietracker"
+
+# ── find datafilen ──
+let fil = ""
+if args.len > 0 { fil = args[0] }
+if fil == "" {
+    let filer = glob("{MAPPE}/*.txt")
+    if filer.len == 1 { fil = filer[0] }
+    if filer.len > 1 {
+        let navne = []
+        for f in filer { navne.push(f.name) }
+        let v = menu(navne, "📺 Hvilken serie?")
+        if v == nil { exit 0 }
+        for f in filer { if f.name == v { fil = f } }
+    }
+}
+if fil == "" or not exists(fil) {
+    fail "giv en datafil (fx serietracker.Dash president-curtis.txt) eller læg den i {MAPPE}/"
+}
+
+# ── læs serien ──
+let TITEL = "Serie"
+let UNDER = ""
+let RØD = "#c8102e"
+let BLÅ = "#14233f"
+let afsnit = []
+for l in read(fil).lines() {
+    let t = l.trim()
+    if t == "" or t.starts_with("#") { continue }
+    if t.contains("|") {
+        let d = t.split("|")
+        let besk = ""
+        if d.len > 3 { besk = d[3] }
+        let dato = ""
+        if d.len > 2 { dato = d[2] }
+        afsnit.push({"kode": d[0], "titel": d[1], "dato": dato, "besk": besk, "set": false, "stjerner": 0})
+    } else if t.contains("=") {
+        let k = t.split("=")[0]
+        let v = t.replace(k + "=", "")
+        if k == "titel" { TITEL = v }
+        if k == "under" { UNDER = v }
+        if k == "farve" { RØD = v }
+        if k == "blå" { BLÅ = v }
+    }
+}
+if afsnit.len == 0 { fail "ingen afsnit i {fil} (linjer som S1E1|Titel|dato|beskrivelse)" }
+
+# ── fremgang ──
+mkdir -p $MAPPE
+let GEM = "{MAPPE}/{TITEL.replace("/", "-")}.fremgang"
+if exists(GEM) {
+    for l in read(GEM).lines() {
+        let d = l.split("=")
+        if d.len < 2 { continue }
+        let v = d[1].split(",")
+        for a in afsnit {
+            if a.kode == d[0] {
+                a.set = v[0] == "1"
+                if v.len > 1 { a.stjerner = int(v[1]) }
+            }
+        }
+    }
+}
+fn gem() {
+    let s = []
+    for a in afsnit {
+        let set = 0
+        if a.set { set = 1 }
+        s.push("{a.kode}={set},{a.stjerner}")
+    }
+    write(GEM, s.join("\n") + "\n")
+}
+
+let idag = ""
+let datofil = "{env("TMPDIR", "/tmp")}/serietracker-dato"
+try sh -c "date +%Y-%m-%d" > $datofil 2> /dev/null
+if exists(datofil) { idag = read(datofil).trim() }
+
+window(TITEL, 900, 640)
+let W = width()
+let H = height()
+let HVID = "#f4f1ea"
+let LYS = "#c9d3e6"
+let GULD = "#f2c14e"
+
+let LYD_SET = sound("triangle", 660, 990, 0.12, 0.35)
+let LYD_AF = sound("triangle", 520, 330, 0.1, 0.25)
+let LYD_STJERNE = sound("sine", 880, 1320, 0.08, 0.3)
+
+let valgt = 0
+let rul = 0
+let LISTE_Y = 168
+# rækkerne krymper (ned til 38 px), så hele sæsonen kan ses uden at rulle
+let RÆKKE = max(38, min(46, int((H - LISTE_Y - 20) / afsnit.len)))
+let SYNLIGE = int((H - LISTE_Y - 20) / RÆKKE)
+let træk_y = -1      # fingerens y, når der trækkes i listen
+let trukket = false
+let t = 0.0
+
+# første afsnit der ikke er set
+fn næste() {
+    for i in range(afsnit.len) {
+        if not afsnit[i].set { return i }
+    }
+    return -1
+}
+let n = næste()
+if n >= 0 { valgt = n }
+
+fn sæt_set(i, v) {
+    afsnit[i].set = v
+    if v { play(LYD_SET) } else { play(LYD_AF) }
+    gem()
+}
+
+fn stjerne(cx, cy, r, farve) {
+    let p = []
+    for k in range(10) {
+        let rr = r
+        if k % 2 == 1 { rr = r * 0.45 }
+        let v = -1.5708 + k * 0.6283
+        p.push([cx + cos(v) * rr, cy + sin(v) * rr])
+    }
+    polygon(p, farve)
+}
+
+# tekst brudt over flere linjer, så den holder sig inden for bredden
+fn ombryd(x, y, s, bredde, farve, str_) {
+    let linje = ""
+    let yy = y
+    for o in s.split(" ") {
+        let prøv = o
+        if linje != "" { prøv = linje + " " + o }
+        if text_width(prøv, str_) > bredde and linje != "" {
+            text(x, yy, linje, farve, str_)
+            yy += 18 * str_
+            linje = o
+        } else {
+            linje = prøv
+        }
+    }
+    if linje != "" { text(x, yy, linje, farve, str_) }
+    return yy + 18 * str_
+}
+
+fn emblem(cx, cy) {
+    circle(cx, cy, 44, GULD)
+    circle(cx, cy, 39, BLÅ)
+    circle(cx, cy, 33, RØD)
+    circle(cx, cy, 29, BLÅ)
+    stjerne(cx, cy - 2, 22, HVID)
+}
+
+fn tegn_top() {
+    rect(0, 0, W, 132, BLÅ)
+    for i in range(7) {
+        let c = RØD
+        if i % 2 == 1 { c = HVID }
+        rect(0, 120 + i * 2, W, 2, c)
+    }
+    emblem(74, 62)
+    let ts = 4
+    while ts > 1 and text_width(TITEL, ts) > W - 300 - 160 { ts -= 1 }
+    text(136, 54 - ts * 8, TITEL, HVID, ts)
+    text(138, 90, UNDER, LYS, 1)
+    # fremgang
+    let set = 0
+    for a in afsnit { if a.set { set += 1 } }
+    let bx = W - 300
+    text(bx, 28, "{set}/{afsnit.len} set", HVID, 2)
+    round_rect(bx, 66, 270, 18, 9, "#0b1527")
+    if set > 0 { round_rect(bx, 66, int(270 * set / afsnit.len), 18, 9, RØD) }
+    let nx = næste()
+    if nx >= 0 {
+        text(bx, 94, "Næste: {afsnit[nx].kode} {afsnit[nx].titel}", GULD, 1)
+    } else {
+        text(bx, 94, "Hele serien er set!", GULD, 1)
+    }
+}
+
+fn tegn_liste() {
+    let m = mouse()
+    for vis in range(SYNLIGE) {
+        let i = rul + vis
+        if i >= afsnit.len { break }
+        let a = afsnit[i]
+        let y = LISTE_Y + vis * RÆKKE
+        let over = m[0] >= 20 and m[0] < 520 and m[1] >= y and m[1] < y + RÆKKE - 6
+        let bg = "#1c2e52"
+        if i == valgt { bg = "#2c4478" } else if over { bg = "#24396a" }
+        round_rect(20, y, 500, RÆKKE - 6, 10, bg)
+        if i == valgt { rect(20, y + 6, 4, RÆKKE - 18, RØD) }
+        # afkrydsningsfelt
+        round_rect(34, y + 8, 24, 24, 6, "#0b1527")
+        if a.set {
+            round_rect(36, y + 10, 20, 20, 5, RØD)
+            text(41, y + 12, "v", HVID, 1)
+        }
+        text(70, y + 12, a.kode, LYS, 1)
+        let farve = HVID
+        if a.set { farve = "#9aa7c0" }
+        text(126, y + 4, a.titel, farve, 2)
+        if idag != "" and a.dato > idag {
+            text(410, y + 12, "kommer", GULD, 1)
+        } else {
+            for s in range(a.stjerner) { stjerne(420 + s * 18, y + 20, 7, GULD) }
+        }
+        if over and clicked() {
+            valgt = i
+            if m[0] < 64 { sæt_set(i, not a.set) }
+        }
+    }
+    if afsnit.len > SYNLIGE {
+        let h = H - LISTE_Y - 20
+        let kh = int(h * SYNLIGE / afsnit.len)
+        let ky = LISTE_Y + int(h * rul / afsnit.len)
+        rect(526, LISTE_Y, 4, h, "#1c2e52")
+        rect(526, ky, 4, kh, RØD)
+    }
+}
+
+fn knap(s, x, y, b, farve) {
+    let m = mouse()
+    let over = m[0] >= x and m[0] < x + b and m[1] >= y and m[1] < y + 42
+    let c = farve
+    if over { c = "#e8304e" }
+    round_rect(x, y, b, 42, 10, c)
+    text(x + (b - text_width(s, 2)) / 2, y + 5, s, HVID, 2)
+    return over and clicked()
+}
+
+fn tegn_detalje() {
+    let a = afsnit[valgt]
+    let x = 552
+    round_rect(x - 8, LISTE_Y, W - x - 12, H - LISTE_Y - 20, 14, "#1c2e52")
+    text(x + 8, LISTE_Y + 14, a.kode, RØD, 2)
+    let yy = ombryd(x + 8, LISTE_Y + 48, a.titel, W - x - 40, HVID, 3)
+    if a.dato != "" { text(x + 8, yy + 4, "Sendt {a.dato}", LYS, 1) }
+    yy = ombryd(x + 8, yy + 32, a.besk, W - x - 40, HVID, 1)
+    # bedømmelse
+    let sy = yy + 22
+    let m = mouse()
+    for s in range(5) {
+        let cx = x + 26 + s * 40
+        let farve = "#3a4a6e"
+        if s < a.stjerner { farve = GULD }
+        stjerne(cx, sy + 16, 16, farve)
+        if clicked() and abs(m[0] - cx) < 18 and abs(m[1] - (sy + 16)) < 18 {
+            if a.stjerner == s + 1 { a.stjerner = 0 } else { a.stjerner = s + 1 }
+            play(LYD_STJERNE)
+            gem()
+        }
+    }
+    let label = "Marker som set"
+    if a.set { label = "Ikke set alligevel" }
+    if knap(label, x + 8, H - 90, W - x - 40, RØD) { sæt_set(valgt, not a.set) }
+}
+
+# testbillede: JJ_SKUD=fil.png
+let skud = env("JJ_SKUD", "")
+
+while frame() {
+    t += delta()
+    if pressed("esc") { break }
+    if pressed("down") or pressed("j") { valgt = min(afsnit.len - 1, valgt + 1) }
+    if pressed("up") or pressed("k") { valgt = max(0, valgt - 1) }
+    if pressed("space") or pressed("enter") { sæt_set(valgt, not afsnit[valgt].set) }
+    let tast = typed()
+    for s in range(6) {
+        if tast.contains(str(s)) {
+            afsnit[valgt].stjerner = s
+            gem()
+        }
+    }
+    rul = rul - wheel()
+    # træk med fingeren/musen i listen for at rulle
+    let m = mouse()
+    if mouse_down() and m[0] < 530 and m[1] > LISTE_Y {
+        if træk_y < 0 { træk_y = m[1] }
+        let d = int((træk_y - m[1]) / RÆKKE)
+        if d != 0 {
+            rul += d
+            træk_y -= d * RÆKKE
+            trukket = true
+        }
+    } else {
+        træk_y = -1
+    }
+    if not trukket {
+        if valgt < rul { rul = valgt }
+        if valgt >= rul + SYNLIGE { rul = valgt - SYNLIGE + 1 }
+    }
+    if pressed("down") or pressed("up") or pressed("j") or pressed("k") { trukket = false }
+    rul = max(0, min(rul, max(0, afsnit.len - SYNLIGE)))
+
+    clear("#0f1a30")
+    tegn_top()
+    tegn_liste()
+    tegn_detalje()
+    if skud != "" and t > 0.3 {
+        screenshot(skud)
+        break
+    }
+}

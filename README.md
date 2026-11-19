@@ -227,6 +227,10 @@ Kører med `dsh` (~50 fps) og hurtigere bygget med Violet.
 hen på de gule mål. 20 baner (alle tjekket løsbare, 2-42 træk), fortryd (Z),
 rekorder pr. bane og touch-styring.
 
+**Eksempel:** `eksempler/serietracker.Dash` — en tracker til en series afsnit:
+set/ikke set, stjerner, næste afsnit og fremgang. Seriens data ligger i din
+egen fil (`titel=…` og `S1E1|Titel|dato|beskrivelse`), ikke i koden.
+
 Se `eksempler/jj-demo.Dash`. `make NOJJ=1` bygger dsh uden JJGui,
 `make HARE_ONLY=1` uden SDL2.
 
