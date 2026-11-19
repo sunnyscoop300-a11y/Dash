@@ -1,5 +1,9 @@
 #!/usr/bin/env dsh-hare
 # 🌾 Nonbiri — en MP3/FLAC-afspiller i Dash med JJGui
+# bob-navn: Nonbiri
+# bob-kategori: program
+# bob-farve: #62a548
+# bob-om: En MP3/FLAC-afspiller ved et stort træ. Solen følger sangen over himlen, og afgrøderne på marken vokser, mens den spiller.
 #
 # Inspireret af stemningen i Farming Life in Another World (Isekai Nonbiri
 # Nouka): en rolig landsby ved et stort træ. Solen følger sangen over himlen,

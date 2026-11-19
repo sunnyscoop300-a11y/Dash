@@ -242,6 +242,13 @@ Afspiller med `mpv` (eller `ffplay`), læser tags med `ffprobe`.
 dsh eksempler/nonbiri.Dash ~/Musik
 ```
 
+**Eksempel:** `eksempler/bob.Dash` — *Bobs butik*, en lille app-butik til dine
+egne Dash-programmer og spil. Bob finder `.Dash`-filerne i `~/Dash/eksempler`
+(eller `BOB_KILDER`), bygger dem med Violet til `~/.local/bin` og laver en
+genvej i menuen. Den kan også opdatere (når kildekoden er ændret) og fjerne.
+Et program beskriver sig selv med `# bob-navn:`, `# bob-kategori:`,
+`# bob-farve:` og `# bob-om:` øverst i filen.
+
 Se `eksempler/jj-demo.Dash`. `make NOJJ=1` bygger dsh uden JJGui,
 `make HARE_ONLY=1` uden SDL2.
 

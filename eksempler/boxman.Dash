@@ -1,5 +1,9 @@
 #!/usr/bin/env dsh
 # boxman.Dash — BOXMAN 📦 — skub kasserne hen på de gule mål. Et 2D-spil i Dash med JJGui.
+# bob-navn: Boxman
+# bob-kategori: spil
+# bob-farve: #e8a33a
+# bob-om: Skub kasserne hen på målene. 20 klassiske baner og 25 julebaner med snemand og gaver. Virker også på telefonen.
 #
 #   pile / WASD     gå (og skub)
 #   Z eller U       fortryd

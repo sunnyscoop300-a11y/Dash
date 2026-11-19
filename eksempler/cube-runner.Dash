@@ -1,5 +1,9 @@
 #!/usr/bin/env dsh
 # cube-runner.Dash — CUBE HEAD RUNNERS 🟧🏃 — et 3D-løbespil skrevet i Dash med JJGui.
+# bob-navn: Cube Head Runners
+# bob-kategori: spil
+# bob-farve: #f07030
+# bob-om: Et 3D-løbespil: skift bane, hop over togene og glid under bommene. Saml P'er og køb nye outfits i P Store.
 #
 #   ← →  (eller A D)        skift bane
 #   ↑ / mellemrum / W        hop

@@ -1,5 +1,9 @@
 #!/usr/bin/env dsh
 # jj-demo.Dash — JJGui's første skridt 👶⚡
+# bob-navn: Cube Head Demo
+# bob-kategori: spil
+# bob-farve: #c060d0
+# bob-om: JJGui's allerførste skridt: en Cube Head løber, hopper og samler P'er. Godt at kigge i, hvis du vil lære JJGui.
 # En Cube Head løber hen ad vejen: ← → flytter, mellemrum hopper,
 # saml P'er og undgå bananskrællerne. Esc lukker.
 

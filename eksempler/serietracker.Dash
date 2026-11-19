@@ -1,5 +1,9 @@
 #!/usr/bin/env dsh
 # serietracker.Dash — hold styr på en series afsnit 📺 (JJGui, virker også på telefonen)
+# bob-navn: Serietracker
+# bob-kategori: program
+# bob-farve: #4080e0
+# bob-om: Hold styr på en series afsnit: set eller ikke set, stjerner og næste afsnit. Seriens data ligger i din egen fil.
 #
 #   serietracker.Dash serie.txt      åbn en serie fra en datafil
 #   serietracker.Dash                vælg blandt filerne i ~/.config/serietracker/
