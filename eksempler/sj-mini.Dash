@@ -1,0 +1,749 @@
+#!/usr/bin/env dsh
+# sj-mini.Dash — SJ Mini: læs de nyeste kapitler på MANGA Plus, i Dash med JJGui
+# bob-navn: SJ Mini
+# bob-kategori: program
+# bob-farve: #e8303a
+# bob-om: Læs de nyeste kapitler fra MANGA Plus: klik på et cover for kapitlerne, klik på et kapitel for at læse det som en lang stribe.
+#
+# Den lille Python-hjælper sj.py snakker med MANGA Plus: den henter de
+# nyeste opdateringer, en series gratis kapitler og et kapitels sider
+# (låst op og gemt som billeder). Alt vises her: klik på et cover for
+# kapitlerne, klik på et kapitel for at læse det. Højreklik på et cover
+# (eller klik på stjernen) gør serien til en favorit.
+#
+#   dsh eksempler/sj-mini.Dash
+#
+# sj.py findes i SJ_PY, ~/.local/share/sj-mini/sj.py, ~/vipergui/cmd/sj/sj.py
+# eller ~/Dash/eksempler/sj.py. Den skal bruge python3 og pillow.
+
+let HJEM = env("HOME", ".")
+let DATA = "{HJEM}/.local/share/sj-mini"
+
+fn q(s) { return "'" + s.replace("'", "'\\''") + "'" }
+
+let HJÆLPER = env("SJ_PY", "")
+for h in ["{DATA}/sj.py", "{HJEM}/vipergui/cmd/sj/sj.py", "{HJEM}/Dash/eksempler/sj.py",
+          "{HJEM}/dash/eksempler/sj.py", "cmd/sj/sj.py", "eksempler/sj.py"] {
+    if HJÆLPER == "" and exists(h) { HJÆLPER = h }
+}
+
+# ── farver ───────────────────────────────────────────────────────────
+let BG = "#121214"
+let KORT = "#1d1d22"
+let KORT_VARM = "#26262d"
+let LINJE = "#2e2e36"
+let RØD = "#e8303a"
+let RØD_M = "#b81f28"
+let TEKST = "#f2f2f2"
+let DÆMP = "#9a9aa6"
+let STJERNE = "#f5c518"
+let STJERNE_VARM = "#c8a020"
+let GRØN = "#3ccf74"
+let SORT_TOP = "#0b0b0d"
+
+let W = 1100
+let H = 700
+let GRID_Y = 128
+let GRID_H = 544
+let KORT_W = 160
+let KORT_H = 304
+let TRIN_X = 172
+let TRIN_Y = 316
+let KOL = 6
+let VIEW_H = 672
+let SIDE_TRIN = 908
+let SLUT_H = 260
+
+# ── tilstand ─────────────────────────────────────────────────────────
+let serier = []
+let visning = "grid"
+let fane = "alle"
+let søg = []
+let søg_aktiv = false
+let henter = false
+let hent_t = 0.0
+let rul = 0
+let tid = 0.0
+let besked = ""
+let besked_farve = DÆMP
+let besked_t = 0.0
+
+let valgt = 0
+let kapitler = []
+let kap_om = ""
+let kap_sidst = ""
+let kap_henter = false
+let kap_t = 0.0
+let kap_rul = 0
+let kap_fejl = ""
+
+let læs_kap = 0
+let læs_total = 0
+let læs_klar = false
+let læs_vent = 0.0
+let læs_rul = 0
+let side = 0
+let sider = {}
+
+# ── små hjælpere ─────────────────────────────────────────────────────
+fn sig(farve, s) {
+    besked = s
+    besked_farve = farve
+    besked_t = 6.0
+}
+
+fn baggrund(cmd) {
+    try sh -c "{cmd} >/dev/null 2>&1 &"
+}
+
+fn inde(x, y, w, h) {
+    let m = mouse()
+    return m[0] >= x and m[0] < x + w and m[1] >= y and m[1] < y + h
+}
+
+fn klip(s, maxw) {
+    if text_width(s, 1) <= maxw { return s }
+    let r = ""
+    for c in s.chars {
+        if text_width(r + c + "...", 1) > maxw { return r + "..." }
+        r += c
+    }
+    return r
+}
+
+# bryder teksten ved mellemrum; højst maxl linjer, den sidste afkortes
+fn ombryd(s, maxw, maxl) {
+    let linjer = []
+    let l = ""
+    for o in s.split(" ") {
+        let prøv = o
+        if l != "" { prøv = l + " " + o }
+        if text_width(prøv, 1) > maxw and l != "" {
+            linjer.push(l)
+            l = o
+        } else {
+            l = prøv
+        }
+    }
+    if l != "" { linjer.push(l) }
+    if linjer.len > maxl {
+        let ud = []
+        for i in range(maxl) { ud.push(linjer[i]) }
+        let rest = ""
+        for i in range(maxl - 1, linjer.len) { rest += linjer[i] + " " }
+        ud[maxl - 1] = klip(rest.trim(), maxw)
+        return ud
+    }
+    return linjer
+}
+
+fn felter(l) { return l.split("\t") }
+
+fn tre(k) {
+    if k < 10 { return "00{k}" }
+    if k < 100 { return "0{k}" }
+    return "{k}"
+}
+
+fn hex2(n) {
+    let d = "0123456789abcdef"
+    let v = max(0, min(255, int(n)))
+    return d[int(v / 16)] + d[v % 16]
+}
+
+# ── favoritter ───────────────────────────────────────────────────────
+fn favoritter() {
+    let f = {}
+    let fil = "{DATA}/favoritter.txt"
+    if exists(fil) {
+        for l in read(fil).lines() { if l.trim() != "" { f[l.trim()] = true } }
+    }
+    return f
+}
+
+fn skift_fav(c) {
+    c.fav = not c.fav
+    baggrund("python3 {q(HJÆLPER)} fav {q(c.id)}")
+    if c.fav { sig(STJERNE, "{c.navn} er nu en favorit.") }
+    else { sig(DÆMP, "{c.navn} er ikke favorit længere.") }
+}
+
+# ── listen over serier ───────────────────────────────────────────────
+fn indlæs_liste() {
+    let fil = "{DATA}/list.tsv"
+    if not exists(fil) { return false }
+    for c in serier { if c.pic >= 0 { free_image(c.pic) } }
+    serier = []
+    let favs = favoritter()
+    let første = true
+    for l in read(fil).lines() {
+        if l != "" {
+            let f = felter(l)
+            if første {
+                første = false
+                if f[0] == "ERR" {
+                    let m = "Noget gik galt."
+                    if f.len > 1 { m = f[1] }
+                    sig(RØD, m)
+                    return true
+                }
+            } else if f.len >= 6 and serier.len < 90 {
+                serier.push({"id": f[0], "navn": f[1], "tegner": f[2], "siden": f[3],
+                             "ny": f[4] == "1", "img": f[5], "fav": favs.has(f[0]),
+                             "pic": -1, "prøvet": false, "linjer": []})
+            }
+        }
+    }
+    return true
+}
+
+# ét cover pr. billede, så vinduet aldrig fryser
+fn indlæs_et_cover() {
+    for c in serier {
+        if not c.prøvet {
+            c.prøvet = true
+            if c.img != "" and exists(c.img) {
+                c.pic = image(c.img)
+                return nil
+            }
+        }
+    }
+}
+
+fn opdater() {
+    if HJÆLPER == "" {
+        sig(RØD, "Kan ikke finde sj.py - læg den i ~/.local/share/sj-mini/ eller sæt SJ_PY.")
+        return nil
+    }
+    try sh -c "mkdir -p {q(DATA)}; rm -f {q(DATA + "/list.tsv")}"
+    baggrund("python3 {q(HJÆLPER)} list")
+    henter = true
+    hent_t = 0.0
+    sig(RØD, "Henter de nyeste kapitler fra MANGA Plus...")
+}
+
+fn åbn_web(c) {
+    baggrund("python3 {q(HJÆLPER)} open {q(c.id)}")
+    sig(GRØN, "Åbner {c.navn}...")
+}
+
+fn synlige() {
+    let s = søg.join("").trim().lower()
+    let ud = []
+    for i in range(serier.len) {
+        let c = serier[i]
+        let ok = true
+        if fane == "ny" and not c.ny { ok = false }
+        if fane == "fav" and not c.fav { ok = false }
+        if s != "" and not c.navn.lower().contains(s) and not c.tegner.lower().contains(s) { ok = false }
+        if ok { ud.push(i) }
+    }
+    return ud
+}
+
+# ── en series kapitler ───────────────────────────────────────────────
+fn åbn_kapitler(i) {
+    valgt = i
+    visning = "kapitler"
+    kapitler = []
+    kap_om = ""
+    kap_sidst = ""
+    kap_fejl = ""
+    kap_rul = 0
+    let c = serier[i]
+    try sh -c "rm -f {q(DATA + "/chapters-" + c.id + ".tsv")}"
+    baggrund("python3 {q(HJÆLPER)} chapters {q(c.id)}")
+    kap_henter = true
+    kap_t = 0.0
+}
+
+fn indlæs_kapitler() {
+    let fil = "{DATA}/chapters-{serier[valgt].id}.tsv"
+    if not exists(fil) { return false }
+    kapitler = []
+    let første = true
+    for l in read(fil).lines() {
+        if l != "" {
+            let f = felter(l)
+            if første {
+                første = false
+                if f[0] == "ERR" {
+                    kap_fejl = "Noget gik galt."
+                    if f.len > 1 { kap_fejl = f[1] }
+                    return true
+                }
+                if f.len > 2 { kap_om = f[2] }
+                if f.len > 3 { kap_sidst = f[3] }
+            } else if f.len >= 4 {
+                kapitler.push({"id": f[0], "navn": f[1], "under": f[2], "dato": f[3]})
+            }
+        }
+    }
+    return true
+}
+
+# ── læseren ──────────────────────────────────────────────────────────
+fn side_sti(k) { return "{DATA}/pages/{kapitler[læs_kap].id}/{tre(k)}.png" }
+
+fn frigiv_sider() {
+    for k in sider.keys { free_image(sider[k]) }
+    sider = {}
+}
+
+fn åbn_læser(k) {
+    frigiv_sider()
+    læs_kap = k
+    læs_total = 0
+    læs_klar = false
+    læs_vent = 0.0
+    side = 0
+    læs_rul = 0
+    visning = "læs"
+    kap_sidst = kapitler[k].id
+    baggrund("python3 {q(HJÆLPER)} pages {q(serier[valgt].id)} {q(kapitler[k].id)}")
+}
+
+fn læs_info() {
+    let fil = "{DATA}/pages/{kapitler[læs_kap].id}/info.tsv"
+    if not exists(fil) { return nil }
+    let f = felter(read(fil).lines()[0])
+    læs_klar = true
+    if f[0] == "ERR" {
+        let m = "Kapitlet kunne ikke hentes."
+        if f.len > 1 { m = f[1] }
+        sig(RØD, m)
+        visning = "kapitler"
+        return nil
+    }
+    læs_total = min(300, int(f[1]))
+}
+
+# holder siderne tæt på den, vi læser, i hukommelsen og indlæser den
+# næste, der er klar. Sider langt væk slippes igen.
+fn læser_sider(dt) {
+    if læs_vent > 0 {
+        læs_vent -= dt
+        return nil
+    }
+    if not læs_klar {
+        læs_info()
+        læs_vent = 0.25
+        return nil
+    }
+    let lo = max(0, side - 2)
+    let hi = min(læs_total, side + 5)
+    for k in sider.keys {
+        let n = int(k)
+        if n < lo or n >= hi {
+            free_image(sider[k])
+            sider.remove(k)
+        }
+    }
+    for k in range(side, hi) {
+        if not sider.has("{k}") {
+            if exists(side_sti(k)) {
+                sider["{k}"] = image(side_sti(k))
+            } else {
+                læs_vent = 0.25
+            }
+            return nil
+        }
+    }
+    if side > 0 and not sider.has("{side - 1}") and exists(side_sti(side - 1)) {
+        sider["{side - 1}"] = image(side_sti(side - 1))
+    }
+}
+
+fn rul_med(d) {
+    let maks = max(0, læs_total * SIDE_TRIN + SLUT_H - VIEW_H)
+    læs_rul = max(0, min(maks, læs_rul + d))
+    let p = int((læs_rul + VIEW_H / 3) / SIDE_TRIN)
+    if læs_total > 0 and p >= læs_total { p = læs_total - 1 }
+    side = p
+}
+
+fn ved_slut() {
+    return læs_total > 0 and læs_rul + VIEW_H >= læs_total * SIDE_TRIN + SLUT_H - 4
+}
+
+fn næste_kapitel() {
+    if læs_kap + 1 < kapitler.len { åbn_læser(læs_kap + 1) }
+}
+
+# ═════════════════════════════ TEGNING ═══════════════════════════════
+
+fn chip(x, y, w, s, til) {
+    let over = inde(x, y, w, 28)
+    let bg = KORT
+    if til { bg = RØD } else if over { bg = KORT_VARM }
+    let kant = LINJE
+    if til { kant = RØD }
+    round_rect(x, y, w, 28, 14, kant)
+    round_rect(x + 1, y + 1, w - 2, 26, 13, bg)
+    let c = DÆMP
+    if til { c = TEKST }
+    text(x + (w - text_width(s, 1)) / 2, y + 6, s, c, 1)
+    return over and clicked()
+}
+
+fn knap(x, y, w, h, s) {
+    let over = inde(x, y, w, h)
+    let c = RØD
+    if over { c = RØD_M }
+    round_rect(x, y, w, h, 8, c)
+    text(x + (w - text_width(s, 1)) / 2, y + int((h - 16) / 2), s, TEKST, 1)
+    return over and clicked()
+}
+
+fn spinner(cx, cy) {
+    let dx = [0, 7, 10, 7, 0, -7, -10, -7]
+    let dy = [-10, -7, 0, 7, 10, 7, 0, -7]
+    let leder = int(tid * 10) % 8
+    for i in range(8) {
+        let alder = (leder - i + 8) % 8
+        circle(cx + dx[i], cy + dy[i], 3, RØD + hex2(255 - alder * 30))
+    }
+}
+
+fn stjerne(cx, cy, r, c) {
+    let pts = [[0.0, -1.0], [0.3, -0.33], [1.0, -0.3], [0.47, 0.17], [0.62, 0.92],
+               [0.0, 0.5], [-0.62, 0.92], [-0.47, 0.17], [-1.0, -0.3], [-0.3, -0.33]]
+    let p = []
+    for v in pts { p.push([cx + v[0] * r, cy + v[1] * r]) }
+    polygon(p, c)
+}
+
+fn søgefelt(x, y, w) {
+    let over = inde(x, y, w, 30)
+    if clicked() { søg_aktiv = over }
+    let kant = LINJE
+    if søg_aktiv { kant = RØD }
+    round_rect(x, y, w, 30, 8, kant)
+    round_rect(x + 1, y + 1, w - 2, 28, 7, KORT)
+    let st = søg.join("")
+    if st == "" and not søg_aktiv {
+        text(x + 10, y + 7, "Titel eller tegner...", DÆMP, 1)
+    } else {
+        let blink = ""
+        if søg_aktiv and int(tid * 2) % 2 == 0 { blink = "|" }
+        text(x + 10, y + 7, klip(st, w - 30) + blink, TEKST, 1)
+    }
+}
+
+# 1 = coveret blev klikket, 2 = stjernen (eller højreklik)
+fn tegn_kort(c, x, y) {
+    let m = mouse()
+    let i_grid = m[1] >= GRID_Y and m[1] < GRID_Y + GRID_H
+    let over = i_grid and inde(x, y, KORT_W, KORT_H)
+    let kant = LINJE
+    if over { kant = RØD }
+    let bg = KORT
+    if over { bg = KORT_VARM }
+    round_rect(x - 1, y - 1, KORT_W + 2, KORT_H + 2, 9, kant)
+    round_rect(x, y, KORT_W, KORT_H, 8, bg)
+    if c.pic >= 0 {
+        draw(c.pic, x + 2, y + 2)
+    } else {
+        rect(x + 2, y + 2, 156, 220, LINJE)
+        if c.navn != "" { text(x + 64, y + 90, c.navn.chars.first, DÆMP, 4) }
+    }
+    if c.ny {
+        round_rect(x + 8, y + 8, 36, 20, 10, RØD)
+        text(x + 14, y + 10, "NY!", TEKST, 1)
+    }
+    let sx = x + KORT_W - 20
+    let sy = y + 20
+    let på_stjerne = i_grid and inde(sx - 14, sy - 14, 28, 28)
+    if c.fav or over {
+        circle(sx, sy, 13, "#000000")
+        let sc = DÆMP
+        if c.fav { sc = STJERNE } else if på_stjerne { sc = STJERNE_VARM }
+        stjerne(sx, sy, 10, sc)
+    }
+    if c.linjer.len == 0 { c.linjer = ombryd(c.navn, 144, 2) }
+    for i in range(c.linjer.len) { text(x + 8, y + 228 + i * 18, c.linjer[i], TEKST, 1) }
+    text(x + 8, y + 266, klip(c.tegner, 144), DÆMP, 1)
+    let sc = DÆMP
+    if c.ny { sc = GRØN }
+    text(x + 8, y + 284, c.siden, sc, 1)
+    if på_stjerne and clicked() { return 2 }
+    if over and right_clicked() { return 2 }
+    if over and clicked() { return 1 }
+    return 0
+}
+
+fn tegn_grid() {
+    clear(BG)
+    let vis = synlige()
+    let rækker = int((vis.len + KOL - 1) / KOL)
+    let maks = max(0, rækker * TRIN_Y + 12 - GRID_H)
+    rul = max(0, min(maks, rul))
+    let åbnet = -1
+    let stjernet = -1
+    for k in range(vis.len) {
+        let x = 24 + (k % KOL) * TRIN_X
+        let y = GRID_Y + 12 + int(k / KOL) * TRIN_Y - rul
+        if y + KORT_H >= GRID_Y and y <= GRID_Y + GRID_H {
+            let r = tegn_kort(serier[vis[k]], x, y)
+            if r == 1 { åbnet = vis[k] }
+            if r == 2 { stjernet = vis[k] }
+        }
+    }
+    if vis.len == 0 and not henter {
+        let s = "Ingen serier passer."
+        if serier.len == 0 { s = "Tryk Opdater for at hente de nyeste kapitler." }
+        else if fane == "fav" { s = "Ingen favoritter endnu - højreklik på et cover." }
+        text((W - text_width(s, 1)) / 2, GRID_Y + 200, s, DÆMP, 1)
+    }
+    if maks > 0 {
+        let bh = int(GRID_H * GRID_H / (GRID_H + maks))
+        let by = GRID_Y + int((GRID_H - bh) * rul / maks)
+        round_rect(W - 10, by, 6, bh, 3, LINJE)
+    }
+
+    # toppen (tegnes ovenpå kortene, så de "forsvinder" under den)
+    rect(0, 0, W, 120, SORT_TOP)
+    rect(0, 120, W, 1, LINJE)
+    round_rect(24, 20, 8, 44, 4, RØD)
+    text(42, 16, "SJ Mini", TEKST, 3)
+    text(44, 68, "MANGA Plus - de nyeste kapitler", DÆMP, 1)
+    text(560, 16, "Søg", DÆMP, 1)
+    søgefelt(560, 36, 360)
+    if knap(940, 36, 136, 30, "Opdater") { opdater() }
+    if chip(24, 86, 70, "Alle", fane == "alle") { fane = "alle" }
+    if chip(102, 86, 110, "Nye i dag", fane == "ny") { fane = "ny" }
+    if chip(220, 86, 110, "Favoritter", fane == "fav") { fane = "fav" }
+    if serier.len > 0 { text(350, 92, "{vis.len} serier", DÆMP, 1) }
+    if henter { spinner(1060, 100) }
+
+    # bunden
+    rect(0, H - 28, W, 28, SORT_TOP)
+    rect(0, H - 28, W, 1, LINJE)
+    if besked_t > 0 {
+        text(24, H - 22, besked, besked_farve, 1)
+    } else {
+        text(24, H - 22, "Klik på et cover for at se kapitlerne. Højreklik eller stjernen gør det til en favorit.", DÆMP, 1)
+    }
+
+    if stjernet >= 0 { skift_fav(serier[stjernet]) }
+    else if åbnet >= 0 { åbn_kapitler(åbnet) }
+}
+
+fn tegn_kapitler() {
+    clear(BG)
+    let c = serier[valgt]
+    let top = 64
+    let rh = 48
+    let liste_h = H - top
+
+    # kapitlerne til højre (tegnes først; toppen dækker dem bagefter)
+    let valgt_kap = -1
+    if not kap_henter and kap_fejl == "" {
+        let maks = max(0, kapitler.len * rh - liste_h)
+        kap_rul = max(0, min(maks, kap_rul))
+        let m = mouse()
+        for k in range(kapitler.len) {
+            let ch = kapitler[k]
+            let ry = top + k * rh - kap_rul
+            if ry + rh >= top and ry <= H {
+                let sidst = ch.id == kap_sidst
+                let over = m[1] >= top and inde(316, ry, W - 340, rh - 6)
+                let bg = KORT
+                if over { bg = KORT_VARM }
+                let kant = bg
+                if sidst { kant = GRØN }
+                round_rect(316, ry, W - 340, rh - 6, 8, kant)
+                round_rect(318, ry + 2, W - 344, rh - 10, 7, bg)
+                text(332, ry + 13, ch.navn, RØD, 1)
+                text(420, ry + 13, klip(ch.under, 520), TEKST, 1)
+                if sidst { text(W - 210, ry + 13, "Sidst læst", GRØN, 1) }
+                else { text(W - 130, ry + 13, ch.dato, DÆMP, 1) }
+                if over and clicked() { valgt_kap = k }
+            }
+        }
+        if maks > 0 {
+            let bh = int(liste_h * liste_h / (liste_h + maks))
+            let by = top + int((liste_h - bh) * kap_rul / maks)
+            round_rect(W - 10, by, 6, bh, 3, LINJE)
+        }
+    }
+    rect(300, 0, W - 300, top, BG)
+    text(324, 18, "Kapitler", TEKST, 2)
+    if besked_t > 0 { text(660, 26, besked, besked_farve, 1) }
+    if kapitler.len > 0 { text(470, 26, "{kapitler.len} gratis kapitler", DÆMP, 1) }
+    if kap_henter {
+        spinner(1060, 30)
+        text(324, 120, "Henter kapitler...", DÆMP, 1)
+    }
+    if kap_fejl != "" {
+        let ls = ombryd(kap_fejl, 700, 3)
+        for i in range(ls.len) { text(324, 120 + i * 18, ls[i], RØD, 1) }
+    }
+
+    # serien til venstre
+    rect(0, 0, 300, H, SORT_TOP)
+    if knap(24, 16, 120, 30, "< Tilbage") {
+        visning = "grid"
+        return nil
+    }
+    if c.pic >= 0 { draw(c.pic, 72, 62) } else { rect(72, 62, 156, 220, LINJE) }
+    let y = 294
+    for l in ombryd(c.navn, 252, 2) {
+        text(24, y, l, TEKST, 1)
+        y += 18
+    }
+    text(24, y + 4, klip(c.tegner, 252), DÆMP, 1)
+    y += 30
+    for l in ombryd(kap_om, 252, 12) {
+        text(24, y, l, DÆMP, 1)
+        y += 18
+    }
+    let ft = "Gør til favorit"
+    if c.fav { ft = "Fjern som favorit" }
+    if knap(24, H - 84, 252, 30, ft) { skift_fav(c) }
+    if knap(24, H - 46, 252, 30, "Åbn på MANGA Plus") { åbn_web(c) }
+
+    if valgt_kap >= 0 { åbn_læser(valgt_kap) }
+}
+
+fn tegn_læser() {
+    clear("#000000")
+    let ch = kapitler[læs_kap]
+    if not læs_klar or læs_total == 0 {
+        spinner(W / 2, VIEW_H / 2 - 20)
+        let s = "Henter kapitlet..."
+        text((W - text_width(s, 1)) / 2, VIEW_H / 2 + 10, s, DÆMP, 1)
+    } else {
+        # siderne under hinanden, som én lang stribe
+        let første = max(0, side - 1)
+        for k in range(første, min(læs_total, første + 4)) {
+            let y = k * SIDE_TRIN - læs_rul
+            if y <= VIEW_H and y + SIDE_TRIN >= 0 {
+                if sider.has("{k}") {
+                    let id = sider["{k}"]
+                    let st = image_size(id)
+                    draw(id, int((W - st[0]) / 2), y)
+                } else {
+                    rect(int((W - 620) / 2), y, 620, SIDE_TRIN - 8, "#151518")
+                    let s = "Henter side {k + 1}..."
+                    text((W - text_width(s, 1)) / 2, y + 300, s, DÆMP, 1)
+                }
+            }
+        }
+        let ey = læs_total * SIDE_TRIN - læs_rul
+        if ey < VIEW_H {
+            let s = "Slut på kapitlet"
+            text((W - text_width(s, 3)) / 2, ey + 60, s, TEKST, 3)
+            let n = "Det er det nyeste gratis kapitel. Esc går tilbage."
+            if læs_kap + 1 < kapitler.len {
+                let nk = kapitler[læs_kap + 1]
+                n = "Næste: {nk.navn} {nk.under}  -  tryk Enter"
+            }
+            text((W - text_width(n, 1)) / 2, ey + 130, n, DÆMP, 1)
+        }
+    }
+    # bundlinjen
+    rect(0, VIEW_H, W, H - VIEW_H, SORT_TOP)
+    text(16, VIEW_H + 6, "Hjul/pile ruller   Esc tilbage", DÆMP, 1)
+    let t = "{ch.navn}  {klip(ch.under, 400)}"
+    text((W - text_width(t, 1)) / 2, VIEW_H + 6, t, TEKST, 1)
+    if læs_total > 0 {
+        let p = "Side {side + 1} / {læs_total}"
+        text(W - 16 - text_width(p, 1), VIEW_H + 6, p, DÆMP, 1)
+    }
+}
+
+fn læser_taster() {
+    if not læs_klar or læs_total == 0 { return nil }
+    rul_med(-wheel() * 140)
+    if pressed("down") { rul_med(140) }
+    if pressed("up") { rul_med(-140) }
+    if pressed("space") { rul_med(VIEW_H - 80) }
+    if pressed("right") {
+        if ved_slut() { næste_kapitel() } else { rul_med(SIDE_TRIN) }
+    }
+    if pressed("left") { rul_med(-SIDE_TRIN) }
+    if pressed("enter") and ved_slut() { næste_kapitel() }
+}
+
+fn søg_taster() {
+    if not søg_aktiv { return nil }
+    let t = typed()
+    for c in t.chars { søg.push(c) }
+    if t != "" { rul = 0 }
+    if pressed("backspace") and søg.len > 0 { søg.pop() }
+}
+
+# ═════════════════════════════ LØKKEN ════════════════════════════════
+
+window("SJ Mini", W, H)
+indlæs_liste()          # den sidste liste, mens den nye hentes
+let skud = env("JJ_SKUD", "")
+let scene = env("JJ_SCENE", "")
+let skud_tid = 0.0
+if scene == "" { opdater() }
+if scene == "kapitler" and serier.len > 0 {
+    valgt = 0
+    visning = "kapitler"
+    indlæs_kapitler()
+}
+if scene == "læs" and serier.len > 0 {
+    valgt = 0
+    indlæs_kapitler()
+    åbn_læser(0)
+    læs_rul = 300
+}
+
+while frame() {
+    let dt = min(0.1, delta())
+    tid += dt
+    if besked_t > 0 and not henter { besked_t -= dt }
+    let esc = pressed("esc")
+    if henter {
+        hent_t += dt
+        if hent_t >= 0.3 {
+            hent_t = 0.0
+            if indlæs_liste() {
+                henter = false
+                if serier.len > 0 { sig(GRØN, "{serier.len} serier med nye kapitler.") }
+            }
+        }
+    }
+    indlæs_et_cover()
+    if visning == "grid" {
+        if esc and søg_aktiv {
+            søg_aktiv = false
+            søg = []
+        } else if esc {
+            break
+        }
+        søg_taster()
+        rul -= wheel() * 80
+        tegn_grid()
+    } else if visning == "kapitler" {
+        if kap_henter {
+            kap_t += dt
+            if kap_t >= 0.25 {
+                kap_t = 0.0
+                if indlæs_kapitler() { kap_henter = false }
+            }
+        }
+        kap_rul -= wheel() * 60
+        if esc { visning = "grid" }
+        tegn_kapitler()
+    } else {
+        læser_sider(dt)
+        læser_taster()
+        if esc { visning = "kapitler" }
+        if visning == "læs" { tegn_læser() }
+    }
+
+    if skud != "" {
+        skud_tid += dt
+        if skud_tid > 1.5 {
+            screenshot(skud)
+            break
+        }
+    }
+}
+frigiv_sider()

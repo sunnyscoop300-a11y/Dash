@@ -262,6 +262,13 @@ fn jj_call(name: str, args: []value, line: int) (value | failed | void) = {
 			viper::image_free(&img);
 			img = r;
 		};
+		// en plads, som free_image() har tømt, genbruges
+		for (let k = 0z; k < len(jj_imgs); k += 1) {
+			if (jj_imgs[k].w == 0 && len(jj_imgs[k].pixels) == 0) {
+				jj_imgs[k] = img;
+				return k: i64;
+			};
+		};
 		append(jj_imgs, img)!;
 		return (len(jj_imgs) - 1): i64;
 	case "draw" =>
@@ -269,6 +276,15 @@ fn jj_call(name: str, args: []value, line: int) (value | failed | void) = {
 		const id = jj_int(name, args, 0, line)?;
 		if (id < 0 || id: size >= len(jj_imgs)) return dief(line, "draw(): intet billede nr. {}", id);
 		viper::draw_image(win, &jj_imgs[id], jj_int(name, args, 1, line)?, jj_int(name, args, 2, line)?);
+		return nilv: value;
+	case "free_image" =>
+		// free_image(nr): giv billedets hukommelse tilbage (nummeret kan genbruges)
+		const id = jj_int(name, args, 0, line)?;
+		if (id >= 0 && id: size < len(jj_imgs)) {
+			viper::image_free(&jj_imgs[id]);
+			jj_imgs[id].w = 0;
+			jj_imgs[id].h = 0;
+		};
 		return nilv: value;
 	case "image_size" =>
 		const id = jj_int(name, args, 0, line)?;

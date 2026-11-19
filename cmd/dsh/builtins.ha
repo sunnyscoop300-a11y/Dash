@@ -599,6 +599,17 @@ fn method(obj: value, name: str, args: []value, line: int) (value | failed) = {
 		case "has" =>
 			margs(name, args, 1, line)?;
 			return map_find(m, args[0]) is size;
+		case "remove" =>
+			// m.remove(nøgle) → værdien, der blev fjernet (eller nil)
+			margs(name, args, 1, line)?;
+			match (map_find(m, args[0])) {
+			case let i: size =>
+				const v = m.vals[i];
+				delete(m.keys[i]);
+				delete(m.vals[i]);
+				return v;
+			case void => return nilv;
+			};
 		case => void;
 		};
 	case => void;

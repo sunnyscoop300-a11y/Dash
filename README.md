@@ -242,6 +242,11 @@ Afspiller med `mpv` (eller `ffplay`), læser tags med `ffprobe`.
 dsh eksempler/nonbiri.Dash ~/Musik
 ```
 
+**Eksempel:** `eksempler/sj-mini.Dash` — *SJ Mini*, de nyeste kapitler fra
+MANGA Plus: klik på et cover for kapitlerne og læs dem som én lang stribe.
+Hjælperen `eksempler/sj.py` (python3 + pillow) henter listen, kapitlerne og
+siderne. Højreklik eller stjernen gør en serie til favorit.
+
 **Eksempel:** `eksempler/bob.Dash` — *Bobs butik*, en lille app-butik til dine
 egne Dash-programmer og spil. Bob finder `.Dash`-filerne i `~/Dash/eksempler`
 (eller `BOB_KILDER`), bygger dem med Violet til `~/.local/bin` og laver en
@@ -279,6 +284,8 @@ Fra nu af får hver version et navn fra Farming Life in Another World
   bogstav (`s[i]` og `.len` tæller bytes).
 - JJGui-farver kan være gennemsigtige: `"#rrggbbaa"`, fx `"#00000060"` til en
   skygge.
+- `free_image(nr)` giver et billedes hukommelse tilbage i JJGui (nummeret
+  genbruges af næste `image()`), og maps har fået `.remove(nøgle)`.
 - Boxman har fået 25 julebaner med snemand, og Nonbiri er kommet til.
 
 ## Farver i nano og Kate
