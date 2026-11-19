@@ -13,8 +13,8 @@
 #
 #   dsh eksempler/sj-mini.Dash
 #
-# sj.py findes i SJ_PY, ~/.local/share/sj-mini/sj.py, ~/vipergui/cmd/sj/sj.py
-# eller ~/Dash/eksempler/sj.py. Den skal bruge python3 og pillow.
+# sj.py findes i SJ_PY, ~/.local/share/sj-mini/sj.py, ~/Dash/eksempler/sj.py
+# eller ~/vipergui/cmd/sj/sj.py. Den skal bruge python3 og pillow.
 
 let HJEM = env("HOME", ".")
 let DATA = "{HJEM}/.local/share/sj-mini"
@@ -22,8 +22,8 @@ let DATA = "{HJEM}/.local/share/sj-mini"
 fn q(s) { return "'" + s.replace("'", "'\\''") + "'" }
 
 let HJÆLPER = env("SJ_PY", "")
-for h in ["{DATA}/sj.py", "{HJEM}/vipergui/cmd/sj/sj.py", "{HJEM}/Dash/eksempler/sj.py",
-          "{HJEM}/dash/eksempler/sj.py", "cmd/sj/sj.py", "eksempler/sj.py"] {
+for h in ["{DATA}/sj.py", "{HJEM}/Dash/eksempler/sj.py", "{HJEM}/dash/eksempler/sj.py",
+          "eksempler/sj.py", "{HJEM}/vipergui/cmd/sj/sj.py", "cmd/sj/sj.py"] {
     if HJÆLPER == "" and exists(h) { HJÆLPER = h }
 }
 

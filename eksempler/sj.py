@@ -15,6 +15,7 @@ Test it by hand:  python3 cmd/sj/sj.py list
 """
 
 import io, os, re, shutil, subprocess, sys, tempfile, time, uuid
+from concurrent.futures import ThreadPoolExecutor
 import urllib.request
 
 DATA = os.path.expanduser("~/.local/share/sj-mini")
@@ -227,12 +228,16 @@ def do_list():
     if not rows:
         fail("Fandt ingen opdateringer på MANGA Plus.")
 
+    # Fetch the covers 8 at a time (one by one took most of the time).
+    with ThreadPoolExecutor(8) as pool:
+        pics = list(pool.map(lambda r: cover(r["img"], r["id"]), rows))
+
     now = int(time.time())
     lines = [f"OK\t{len(rows)}"]
-    for r in rows:
+    for r, pic in zip(rows, pics):
         fresh = "1" if r["when"] and now - r["when"] < 86400 else "0"
         lines.append("\t".join(clean(x) for x in (
-            r["id"], r["name"], r["author"], ago(r["when"]), fresh, cover(r["img"], r["id"]))))
+            r["id"], r["name"], r["author"], ago(r["when"]), fresh, pic)))
     write_list(lines)
 
 
@@ -314,23 +319,37 @@ def do_pages(tid, cid):
     write_atomic(info, [f"OK\t{len(pages)}"])
 
     from PIL import Image
-    for i, (url, key) in enumerate(pages):
+
+    def one(job):
+        i, (url, key) = job
         path = os.path.join(folder, f"{i:03d}.png")
         if os.path.exists(path):
-            continue
+            return
         try:
-            raw = bytearray(get(url, timeout=30, extra={"Plus-Vw-Token": token}))
+            raw = get(url, timeout=30, extra={"Plus-Vw-Token": token})
             if key:
-                k = bytes.fromhex(key)
-                for j in range(len(raw)):
-                    raw[j] ^= k[j % len(k)]
-            im = Image.open(io.BytesIO(bytes(raw))).convert("RGB")
+                raw = unxor(raw, bytes.fromhex(key))
+            im = Image.open(io.BytesIO(raw)).convert("RGB")
             w = round(im.width * PAGE_H / im.height)
             tmp = path + ".tmp.png"
             im.resize((w, PAGE_H), Image.LANCZOS).save(tmp, compress_level=0)
             os.replace(tmp, path)
         except Exception as e:
             log(f"page {cid}/{i}: {e}")
+
+    # 4 at a time; they start in order, so the first pages are ready first.
+    with ThreadPoolExecutor(4) as pool:
+        list(pool.map(one, enumerate(pages)))
+
+
+def unxor(data, key):
+    """XORs data with the repeated key. Done as two big numbers, which is
+    hundreds of times faster than a Python loop over every byte."""
+    if not key:
+        return data
+    stream = (key * (len(data) // len(key) + 1))[:len(data)]
+    n = int.from_bytes(data, "big") ^ int.from_bytes(stream, "big")
+    return n.to_bytes(len(data), "big")
 
 
 def do_open(tid):
