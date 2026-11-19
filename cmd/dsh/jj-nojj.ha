@@ -10,8 +10,10 @@
 //       text(20, 24, "Hej!", "white", 2)
 //       if button("Klik", 300, 200) { echo "klik!" }
 //   }
+use ascii;
 use fmt;
 use math;
+use os;
 use strings;
 use viper;
 
@@ -132,10 +134,19 @@ fn jj_call(name: str, args: []value, line: int) (value | failed | void) = {
 		if (jj_win != null) return die(line, "window(): der er allerede et vindue");
 		const title = tostr(args[0]);
 		const w = jj_int(name, args, 1, line)?, h = jj_int(name, args, 2, line)?;
+		// app id "dash-<script>": så finder menuen og proceslinjen den
+		// rigtige .desktop-fil og logoet (Bob installerer dem med det navn)
+		const stem = jj_stem(script_name);
+		if (os::getenv("VIPER_APP_ID") is void) {
+			match (os::setenv("VIPER_APP_ID", strings::concat("dash-", stem)!)) {
+			case => void;
+			};
+		};
 		match (viper::open(title, w, h)) {
 		case let win: *viper::window =>
 			jj_win = win;
 			cam_focal(win);
+			jj_auto_icon(win, stem);
 		case let e: viper::error =>
 			return dief(line, "window(): kan ikke åbne et vindue: {}", viper::strerror(e));
 		case nomem =>
@@ -277,6 +288,18 @@ fn jj_call(name: str, args: []value, line: int) (value | failed | void) = {
 		if (id < 0 || id: size >= len(jj_imgs)) return dief(line, "draw(): intet billede nr. {}", id);
 		viper::draw_image(win, &jj_imgs[id], jj_int(name, args, 1, line)?, jj_int(name, args, 2, line)?);
 		return nilv: value;
+	case "window_icon" =>
+		// window_icon("logo.png"): vinduets ikon (proceslinjen, alt-tab)
+		const win = jj_window(name, line)?;
+		const p = expanduser(str_arg(name, if (len(args) > 0) args[0] else nilv, line)?);
+		let img = match (viper::load_png(p)) {
+		case let i: viper::image => yield i;
+		case let e: viper::imgerror =>
+			return dief(line, "window_icon(): kan ikke læse '{}': {}", p, viper::imgstrerror(e));
+		};
+		viper::set_icon(win, &img);
+		viper::image_free(&img);
+		return nilv: value;
 	case "free_image" =>
 		// free_image(nr): giv billedets hukommelse tilbage (nummeret kan genbruges)
 		const id = jj_int(name, args, 0, line)?;
@@ -351,5 +374,39 @@ fn jj_close() void = {
 		viper::close(w);
 		jj_win = null;
 	case null => void;
+	};
+};
+
+// "eksempler/Boxman.Dash" → "boxman"
+fn jj_stem(path: str) str = {
+	const (_, base) = strings::rcut(path, "/");
+	if (base == "") base = path;
+	const (stem, _) = strings::rcut(base, ".");
+	if (stem == "") stem = base;
+	return ascii::strlower(stem)!;
+};
+
+// Finder appens logo selv: ikoner/<navn>.png ved siden af scriptet, eller
+// det logo Bob har installeret i ~/.local/share/icons.
+fn jj_auto_icon(win: *viper::window, stem: str) void = {
+	const (dir, _) = strings::rcut(script_name, "/");
+	const home = match (os::getenv("HOME")) {
+	case let h: str => yield h;
+	case void => yield "";
+	};
+	const steder = [
+		if (strings::contains(script_name, "/")) fmt::asprintf("{}/ikoner/{}.png", dir, stem)!
+			else fmt::asprintf("ikoner/{}.png", stem)!,
+		fmt::asprintf("{}/.local/share/icons/hicolor/256x256/apps/dash-{}.png", home, stem)!,
+	];
+	defer for (let s .. steder) free(s);
+	for (let s .. steder) {
+		match (viper::load_png(s)) {
+		case let img: viper::image =>
+			viper::set_icon(win, &img);
+			viper::image_free(&img);
+			return;
+		case viper::imgerror => void;
+		};
 	};
 };

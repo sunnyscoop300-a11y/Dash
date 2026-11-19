@@ -17,7 +17,7 @@ const BUILTIN_FNS: [_]str = ["print", "len", "str", "int", "float", "type", "ran
 const JJ_FNS: [_]str = ["window", "frame", "close_window", "clear", "rect", "outline",
 	"round_rect", "circle", "line", "pixel", "polygon", "text", "text_width",
 	"button", "mouse", "clicked", "right_clicked", "mouse_down", "wheel", "key",
-	"pressed", "typed", "delta", "width", "height", "image", "draw", "image_size", "free_image",
+	"pressed", "typed", "delta", "width", "height", "image", "draw", "image_size", "free_image", "window_icon",
 	"sound", "sound_file", "play", "screenshot",
 	"camera", "fog", "box3d", "floor3d", "circle3d", "project", "render3d"];
 

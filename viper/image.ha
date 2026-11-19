@@ -459,7 +459,7 @@ export fn set_icon(win: *window, img: *image) void = {
 	// Wayland compositors take the icon from the .desktop file that
 	// matches the window's app id (the program name; see `make desktop`).
 	case *wl_backend => void;
-	case *x11_backend => void;
+	case let be: *x11_backend => x11_icon(be, img);
 	};
 };
 

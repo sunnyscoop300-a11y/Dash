@@ -239,6 +239,15 @@ fn x11_open(title: str, width: int, height: int) (*x11_backend | error | nomem) 
 	endian::leputu32(hints[28..32], ww: u32);
 	endian::leputu32(hints[32..36], wh: u32);
 	x_prop(be, 40, 41, 32, hints)?; // WM_NORMAL_HINTS, WM_SIZE_HINTS
+	// WM_CLASS = app id, så proceslinjen finder den rigtige .desktop-fil (og ikonet)
+	const id = strings::toutf8(app_id());
+	let cls: []u8 = [];
+	defer free(cls);
+	append(cls, id...)!;
+	append(cls, 0u8)!;
+	append(cls, id...)!;
+	append(cls, 0u8)!;
+	x_prop(be, 67, 31, 8, cls)?; // WM_CLASS, STRING
 
 	// CreateGC + MapWindow
 	be.gc = x_newid(be);
@@ -591,4 +600,27 @@ fn x11_key(win: *window, be: *x11_backend, ev: []u8, repeat: bool) void = {
 		repeat = repeat,
 		text = match (r) { case let c: rune => yield c; case void => yield '\0'; },
 	});
+};
+
+// Vinduesikonet som _NET_WM_ICON: bredde, højde og pixels (0xAARRGGBB),
+// skaleret ned til 48x48, så det passer i én forespørgsel.
+fn x11_icon(be: *x11_backend, img: *image) void = {
+	const small = match (resize(img, 48, 48)) {
+	case let i: image => yield i;
+	case => return;
+	};
+	defer image_free(&small);
+	const atom = match (x_intern(be, "_NET_WM_ICON")) {
+	case let a: u32 => yield a;
+	case => return;
+	};
+	let data: []u8 = alloc([0u8...], 8 + len(small.pixels) * 4)!;
+	defer free(data);
+	endian::leputu32(data[0..4], 48);
+	endian::leputu32(data[4..8], 48);
+	for (let i = 0z; i < len(small.pixels); i += 1) {
+		endian::leputu32(data[8 + i * 4..12 + i * 4], small.pixels[i]);
+	};
+	match (x_prop(be, atom, 6, 32, data)) { case => void; }; // CARDINAL
+	match (x11_flush(be)) { case => void; };
 };

@@ -14,6 +14,7 @@
 #   # bob-kategori: spil            (spil eller program)
 #   # bob-farve: #e8a33a
 #   # bob-om: Skub kasserne hen på målene.
+#   # bob-ikon: ikoner/boxman.png   (standard: ikoner/<navn>.png ved siden af)
 #   # bob: skjul                     (vis ikke i butikken)
 #
 # "Installer" bygger programmet med Violet til ~/.local/bin/<navn> og laver en
@@ -24,6 +25,7 @@ let TMP = env("TMPDIR", "/tmp")
 let BIN = "{HJEM}/.local/bin"
 let APPS = "{HJEM}/.local/share/applications"
 let DATA = "{HJEM}/.local/share/bob"
+let IKONER = "{HJEM}/.local/share/icons/hicolor/256x256/apps"
 
 let DSH = which("dsh")
 if not DSH { DSH = which("dsh-hare") }
@@ -75,7 +77,7 @@ fn indlæs() {
                 if not set_id.has(id) {
                     let p = {"fil": f, "id": id, "navn": f.stem, "kategori": "", "farve": "",
                              "om": "", "hjælp": [], "skjul": false, "gui": false,
-                             "status": "ny", "job": ""}
+                             "status": "ny", "job": "", "ikon": "", "lille": -1, "stor": -1}
                     let i = 0
                     let hoved = true
                     let sat = {}
@@ -95,12 +97,15 @@ fn indlæs() {
                             else if k == "bob-kategori" { p.kategori = v.lower() }
                             else if k == "bob-farve" { p.farve = "#" + v.replace("#", "") }
                             else if k == "bob-om" { p.om = pæn(v) }
+                            else if k == "bob-ikon" { p.ikon = "{f.dir}/{v}" }
                             else if s == "bob: skjul" { p.skjul = true }
                             else if p.hjælp.len < 14 and not k.starts_with("bob-") and not s.starts_with("# bob") { p.hjælp.push(pæn(s)) }
                             if k.starts_with("bob-") { sat[k] = true }
                         }
                     }
                     if p.om == "" and p.hjælp.len > 0 { p.om = p.hjælp[0] }
+                    if p.ikon == "" or not exists(p.ikon) { p.ikon = "{f.dir}/ikoner/{id}.png" }
+                    if not exists(p.ikon) { p.ikon = "" }
                     if p.kategori == "" {
                         p.kategori = "program"
                         if (p.om + " " + p.navn).lower().contains("spil") { p.kategori = "spil" }
@@ -205,9 +210,16 @@ fn genvej(p) {
         ikon = "applications-games"
         kat = "Game;"
     }
-    let d = "[Desktop Entry]\nType=Application\nName={p.navn}\nComment={p.om}\nExec={BIN}/{p.id}\nIcon={ikon}\nTerminal=false\nCategories={kat}\n"
-    try sh -c "mkdir -p {q(APPS)}"
-    write("{APPS}/bob-{p.id}.desktop", d)
+    # appens eget logo, hvis den har et
+    if p.ikon != "" {
+        try sh -c "mkdir -p {q(IKONER)} && cp {q(p.ikon)} {q(IKONER + "/dash-" + p.id + ".png")}"
+        ikon = "{IKONER}/dash-{p.id}.png"
+    }
+    # JJGui giver vinduet app id "dash-<navn>", så filen hedder det samme
+    let d = "[Desktop Entry]\nType=Application\nName={p.navn}\nComment={p.om}\nExec={BIN}/{p.id}\nIcon={ikon}\nStartupWMClass=dash-{p.id}\nTerminal=false\nCategories={kat}\n"
+    try sh -c "mkdir -p {q(APPS)}; rm -f {q(APPS + "/bob-" + p.id + ".desktop")}"
+    write("{APPS}/dash-{p.id}.desktop", d)
+    try sh -c "update-desktop-database {q(APPS)} 2>/dev/null"
 }
 
 fn job_færdig() {
@@ -233,7 +245,7 @@ fn job_færdig() {
 }
 
 fn fjern(p) {
-    try sh -c "rm -f {q(BIN + "/" + p.id)} {q(APPS + "/bob-" + p.id + ".desktop")} {q(DATA + "/installeret/" + p.id)}"
+    try sh -c "rm -f {q(BIN + "/" + p.id)} {q(APPS + "/bob-" + p.id + ".desktop")} {q(APPS + "/dash-" + p.id + ".desktop")} {q(IKONER + "/dash-" + p.id + ".png")} {q(DATA + "/installeret/" + p.id)}"
     p.status = "ny"
     bob_siger = "{p.navn} er fjernet. Den ligger stadig på hylden, hvis du fortryder."
 }
@@ -386,6 +398,18 @@ fn sidebjælke() {
 }
 
 fn ikon(p, x, y, s) {
+    if p.ikon != "" {
+        # appens eget logo, skaleret én gang til kortet og detaljerne
+        let id = p.lille
+        if s > 64 { id = p.stor }
+        if id < 0 {
+            id = image(p.ikon, s, s)
+            if s > 64 { p.stor = id } else { p.lille = id }
+        }
+        round_rect(x + 2, y + 4, s, s, int(s / 5), "#00000030")
+        draw(id, x, y)
+        return nil
+    }
     round_rect(x + 2, y + 4, s, s, int(s / 5), "#00000040")
     round_rect(x, y, s, s, int(s / 5), p.farve)
     round_rect(x, y, s, int(s / 2), int(s / 5), "#ffffff25")

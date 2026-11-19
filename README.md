@@ -284,6 +284,10 @@ Fra nu af får hver version et navn fra Farming Life in Another World
   bogstav (`s[i]` og `.len` tæller bytes).
 - JJGui-farver kan være gennemsigtige: `"#rrggbbaa"`, fx `"#00000060"` til en
   skygge.
+- **Egne logoer:** hver app har sit logo i `eksempler/ikoner/<app>.png`
+  (tegnet med JJGui af `ikoner/tegn-ikoner.Dash`). JJGui giver vinduet app id
+  `dash-<app>` og finder selv logoet, og Bob lægger det i menuen.
+  `window_icon("logo.png")` sætter et ikon i hånden.
 - `free_image(nr)` giver et billedes hukommelse tilbage i JJGui (nummeret
   genbruges af næste `image()`), og maps har fået `.remove(nøgle)`.
 - Boxman har fået 25 julebaner med snemand, og Nonbiri er kommet til.

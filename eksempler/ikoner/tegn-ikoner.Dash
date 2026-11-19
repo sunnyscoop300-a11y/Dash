@@ -1,0 +1,203 @@
+#!/usr/bin/env dsh
+# tegn-ikoner.Dash — tegner logoerne til Dash-apps (256x256 PNG) med JJGui
+# bob: skjul
+#
+#   dsh eksempler/ikoner/tegn-ikoner.Dash [mappe]
+#
+# Hvert logo tegnes i vinduet og gemmes med screenshot() som <app>.png.
+# JJGui finder selv logoet (ikoner/<app>.png ved siden af scriptet), og
+# Bob lægger det i menuen, når appen installeres.
+
+let ud = "eksempler/ikoner"
+if args.len > 0 { ud = args[0] }
+
+window("Dash-ikoner", 256, 256)
+let S = 256
+
+fn tern(x, y, w, h, c) { round_rect(x, y, w, h, 18, c) }
+
+# ── Boxman: en kasse på vej hen på sit mål ───────────────────────────
+fn boxman() {
+    clear("#2a2440")
+    for i in range(0, S, 32) {
+        line(i, 0, i, S, "#332c4e")
+        line(0, i, S, i, "#332c4e")
+    }
+    # målet
+    circle(186, 186, 36, "#ffcf3a50")
+    circle(186, 186, 26, "#ffcf3a")
+    circle(186, 186, 16, "#2a2440")
+    # kassen
+    round_rect(46, 62, 132, 132, 14, "#00000060")
+    round_rect(40, 52, 132, 132, 14, "#9a5a1c")
+    round_rect(50, 62, 112, 112, 8, "#e8a33a")
+    rect(50, 62, 112, 14, "#f6c068")
+    polygon([[56, 162], [70, 162], [156, 76], [142, 76]], "#9a5a1c")
+    polygon([[56, 76], [70, 76], [156, 162], [142, 162]], "#b8742c")
+    for p in [[58, 70], [148, 70], [58, 160], [148, 160]] { circle(p[0], p[1], 5, "#6a3a10") }
+    # skub-pil
+    polygon([[188, 104], [222, 120], [188, 136]], "#ffffff")
+    rect(176, 114, 14, 12, "#ffffff")
+}
+
+# ── Cube Head Runners: et terningehoved, der spæner hen ad sporet ────
+fn cube_runner() {
+    for y in range(0, S, 8) {
+        let t = y / S
+        let g = int(190 - 80 * t)
+        let b = int(90 - 50 * t)
+        rect(0, y, S, 8, 255 * 65536 + g * 256 + b)
+    }
+    # sporet i perspektiv
+    polygon([[110, 150], [146, 150], [236, 256], [20, 256]], "#5a3a2a")
+    line(118, 150, 60, 256, "#c8c8d0")
+    line(138, 150, 196, 256, "#c8c8d0")
+    for i in range(5) {
+        let y = 160 + i * 20
+        let w = 30 + i * 20
+        rect(128 - w, y, w * 2, 4, "#7a5a3a")
+    }
+    # fartstreger
+    for i in range(4) { round_rect(18 + i * 6, 70 + i * 22, 50 - i * 8, 6, 3, "#ffffffb0") }
+    # terningehovedet (isometrisk)
+    polygon([[128, 40], [196, 72], [128, 104], [60, 72]], "#ffe0a0")
+    polygon([[60, 72], [128, 104], [128, 184], [60, 152]], "#f0a040")
+    polygon([[128, 104], [196, 72], [196, 152], [128, 184]], "#d07020")
+    # ansigtet på forsiden
+    round_rect(76, 104, 18, 22, 6, "#ffffff")
+    round_rect(102, 116, 18, 22, 6, "#ffffff")
+    round_rect(82, 112, 9, 11, 4, "#2a1a10")
+    round_rect(108, 124, 9, 11, 4, "#2a1a10")
+    polygon([[84, 146], [114, 160], [108, 166], [80, 152]], "#7a2a10")
+}
+
+# ── Cube Head Demo: terningehovedet og en P-mønt ─────────────────────
+fn jj_demo() {
+    clear("#7a3aa0")
+    circle(128, 128, 120, "#8a4ab0")
+    circle(128, 128, 90, "#9a5ac0")
+    round_rect(54, 70, 104, 104, 16, "#00000050")
+    round_rect(48, 62, 104, 104, 16, "#ffd0f0")
+    round_rect(48, 62, 104, 24, 16, "#ffffff")
+    round_rect(68, 96, 20, 26, 7, "#2a1040")
+    round_rect(110, 96, 20, 26, 7, "#2a1040")
+    circle(80, 102, 4, "#ffffff")
+    circle(122, 102, 4, "#ffffff")
+    polygon([[78, 138], [122, 138], [100, 154]], "#c0306a")
+    # P-mønten
+    circle(186, 178, 42, "#b8860b")
+    circle(186, 176, 38, "#ffcf3a")
+    circle(186, 176, 30, "#ffe27a")
+    text(186 - text_width("P", 4) / 2, 176 - 32, "P", "#b8860b", 4)
+}
+
+# ── Nonbiri: det store træ, solen og marken ──────────────────────────
+fn nonbiri() {
+    for y in range(0, 176, 8) {
+        let t = y / 176
+        let r = int(96 + 100 * t)
+        let g = int(164 + 64 * t)
+        rect(0, y, S, 8, r * 65536 + g * 256 + 240)
+    }
+    circle(196, 62, 40, "#fff2b040")
+    circle(196, 62, 28, "#ffe27a")
+    circle(130, 330, 200, "#4f8f3a")
+    rect(0, 176, S, 80, "#62a548")
+    # marken med tomatplanter
+    round_rect(108, 200, 140, 40, 10, "#6e4a2a")
+    for i in range(5) {
+        let x = 124 + i * 26
+        line(x, 230, x, 206, "#3f8a3a")
+        line(x + 1, 230, x + 1, 206, "#3f8a3a")
+        polygon([[x, 220], [x - 9, 212], [x - 2, 224]], "#52b04a")
+        circle(x + 5, 208, 6, "#e04030")
+    }
+    # det store træ
+    polygon([[30, 236], [48, 110], [74, 110], [92, 236]], "#6b4424")
+    for b in [[60, 70, 62], [22, 100, 44], [104, 90, 46], [62, 34, 42]] { circle(b[0], b[1], b[2], "#2f6b2f") }
+    for b in [[66, 60, 44], [30, 92, 30], [100, 80, 32], [70, 30, 28]] { circle(b[0], b[1], b[2], "#3f8a3a") }
+    for b in [[74, 48, 22], [104, 72, 16]] { circle(b[0], b[1], b[2], "#52a24a") }
+    # en lille node
+    circle(200, 132, 10, "#2a2a3a")
+    rect(208, 96, 4, 38, "#2a2a3a")
+    polygon([[212, 96], [228, 104], [212, 112]], "#2a2a3a")
+}
+
+# ── Serietracker: et tv med flueben og stjerner ──────────────────────
+fn serietracker() {
+    clear("#2a5ab0")
+    circle(128, 128, 118, "#3468c0")
+    line(110, 42, 86, 14, "#dde8ff")
+    line(111, 42, 87, 14, "#dde8ff")
+    line(146, 42, 170, 14, "#dde8ff")
+    line(147, 42, 171, 14, "#dde8ff")
+    round_rect(40, 46, 176, 128, 18, "#00000060")
+    round_rect(34, 40, 176, 128, 18, "#1a1f30")
+    round_rect(46, 52, 152, 104, 10, "#6ab0ff")
+    round_rect(46, 52, 152, 30, 10, "#8ac4ff")
+    # flueben
+    polygon([[86, 104], [104, 122], [154, 72], [166, 84], [104, 146], [74, 116]], "#3ccf74")
+    rect(96, 168, 52, 10, "#1a1f30")
+    # stjerner
+    for i in range(3) {
+        let cx = 76 + i * 52
+        let cy = 212
+        let p = []
+        for k in range(10) {
+            let v = -1.5708 + k * 0.6283
+            let r = 20
+            if k % 2 == 1 { r = 8 }
+            p.push([cx + cos(v) * r, cy + sin(v) * r])
+        }
+        let c = "#f5c518"
+        if i == 2 { c = "#ffffff60" }
+        polygon(p, c)
+    }
+}
+
+# ── Bob: butiksmanden under markisen ─────────────────────────────────
+fn bob() {
+    clear("#f6ead0")
+    for i in range(6) {
+        let c = "#d0453a"
+        if i % 2 == 1 { c = "#fff4dc" }
+        rect(i * 44, 0, 44, 60, c)
+        circle(i * 44 + 22, 60, 22, c)
+    }
+    rect(0, 0, S, 8, "#8a2a22")
+    let x = 128
+    let y = 168
+    round_rect(x - 60, y + 62, 120, 18, 9, "#00000030")
+    circle(x, y, 72, "#2a8080")
+    circle(x, y, 67, "#3aa0a0")
+    circle(x - 22, y - 26, 18, "#ffffff30")
+    round_rect(x - 40, y + 4, 80, 56, 12, "#fff4dc")
+    rect(x - 40, y + 4, 80, 10, "#d0453a")
+    for s in [-1, 1] {
+        circle(x + s * 24, y - 26, 17, "#ffffff")
+        circle(x + s * 24 + 4, y - 22, 8, "#1a2a2a")
+        circle(x + s * 24 + 1, y - 26, 3, "#ffffff")
+    }
+    polygon([[x - 20, y - 2], [x + 20, y - 2], [x, y + 14]], "#7a2a22")
+    polygon([[x - 52, y - 52], [x - 38, y - 80], [x + 38, y - 80], [x + 52, y - 52]], "#d0453a")
+    round_rect(x - 6, y - 60, 76, 12, 6, "#a83228")
+    circle(x, y - 82, 7, "#fff4dc")
+}
+
+let ikoner = ["boxman", "cube-runner", "jj-demo", "nonbiri", "serietracker", "bob"]
+let i = 0
+while frame() {
+    if i >= ikoner.len { break }
+    let n = ikoner[i]
+    if n == "boxman" { boxman() }
+    else if n == "cube-runner" { cube_runner() }
+    else if n == "jj-demo" { jj_demo() }
+    else if n == "nonbiri" { nonbiri() }
+    else if n == "serietracker" { serietracker() }
+    else if n == "bob" { bob() }
+    screenshot("{ud}/{n}.png")
+    # afrundede, gennemsigtige hjørner (kræver python3 + pillow; ellers firkantet)
+    try python3 "{ud}/rund.py" "{ud}/{n}.png" 2> /dev/null
+    echo "  ✔ {ud}/{n}.png"
+    i += 1
+}
