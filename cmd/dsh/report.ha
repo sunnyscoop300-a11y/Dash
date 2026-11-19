@@ -4,7 +4,9 @@ use io;
 use os;
 use strings;
 
-def VERSION: str = "0.12.0-hare";
+def VERSION: str = "0.13.0-hare";
+// hver version får et navn fra Farming Life in Another World
+def KODENAVN: str = "Hiraku";
 
 let script_name = "dsh";
 let script_src: []u8 = [];
@@ -51,7 +53,7 @@ fn version() void = {
 		"        __",
 		"       / /",
 		"      / /___",
-		"     /___  /      dsh 0.12.0-hare",
+		"     /___  /      dsh",
 		"        / /       hurtigere end sh",
 		"       / /",
 		"      /_/",
@@ -59,7 +61,12 @@ fn version() void = {
 	const tty = is_tty(os::stdout_file);
 	for (let i = 0z; i < len(lines); i += 1) {
 		const c = if (!tty) "" else if (i < 4) "\x1b[1;38;5;196m" else "\x1b[1;38;5;208m";
-		fmt::printfln("{}{}{}", c, lines[i], if (tty) "\x1b[0m" else "")!;
+		if (i == 3) {
+			fmt::printfln("{}{} {} «{}»{}", c, lines[i], VERSION, KODENAVN,
+				if (tty) "\x1b[0m" else "")!;
+		} else {
+			fmt::printfln("{}{}{}", c, lines[i], if (tty) "\x1b[0m" else "")!;
+		};
 	};
 	fmt::printfln("{}  .Dash — et script-sprog med superfart ⚡{}",
 		if (tty) "\x1b[2m" else "", if (tty) "\x1b[0m" else "")!;
