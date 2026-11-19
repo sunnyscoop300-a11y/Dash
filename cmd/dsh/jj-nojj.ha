@@ -107,6 +107,15 @@ fn jj_key(name: str, v: value, line: int) (viper::key | failed) = {
 	case "esc", "escape" => return viper::key::ESCAPE;
 	case "tab" => return viper::key::TAB;
 	case "backspace" => return viper::key::BACKSPACE;
+	// tasterne efter USB-scancode (de har ingen navne i motoren)
+	case "ctrl" => return 224: viper::key;
+	case "shift" => return 225: viper::key;
+	case "alt" => return 226: viper::key;
+	case "home" => return 74: viper::key;
+	case "end" => return 77: viper::key;
+	case "delete", "del" => return 76: viper::key;
+	case "pageup" => return 75: viper::key;
+	case "pagedown" => return 78: viper::key;
 	case => void;
 	};
 	const b = strings::toutf8(s);
@@ -248,7 +257,11 @@ fn jj_call(name: str, args: []value, line: int) (value | failed | void) = {
 		return viper::wheel(jj_window(name, line)?): i64;
 	case "key" =>
 		need(name, args, 1, line)?;
-		return viper::key_down(jj_window(name, line)?, jj_key(name, args[0], line)?);
+		const win = jj_window(name, line)?;
+		const k = jj_key(name, args[0], line)?;
+		// højre Ctrl/Shift/Alt tæller også
+		if (k: uint >= 224 && k: uint <= 226 && win.keys[k: size + 4] != 0) return true;
+		return viper::key_down(win, k);
 	case "pressed" =>
 		need(name, args, 1, line)?;
 		return viper::key_typed(jj_window(name, line)?, jj_key(name, args[0], line)?);
@@ -286,7 +299,14 @@ fn jj_call(name: str, args: []value, line: int) (value | failed | void) = {
 		const win = jj_window(name, line)?;
 		const id = jj_int(name, args, 0, line)?;
 		if (id < 0 || id: size >= len(jj_imgs)) return dief(line, "draw(): intet billede nr. {}", id);
-		viper::draw_image(win, &jj_imgs[id], jj_int(name, args, 1, line)?, jj_int(name, args, 2, line)?);
+		const dx = jj_int(name, args, 1, line)?, dy = jj_int(name, args, 2, line)?;
+		if (len(args) >= 5) {
+			// draw(nr, x, y, bredde, højde): tegnet i en anden størrelse (fx zoom)
+			viper::draw_image_scaled(win, &jj_imgs[id], dx, dy,
+				jj_int(name, args, 3, line)?, jj_int(name, args, 4, line)?);
+		} else {
+			viper::draw_image(win, &jj_imgs[id], dx, dy);
+		};
 		return nilv: value;
 	case "window_icon" =>
 		// window_icon("logo.png"): vinduets ikon (proceslinjen, alt-tab)

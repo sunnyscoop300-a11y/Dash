@@ -81,6 +81,9 @@ let læs_total = 0
 let læs_klar = false
 let læs_vent = 0.0
 let læs_rul = 0
+let zoom = 1.0
+let pan_x = 0
+let træk = []
 let side = 0
 let sider = {}
 
@@ -299,7 +302,8 @@ fn åbn_læser(k) {
     læs_rul = 0
     visning = "læs"
     kap_sidst = kapitler[k].id
-    baggrund("python3 {q(HJÆLPER)} pages {q(serier[valgt].id)} {q(kapitler[k].id)}")
+    # 1350 høje sider: skarpe, også når man zoomer ind (vises 900 høje ved 100 %)
+    baggrund("SJ_SIDE_H=1350 python3 {q(HJÆLPER)} pages {q(serier[valgt].id)} {q(kapitler[k].id)}")
 }
 
 fn læs_info() {
@@ -354,15 +358,39 @@ fn læser_sider(dt) {
 }
 
 fn rul_med(d) {
-    let maks = max(0, læs_total * SIDE_TRIN + SLUT_H - VIEW_H)
+    let maks = max(0, læs_total * trin() + SLUT_H - VIEW_H)
     læs_rul = max(0, min(maks, læs_rul + d))
-    let p = int((læs_rul + VIEW_H / 3) / SIDE_TRIN)
+    let p = int((læs_rul + VIEW_H / 3) / trin())
     if læs_total > 0 and p >= læs_total { p = læs_total - 1 }
     side = p
 }
 
+# en side plus mellemrum, i den aktuelle zoom
+fn trin() { return int(SIDE_TRIN * zoom) }
+
+# zoom omkring et punkt (fx musen), så det samme sted bliver under musen
+fn zoom_til(ny, mx, my) {
+    let gammel = zoom
+    zoom = max(0.5, min(3.0, ny))
+    let f = zoom / gammel
+    læs_rul = int((læs_rul + my) * f - my)
+    pan_x = int(mx - W / 2 - (mx - W / 2 - pan_x) * f)
+    begræns_pan()
+    rul_med(0)
+}
+
+fn begræns_pan() {
+    let sw = int(620 * zoom)
+    if side >= 0 and sider.has("{side}") {
+        let st = image_size(sider["{side}"])
+        sw = int(st[0] * 900 / st[1] * zoom)
+    }
+    let maks = max(0, int((sw - W) / 2) + 20)
+    pan_x = max(-maks, min(maks, pan_x))
+}
+
 fn ved_slut() {
-    return læs_total > 0 and læs_rul + VIEW_H >= læs_total * SIDE_TRIN + SLUT_H - 4
+    return læs_total > 0 and læs_rul + VIEW_H >= læs_total * trin() + SLUT_H - 4
 }
 
 fn næste_kapitel() {
@@ -609,21 +637,25 @@ fn tegn_læser() {
     } else {
         # siderne under hinanden, som én lang stribe
         let første = max(0, side - 1)
-        for k in range(første, min(læs_total, første + 4)) {
-            let y = k * SIDE_TRIN - læs_rul
-            if y <= VIEW_H and y + SIDE_TRIN >= 0 {
+        for k in range(første, min(læs_total, første + 5)) {
+            let y = k * trin() - læs_rul
+            if y <= VIEW_H and y + trin() >= 0 {
                 if sider.has("{k}") {
                     let id = sider["{k}"]
                     let st = image_size(id)
-                    draw(id, int((W - st[0]) / 2), y)
+                    # siden vises 900 høj ved 100 %, uanset hvor stor den er gemt
+                    let sh = int(900 * zoom)
+                    let sw = int(st[0] * 900 / st[1] * zoom)
+                    draw(id, int((W - sw) / 2) + pan_x, y, sw, sh)
                 } else {
-                    rect(int((W - 620) / 2), y, 620, SIDE_TRIN - 8, "#151518")
+                    let sw = int(620 * zoom)
+                    rect(int((W - sw) / 2) + pan_x, y, sw, trin() - 8, "#151518")
                     let s = "Henter side {k + 1}..."
-                    text((W - text_width(s, 1)) / 2, y + 300, s, DÆMP, 1)
+                    text((W - text_width(s, 1)) / 2, y + int(300 * zoom), s, DÆMP, 1)
                 }
             }
         }
-        let ey = læs_total * SIDE_TRIN - læs_rul
+        let ey = læs_total * trin() - læs_rul
         if ey < VIEW_H {
             let s = "Slut på kapitlet"
             text((W - text_width(s, 3)) / 2, ey + 60, s, TEKST, 3)
@@ -637,8 +669,10 @@ fn tegn_læser() {
     }
     # bundlinjen
     rect(0, VIEW_H, W, H - VIEW_H, SORT_TOP)
-    text(16, VIEW_H + 6, "Hjul/pile ruller   Esc tilbage", DÆMP, 1)
-    let t = "{ch.navn}  {klip(ch.under, 400)}"
+    let hj = "Hjul ruller  Ctrl+hjul zoomer  Esc tilbage"
+    if zoom != 1.0 { hj = "Zoom {int(zoom * 100 + 0.5)} %   0 = 100 %   træk for at flytte" }
+    text(16, VIEW_H + 6, hj, DÆMP, 1)
+    let t = "{ch.navn}  {klip(ch.under, 300)}"
     text((W - text_width(t, 1)) / 2, VIEW_H + 6, t, TEKST, 1)
     if læs_total > 0 {
         let p = "Side {side + 1} / {læs_total}"
@@ -648,14 +682,39 @@ fn tegn_læser() {
 
 fn læser_taster() {
     if not læs_klar or læs_total == 0 { return nil }
-    rul_med(-wheel() * 140)
+    let m = mouse()
+    let h = wheel()
+    # Ctrl + hjul zoomer omkring musen, ellers ruller hjulet
+    if h != 0 and key("ctrl") {
+        zoom_til(zoom * (1.0 + 0.15 * h), m[0], min(m[1], VIEW_H))
+    } else {
+        rul_med(-h * 140)
+    }
+    let t = typed()
+    if t == "+" or t == "=" { zoom_til(zoom * 1.25, W / 2, VIEW_H / 2) }
+    if t == "-" { zoom_til(zoom / 1.25, W / 2, VIEW_H / 2) }
+    if t == "0" {
+        zoom_til(1.0, W / 2, VIEW_H / 2)
+        pan_x = 0
+    }
+    # træk med musen for at flytte siden (især når den er zoomet)
+    if mouse_down() and m[1] < VIEW_H {
+        if træk.len == 2 {
+            pan_x += m[0] - træk[0]
+            begræns_pan()
+            rul_med(træk[1] - m[1])
+        }
+        træk = [m[0], m[1]]
+    } else {
+        træk = []
+    }
     if pressed("down") { rul_med(140) }
     if pressed("up") { rul_med(-140) }
     if pressed("space") { rul_med(VIEW_H - 80) }
     if pressed("right") {
-        if ved_slut() { næste_kapitel() } else { rul_med(SIDE_TRIN) }
+        if ved_slut() { næste_kapitel() } else { rul_med(trin()) }
     }
-    if pressed("left") { rul_med(-SIDE_TRIN) }
+    if pressed("left") { rul_med(-trin()) }
     if pressed("enter") and ved_slut() { næste_kapitel() }
 }
 
@@ -678,6 +737,11 @@ if scene == "læs" and serier.len > 0 {
     indlæs_kapitler()
     åbn_læser(0)
     læs_rul = 300
+    if env("JJ_ZOOM", "") != "" {
+        læs_klar = true
+        læs_info()
+        zoom_til(float(env("JJ_ZOOM", "1")), W / 2, 200)
+    }
 }
 
 while frame() {

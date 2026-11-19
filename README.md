@@ -291,6 +291,11 @@ Fra nu af får hver version et navn fra Farming Life in Another World
   (Enter) og `textbox_set("navn", "tekst", fokus)`. Valg: `tom`, `skjul`
   (adgangskode), `h`, `r`, `maks`, `aktiv`, `indryk` og farverne `bund`, `tekst`, `kant`,
   `fokus`, `markering`, `dæmp`.
+- `draw(nr, x, y, bredde, højde)` tegner et billede i en anden størrelse
+  (bilineært, så det er glat), fx til zoom. `key()` kender nu også `"ctrl"`,
+  `"shift"`, `"alt"`, `"home"`, `"end"`, `"delete"`, `"pageup"` og `"pagedown"`.
+- **SJ Mini** kan zoome: Ctrl + scrollhjul (eller + / - / 0), og træk med
+  musen flytter siden.
 - **Udklipsholderen:** `clipboard()` og `set_clipboard("tekst")` bruger
   `wl-copy`/`wl-paste`, `xclip`, `xsel` eller Termux, så man kan kopiere
   mellem Dash-apps og alt andet.

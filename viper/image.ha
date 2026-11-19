@@ -434,6 +434,81 @@ export fn draw_image(win: *window, img: *image, x: int, y: int) void = {
 	};
 };
 
+// Draws an image scaled to w x h at x, y (bilinear, alpha blended, respects
+// [[clip]]). Only the visible part is computed, so zooming a big page is cheap.
+export fn draw_image_scaled(win: *window, img: *image, x: int, y: int, w: int, h: int) void = {
+	if (w <= 0 || h <= 0 || img.w <= 0 || img.h <= 0) return;
+	if (w == img.w && h == img.h) {
+		draw_image(win, img, x, y);
+		return;
+	};
+	const x0 = if (x < win.clip_x0) win.clip_x0 else x;
+	const y0 = if (y < win.clip_y0) win.clip_y0 else y;
+	const x1 = if (x + w > win.clip_x1) win.clip_x1 else x + w;
+	const y1 = if (y + h > win.clip_y1) win.clip_y1 else y + h;
+	if (x0 >= x1 || y0 >= y1) return;
+	// 16.16 fixed point: source position of each target pixel's centre
+	const sx_step = ((img.w: i64) << 16) / w: i64;
+	const sy_step = ((img.h: i64) << 16) / h: i64;
+	const maxx = img.w - 1, maxy = img.h - 1;
+	// kolonnerne er ens for alle rækker: regn dem ud én gang
+	const n = (x1 - x0): size;
+	let cx1: []int = alloc([0...], n)!;
+	let cx2: []int = alloc([0...], n)!;
+	let cwx: []u32 = alloc([0u32...], n)!;
+	defer free(cx1);
+	defer free(cx2);
+	defer free(cwx);
+	for (let xx = x0; xx < x1; xx += 1) {
+		let fx = (xx - x): i64 * sx_step + sx_step / 2 - 32768;
+		if (fx < 0) fx = 0;
+		let ix = (fx >> 16): int;
+		if (ix >= maxx) ix = maxx;
+		const k = (xx - x0): size;
+		cx1[k] = ix;
+		cx2[k] = if (ix < maxx) ix + 1 else ix;
+		cwx[k] = (fx & 0xffff): u32 >> 8;
+	};
+	for (let yy = y0; yy < y1; yy += 1) {
+		let fy = (yy - y): i64 * sy_step + sy_step / 2 - 32768;
+		if (fy < 0) fy = 0;
+		let iy = (fy >> 16): int;
+		const wy = (fy & 0xffff): u32 >> 8;
+		if (iy >= maxy) iy = maxy;
+		const iy2 = if (iy < maxy) iy + 1 else iy;
+		const r1 = iy * img.w, r2 = iy2 * img.w;
+		const drow = yy * win.width;
+		for (let xx = x0; xx < x1; xx += 1) {
+			const k = (xx - x0): size;
+			const ix = cx1[k], ix2 = cx2[k], wx = cwx[k];
+			const p00 = img.pixels[(r1 + ix): size], p01 = img.pixels[(r1 + ix2): size];
+			const p10 = img.pixels[(r2 + ix): size], p11 = img.pixels[(r2 + ix2): size];
+			let s: u32 = 0;
+			for (let sh = 0u32; sh < 32; sh += 8) {
+				const c00 = (p00 >> sh) & 0xff, c01 = (p01 >> sh) & 0xff;
+				const c10 = (p10 >> sh) & 0xff, c11 = (p11 >> sh) & 0xff;
+				const top = c00 * (256 - wx) + c01 * wx;
+				const bot = c10 * (256 - wx) + c11 * wx;
+				const c = (top * (256 - wy) + bot * wy) >> 16;
+				s |= (c & 0xff) << sh;
+			};
+			const a = s >> 24;
+			if (a == 0) continue;
+			const di = (drow + xx): size;
+			if (a >= 255) {
+				win.pixels[di] = s | 0xff000000;
+				continue;
+			};
+			const d = win.pixels[di];
+			const ia = 255 - a;
+			const r = (((s >> 16) & 0xff) * a + ((d >> 16) & 0xff) * ia) / 255;
+			const g = (((s >> 8) & 0xff) * a + ((d >> 8) & 0xff) * ia) / 255;
+			const b = ((s & 0xff) * a + (d & 0xff) * ia) / 255;
+			win.pixels[di] = 0xff000000 | (r << 16) | (g << 8) | b;
+		};
+	};
+};
+
 // Returns a copy of the w x h area at x, y. Parts outside the source image
 // become transparent.
 export fn crop(src: *image, x: int, y: int, w: int, h: int) (image | nomem) = {

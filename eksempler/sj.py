@@ -25,7 +25,9 @@ LOG = os.path.join(DATA, "sj.log")
 FAVS = os.path.join(DATA, "favoritter.txt")
 READ = os.path.join(DATA, "laest.txt")
 PAGES = os.path.join(DATA, "pages")
-PAGE_H = 900                     # pages are scaled to this height (the reader scrolls)
+# Pages are scaled to this height (the reader scrolls). SJ Mini in Dash asks
+# for taller pages (SJ_SIDE_H) so they stay sharp when you zoom in.
+PAGE_H = int(os.environ.get("SJ_SIDE_H", "900"))
 API = "https://jumpg-webapi.tokyo-cdn.com/api"
 SITE = "https://mangaplus.shueisha.co.jp"
 UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
