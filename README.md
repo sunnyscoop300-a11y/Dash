@@ -235,6 +235,7 @@ egen fil (`titel=…` og `S1E1|Titel|dato|beskrivelse`), ikke i koden.
 stemningen fra Farming Life in Another World: solen følger sangen over himlen,
 og afgrøderne på marken vokser, mens den spiller (klik på marken for at spole).
 Søgning (`/`), bland, gentag, lydstyrke og cover fra filen eller `cover.jpg`.
+Knappen **Mappe** (eller `o`) vælger musikmappen, og den huskes til næste gang.
 Afspiller med `mpv` (eller `ffplay`), læser tags med `ffprobe`.
 
 ```

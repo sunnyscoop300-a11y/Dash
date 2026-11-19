@@ -10,12 +10,18 @@
 #
 # Afspilning: mpv (eller ffplay som reserve). Tags og cover: ffprobe/ffmpeg.
 # Taster: mellemrum pause · n/p næste/forrige · ←/→ spol 10 s · ↑/↓ lydstyrke
-#         / søg · Enter afspil · s bland · r gentag
+#         / søg · Enter afspil · s bland · r gentag · o vælg mappe
+# Den valgte mappe huskes i ~/.config/nonbiri/mappe.
 
 let HJEM = env("HOME", "/root")
 let TMP = env("TMPDIR", "/tmp")
+let MAPPE_FIL = "{HJEM}/.config/nonbiri/mappe"
 let mappe = ""
 if args.len > 0 { mappe = args[0] }
+if mappe == "" and exists(MAPPE_FIL) {
+    let m = read(MAPPE_FIL).trim()
+    if is_dir(m) { mappe = m }
+}
 if mappe == "" {
     for m in ["{HJEM}/Musik", "{HJEM}/Music", "{HJEM}/musik"] {
         if mappe == "" and is_dir(m) { mappe = m }
@@ -34,11 +40,15 @@ fn q(s) { return "'" + s.replace("'", "'\\''") + "'" }
 
 # ── find sangene ─────────────────────────────────────────────────────
 let numre = []
-let fundne = $(sh -c "find {q(mappe)} -type f \\( -iname '*.mp3' -o -iname '*.flac' \\) 2>/dev/null | sort").lines()
-for f in fundne {
-    numre.push({"fil": f, "titel": f.stem, "kunstner": "", "album": "", "varighed": 0.0,
-                "probet": false, "cover": -2, "vt": "", "va": ""})
+fn find_sange(m) {
+    numre = []
+    let fundne = $(sh -c "find {q(m)} -type f \\( -iname '*.mp3' -o -iname '*.flac' \\) 2>/dev/null | sort").lines()
+    for f in fundne {
+        numre.push({"fil": f, "titel": f.stem, "kunstner": "", "album": "", "varighed": 0.0,
+                    "probet": false, "cover": -2, "vt": "", "va": ""})
+    }
 }
+find_sange(mappe)
 
 # ── vindue ───────────────────────────────────────────────────────────
 window("Nonbiri", 960, 640)
@@ -65,6 +75,11 @@ let tjek = 0.0
 let tid = 0.0
 let start_tid = 0.0
 let træk_vol = false
+let vælger_aktiv = false
+let vælger_sti = ""
+let vælger_mapper = []
+let vælger_rul = 0
+let vælger_ny = false
 let besked = ""
 let besked_tid = 0.0
 
@@ -94,6 +109,7 @@ fn skygge_tekst(x, y, s, c, st) {
     text(x + st, y + st, s, "#00000060", st)
     text(x, y, s, c, st)
 }
+fn klik() { return clicked() and not vælger_aktiv }
 fn sig(s) {
     besked = s
     besked_tid = 2.5
@@ -408,7 +424,7 @@ fn knapper() {
     let o = træknap(110, y, 24, false)
     polygon([[118, y - 10], [118, y + 10], [104, y]], "#fff4dc")
     rect(100, y - 10, 4, 20, "#fff4dc")
-    if o and clicked() { forrige() }
+    if o and klik() { forrige() }
     # afspil/pause
     o = træknap(180, y, 32, true)
     if tilstand == "spiller" {
@@ -417,12 +433,12 @@ fn knapper() {
     } else {
         polygon([[172, y - 15], [172, y + 15], [196, y]], "#fff4dc")
     }
-    if o and clicked() { pause_af() }
+    if o and klik() { pause_af() }
     # næste
     o = træknap(250, y, 24, false)
     polygon([[242, y - 10], [242, y + 10], [256, y]], "#fff4dc")
     rect(256, y - 10, 4, 20, "#fff4dc")
-    if o and clicked() { næste(false) }
+    if o and klik() { næste(false) }
 }
 
 fn info() {
@@ -457,7 +473,7 @@ fn lydstyrke() {
     round_rect(x0, y - 5, int((x1 - x0) * vol), 10, 5, "#4aa8e8")
     circle(x0 + int((x1 - x0) * vol), y, 9, "#bfe6ff")
     circle(x0 + int((x1 - x0) * vol), y, 6, "#4aa8e8")
-    if clicked() and m[0] >= x0 - 10 and m[0] <= x1 + 10 and m[1] >= y - 14 and m[1] <= y + 14 { træk_vol = true }
+    if klik() and m[0] >= x0 - 10 and m[0] <= x1 + 10 and m[1] >= y - 14 and m[1] <= y + 14 { træk_vol = true }
     if not mouse_down() { træk_vol = false }
     if træk_vol {
         let nv = klem((m[0] - x0) / (x1 - x0), 0, 1)
@@ -512,7 +528,7 @@ fn marken(p) {
         let s = mmss(t)
         round_rect(m[0] - text_width(s, 1) / 2 - 6, y0 - 30, text_width(s, 1) + 12, 20, 6, "#2a1a0ce0")
         text(m[0] - text_width(s, 1) / 2, y0 - 28, s, "#fff4dc", 1)
-        if clicked() { spol(t) }
+        if klik() { spol(t) }
     }
 }
 
@@ -548,7 +564,7 @@ fn chip(x, y, s, til) {
     if over { bg = "#b4824a" }
     round_rect(x, y, w, 26, 13, bg)
     text(x + 10, y + 5, s, "#fff4dc", 1)
-    return over and clicked()
+    return over and klik()
 }
 
 # listen over sange — "marken" med en række pr. sang
@@ -568,7 +584,9 @@ fn listen() {
     if chip(926 - text_width(gt, 1) - 20, 30, gt, gentag != "fra") {
         if gentag == "alle" { gentag = "én" } else if gentag == "én" { gentag = "fra" } else { gentag = "alle" }
     }
-    if chip(926 - text_width(gt, 1) - 30 - text_width("Bland", 1) - 20, 30, "Bland", bland) { bland = not bland }
+    let bx = 926 - text_width(gt, 1) - 30 - text_width("Bland", 1) - 20
+    if chip(bx, 30, "Bland", bland) { bland = not bland }
+    if chip(bx - text_width("Mappe", 1) - 30, 30, "Mappe", false) { åbn_vælger() }
     # søgefelt
     let m = mouse()
     let sbg = "#f3e6c4"
@@ -582,7 +600,7 @@ fn listen() {
         if søg_aktiv and int(tid * 2) % 2 == 0 { blink = "|" }
         text(RX + 10, 72, klip(st, RW - 30, 1) + blink, "#4a2e16", 1)
     }
-    if clicked() {
+    if klik() {
         søg_aktiv = m[0] >= RX and m[0] < RX + RW and m[1] >= 66 and m[1] < 94
     }
     # rækkerne
@@ -590,12 +608,12 @@ fn listen() {
     if vis_snavs { byg_vis() }
     rul = klem(rul, 0, max(0, vis.len - SYNLIGE))
     let over_liste = m[0] >= RX and m[0] < RX + RW and m[1] >= RY and m[1] < RY + SYNLIGE * RH
-    if over_liste and wheel() != 0 { rul = klem(rul - wheel() * 3, 0, max(0, vis.len - SYNLIGE)) }
+    if over_liste and not vælger_aktiv and wheel() != 0 { rul = klem(rul - wheel() * 3, 0, max(0, vis.len - SYNLIGE)) }
     if numre.len == 0 {
         text(RX + 20, RY + 20, "Ingen sange på marken endnu.", "#7a5230", 2)
         text(RX + 20, RY + 56, "Fandt ingen .mp3 eller .flac i:", "#7a5230", 1)
         text(RX + 20, RY + 76, klip(mappe, RW - 40, 1), "#4a2e16", 1)
-        text(RX + 20, RY + 110, "Start med en mappe:  dsh nonbiri.Dash ~/Musik", "#7a5230", 1)
+        text(RX + 20, RY + 110, "Tryk på Mappe (eller o) for at vælge en anden.", "#7a5230", 1)
         return nil
     }
     if vis.len == 0 { text(RX + 20, RY + 20, "Ingen sange matcher søgningen.", "#7a5230", 1) }
@@ -628,7 +646,7 @@ fn listen() {
                 let d = mmss(n.varighed)
                 text(RX + RW - 24 - text_width(d, 1), y + 7, d, "#8a6a40", 1)
             }
-            if over and clicked() {
+            if over and klik() {
                 valgt = i
                 start(i, 0)
             }
@@ -646,9 +664,128 @@ fn listen() {
     text(RX, 362, klip(fod, 420, 1), "#f0d8a8", 1)
 }
 
+# ═══════════════════════════ MAPPEVÆLGER ═════════════════════════════
+
+fn læs_mapper(m) {
+    vælger_sti = m
+    vælger_rul = 0
+    vælger_mapper = $(sh -c "find {q(m)} -mindepth 1 -maxdepth 1 -type d ! -name '.*' 2>/dev/null | sort").lines()
+}
+
+fn åbn_vælger() {
+    vælger_aktiv = true
+    vælger_ny = true
+    søg_aktiv = false
+    læs_mapper(mappe)
+}
+
+fn vælg_mappe(m) {
+    stop()
+    cur = -1
+    mappe = m
+    find_sange(m)
+    valgt = 0
+    rul = 0
+    søg = []
+    vis_snavs = true
+    try sh -c "mkdir -p {q(MAPPE_FIL.dir)} && printf '%s' {q(m)} > {q(MAPPE_FIL)}"
+    vælger_aktiv = false
+    sig("{numre.len} sange i {m.name}")
+}
+
+fn op(m) {
+    if m == "/" or m.dir == "" { return "/" }
+    return m.dir
+}
+
+fn tegn_vælger() {
+    if not vælger_aktiv { return nil }
+    let m = mouse()
+    let kan_klikke = clicked() and not vælger_ny
+    vælger_ny = false
+    rect(0, 0, W, H, "#000000a0")
+    let px = 170
+    let py = 50
+    let pw = 620
+    let ph = 540
+    round_rect(px + 4, py + 6, pw, ph, 16, "#00000060")
+    round_rect(px, py, pw, ph, 16, "#8a5a2b")
+    skygge_tekst(px + 20, py + 14, "Vælg musikmappe", "#fff4dc", 2)
+    text(px + 20, py + 48, klip(vælger_sti, pw - 40, 1), "#f0d8a8", 1)
+    # genveje
+    let gx = px + 20
+    let genveje = [["Hjem", HJEM], ["Musik", "{HJEM}/Musik"], ["Music", "{HJEM}/Music"],
+                   ["Downloads", "{HJEM}/Downloads"], ["USB", "/run/media/{env("USER", "")}"], ["/mnt", "/mnt"]]
+    for g in genveje {
+        if is_dir(g[1]) {
+            let w = text_width(g[0], 1) + 20
+            let over = m[0] >= gx and m[0] < gx + w and m[1] >= py + 74 and m[1] < py + 100
+            let bg = "#6b4424"
+            if over { bg = "#b4824a" }
+            if g[1] == vælger_sti { bg = "#3f8a3a" }
+            round_rect(gx, py + 74, w, 26, 13, bg)
+            text(gx + 10, py + 79, g[0], "#fff4dc", 1)
+            if over and kan_klikke { læs_mapper(g[1]) }
+            gx += w + 8
+        }
+    }
+    # mapperne
+    let lx = px + 20
+    let ly = py + 112
+    let lw = pw - 40
+    let RÆK = 12
+    let rh = 28
+    round_rect(lx, ly - 4, lw, RÆK * rh + 8, 8, "#f3e6c4")
+    let poster = [".."]
+    for d in vælger_mapper { poster.push(d) }
+    let over_l = m[0] >= lx and m[0] < lx + lw and m[1] >= ly and m[1] < ly + RÆK * rh
+    if over_l and wheel() != 0 { vælger_rul = klem(vælger_rul - wheel() * 3, 0, max(0, poster.len - RÆK)) }
+    for r in range(RÆK) {
+        let k = vælger_rul + r
+        if k < poster.len {
+            let y = ly + r * rh
+            let over = over_l and m[1] >= y and m[1] < y + rh
+            if over { round_rect(lx + 4, y, lw - 16, rh - 2, 6, "#ead9ad") }
+            let navn = "..  (op)"
+            if k > 0 { navn = poster[k].name }
+            # lille mappe-ikon
+            round_rect(lx + 12, y + 8, 18, 13, 3, "#c08a40")
+            rect(lx + 12, y + 6, 8, 4, "#c08a40")
+            text(lx + 40, y + 6, klip(navn, lw - 70, 1), "#3a2412", 1)
+            if over and kan_klikke {
+                if k == 0 { læs_mapper(op(vælger_sti)) } else { læs_mapper(poster[k]) }
+                return nil
+            }
+        }
+    }
+    if vælger_mapper.len == 0 { text(lx + 40, ly + rh + 6, "(ingen undermapper)", "#a08a60", 1) }
+    # knapper
+    let by = py + ph - 56
+    let t1 = "Vælg denne mappe"
+    let w1 = text_width(t1, 2) + 30
+    let o1 = m[0] >= px + 20 and m[0] < px + 20 + w1 and m[1] >= by and m[1] < by + 38
+    let b1 = "#3f8a3a"
+    if o1 { b1 = "#52a24a" }
+    round_rect(px + 20, by, w1, 38, 12, b1)
+    text(px + 35, by + 6, t1, "#fff4dc", 2)
+    if o1 and kan_klikke { vælg_mappe(vælger_sti) }
+    let t2 = "Annuller"
+    let w2 = text_width(t2, 2) + 30
+    let x2 = px + pw - 20 - w2
+    let o2 = m[0] >= x2 and m[0] < x2 + w2 and m[1] >= by and m[1] < by + 38
+    let b2 = "#6b4424"
+    if o2 { b2 = "#b4824a" }
+    round_rect(x2, by, w2, 38, 12, b2)
+    text(x2 + 15, by + 6, t2, "#fff4dc", 2)
+    if (o2 and kan_klikke) or pressed("esc") { vælger_aktiv = false }
+    if pressed("backspace") { læs_mapper(op(vælger_sti)) }
+    if pressed("enter") { vælg_mappe(vælger_sti) }
+}
+
 # ═════════════════════════════ TASTER ════════════════════════════════
 
 fn taster() {
+    if vælger_aktiv { return nil }
     if søg_aktiv {
         let t = typed()
         for c in t.chars { søg.push(c) }
@@ -678,6 +815,7 @@ fn taster() {
         return nil
     }
     if pressed("space") { pause_af() }
+    if pressed("o") { åbn_vælger() }
     if pressed("n") { næste(false) }
     if pressed("p") { forrige() }
     if pressed("s") {
@@ -720,6 +858,7 @@ if scene == "spiller" and numre.len > 0 {
     start(min(1, numre.len - 1), 0)
     pos = numre[cur].varighed * 0.55
 }
+if scene == "mappe" { åbn_vælger() }
 if scene == "søg" {
     søg = "lang".chars
     søg_aktiv = true
@@ -790,6 +929,7 @@ while frame() {
     marken(p)
     småkryb()
     taster()
+    tegn_vælger()
     if besked_tid > 0 {
         besked_tid -= dt
         let bw = text_width(besked, 2) + 30
