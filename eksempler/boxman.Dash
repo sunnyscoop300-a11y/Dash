@@ -9,14 +9,14 @@
 #   Touch / mus     tryk i den retning Boxman skal gå, og brug knapperne forneden
 #
 # Du kan kun skubbe — ikke trække — og kun én kasse ad gangen.
-# 20 klassiske baner + 10 julebaner 🎄 (fanen Jul i oversigten).
+# 20 klassiske baner + 25 julebaner 🎄 (fanen Jul i oversigten).
 # Bedste antal træk pr. bane gemmes i ~/.boxman
 
 window("Boxman", 800, 680)
 let W = width()
 let H = height()
 
-# '#' mur, '.' mål, '$' kasse, '*' kasse på mål, '@' Boxman, '+' Boxman på mål
+# '#' mur, 'S' snemand, '.' mål, '$' kasse, '*' kasse på mål, '@' Boxman, '+' Boxman på mål
 let BANER = [
     {"navn": "Første skub", "kort": [
         "#######",
@@ -174,7 +174,7 @@ let BANER = [
         "#    $#$#",
         "#       #",
         "#########"]},
-    # ── 🎄 julebaner (fra nr. JUL_FRA) ──
+    # ── 🎄 julebaner (fra nr. JUL_FRA) — S er en snemand (står i vejen) ──
     {"navn": "Første gave", "kort": [
         "########",
         "#      #",
@@ -188,6 +188,13 @@ let BANER = [
         "# $$$ #",
         "#  @  #",
         "#######"]},
+    {"navn": "Pebernødder", "kort": [
+        "########",
+        "#  .   #",
+        "# $\$S  #",
+        "#.  @ $#",
+        "#  S  .#",
+        "########"]},
     {"navn": "Skorstenen", "kort": [
         "  ####  ",
         "  #. #  ",
@@ -203,6 +210,15 @@ let BANER = [
         "#.  @$   .#",
         "#         #",
         "###########"]},
+    {"navn": "Julehjerter", "kort": [
+        " ### ### ",
+        "##.###.##",
+        "#. $ $ .#",
+        "# $   $ #",
+        "##  @  ##",
+        " ## S ## ",
+        "  #   #  ",
+        "   ###   "]},
     {"navn": "Juleaften", "kort": [
         "##########",
         "#  .  .  #",
@@ -211,6 +227,21 @@ let BANER = [
         "#.## ## .#",
         "#        #",
         "##########"]},
+    {"navn": "Snemanden", "kort": [
+        "#########",
+        "#   S   #",
+        "# $   $ #",
+        "#. ### .#",
+        "#   @   #",
+        "#########"]},
+    {"navn": "Nordpolen", "kort": [
+        "  #######",
+        "  #  .  #",
+        "### S $ #",
+        "#  .@.  #",
+        "# #$ $# #",
+        "#   S   #",
+        "#########"]},
     {"navn": "Juletræet", "kort": [
         "    ###    ",
         "   ## ##   ",
@@ -221,6 +252,12 @@ let BANER = [
         "####   ####",
         "   #   #   ",
         "   #####   "]},
+    {"navn": "Kanelstangen", "kort": [
+        "############",
+        "#.   S    .#",
+        "# $$ ## $$ #",
+        "#.   @    .#",
+        "############"]},
     {"navn": "Stjernenat", "kort": [
         "  #####  ",
         "###   ###",
@@ -237,6 +274,46 @@ let BANER = [
         "#   @ $  #",
         "#        #",
         "##########"]},
+    {"navn": "Nissekøkkenet", "kort": [
+        "##########",
+        "#  .     #",
+        "# #$##$# #",
+        "#  .@  $.#",
+        "# S  $   #",
+        "#.      S#",
+        "##########"]},
+    {"navn": "Snestormen", "kort": [
+        "##########",
+        "#   ##   #",
+        "# $.  .$ #",
+        "# S #  S #",
+        "# $. @.$ #",
+        "#   ##   #",
+        "##########"]},
+    {"navn": "Kanen", "kort": [
+        "##########",
+        "#.   #  .#",
+        "# $ $  $ #",
+        "#  S#    #",
+        "# @  S$ .#",
+        "#.       #",
+        "##########"]},
+    {"navn": "Isslottet", "kort": [
+        "###########",
+        "#.#######.#",
+        "#  $   $  #",
+        "#  # S #  #",
+        "#  $ @ $  #",
+        "#.#######.#",
+        "###########"]},
+    {"navn": "Risengrød", "kort": [
+        "#######",
+        "#.   .#",
+        "# \$S$ #",
+        "#  @  #",
+        "# \$S$ #",
+        "#.   .#",
+        "#######"]},
     {"navn": "Kalenderlågen", "kort": [
         "########",
         "#..    #",
@@ -244,6 +321,37 @@ let BANER = [
         "###  $ #",
         "  # @  #",
         "  ######"]},
+    {"navn": "Pakkelegen", "kort": [
+        " #######",
+        " #  .  #",
+        "##.$$$.#",
+        "#  $@  #",
+        "# S . S#",
+        "########"]},
+    {"navn": "Skøjtesøen", "kort": [
+        "##########",
+        "#        #",
+        "# $ $ $  #",
+        "#S ##.## #",
+        "#  ...  @#",
+        "#  $   S #",
+        "#        #",
+        "##########"]},
+    {"navn": "Nisseloftet", "kort": [
+        "##########",
+        "#  #  #  #",
+        "# $.$.$  #",
+        "#  S  S. #",
+        "#   @    #",
+        "##########"]},
+    {"navn": "Adventskransen", "kort": [
+        "#########",
+        "#   .   #",
+        "# $ S $ #",
+        "#.S @ S.#",
+        "# $ S $ #",
+        "#   .   #",
+        "#########"]},
     {"navn": "Nissens værksted", "kort": [
         "#########",
         "#.  #  .#",
@@ -252,6 +360,14 @@ let BANER = [
         "#  $@$  #",
         "#.  #  .#",
         "#########"]},
+    {"navn": "Julemarkedet", "kort": [
+        "###########",
+        "#.   #   .#",
+        "# $$   $$ #",
+        "#  #S@S#  #",
+        "# $ . . $ #",
+        "#.   #   .#",
+        "###########"]},
 ]
 let JUL_FRA = 20
 fn er_jul(i) { return i >= JUL_FRA }
@@ -296,6 +412,7 @@ let LYD_BJÆLDE = sound("sine", 1319, 1568, 0.25, 0.3)
 # ── banetilstand ──
 let nr = 0
 let mure = []
+let snemænd = []
 let mål = []
 let kasser = []
 let bx = 0
@@ -333,6 +450,7 @@ fn kasse_ved(x, y) {
 fn indlæs(i) {
     nr = i
     mure = []
+    snemænd = []
     mål = []
     kasser = []
     let kort = BANER[i].kort
@@ -344,6 +462,10 @@ fn indlæs(i) {
         for x in range(r.len) {
             let c = r[x]
             if c == "#" { mure.push([x, y]) }
+            if c == "S" {
+                mure.push([x, y])
+                snemænd.push([x, y])
+            }
             if c == "." or c == "*" or c == "+" { mål.push([x, y]) }
             if c == "$" or c == "*" { kasser.push([x, y]) }
             if c == "@" or c == "+" {
@@ -608,6 +730,41 @@ fn boxman(x, y) {
     }
 }
 
+# snemand: står i vejen, vinker og hopper af glæde når banen er klaret
+fn snemand(x, y, nr_i) {
+    let m = RUDE / 2
+    let s = RUDE / 64.0
+    let hop = 0
+    if klaret { hop = int(abs(sin(tid * 8 + nr_i)) * 8 * s) }
+    let bund = y + RUDE - 4 - hop
+    round_rect(x + m - int(20 * s), y + RUDE - 8, int(40 * s), 7, 3, "#b8c4d8")
+    # krop og hoved
+    circle(x + m, bund - int(14 * s), int(16 * s), "#c8d4e8")
+    circle(x + m, bund - int(15 * s), int(15 * s), "#ffffff")
+    circle(x + m, bund - int(36 * s), int(11 * s), "#ffffff")
+    # knapper
+    circle(x + m, bund - int(20 * s), int(2 * s) + 1, "#2a2a3a")
+    circle(x + m, bund - int(11 * s), int(2 * s) + 1, "#2a2a3a")
+    # øjne og gulerodsnæse
+    rect(x + m - int(5 * s), bund - int(40 * s), int(3 * s) + 1, int(3 * s) + 1, "#1a1a2a")
+    rect(x + m + int(3 * s), bund - int(40 * s), int(3 * s) + 1, int(3 * s) + 1, "#1a1a2a")
+    polygon([[x + m, bund - int(36 * s)], [x + m + int(12 * s), bund - int(34 * s)], [x + m, bund - int(33 * s)]], "#ff8a2a")
+    # halstørklæde
+    rect(x + m - int(11 * s), bund - int(29 * s), int(22 * s), int(4 * s), "#d0283a")
+    rect(x + m + int(4 * s), bund - int(29 * s), int(4 * s), int(10 * s), "#d0283a")
+    # hat
+    rect(x + m - int(11 * s), bund - int(47 * s), int(22 * s), int(3 * s), "#1a1a2a")
+    rect(x + m - int(7 * s), bund - int(58 * s), int(14 * s), int(12 * s), "#1a1a2a")
+    rect(x + m - int(7 * s), bund - int(50 * s), int(14 * s), int(2 * s), "#d0283a")
+    # pindearme — den højre vinker
+    let vink = sin(tid * 4 + nr_i) * 6 * s
+    if klaret { vink = sin(tid * 14) * 10 * s }
+    line(x + m - int(14 * s), bund - int(20 * s), x + m - int(26 * s), bund - int(30 * s), "#6a4020")
+    line(x + m - int(13 * s), bund - int(19 * s), x + m - int(25 * s), bund - int(29 * s), "#6a4020")
+    line(x + m + int(14 * s), bund - int(20 * s), x + m + int(26 * s), bund - int(34 * s) + int(vink), "#6a4020")
+    line(x + m + int(13 * s), bund - int(19 * s), x + m + int(25 * s), bund - int(33 * s) + int(vink), "#6a4020")
+}
+
 # sne der falder over julebanerne
 let sne = []
 for i in range(70) {
@@ -666,6 +823,9 @@ fn tegn_bane() {
         for x in range(r.len) {
             if r[x] == "#" { mur(ox + x * RUDE, oy + y * RUDE) }
         }
+    }
+    for i in range(snemænd.len) {
+        snemand(ox + snemænd[i][0] * RUDE, oy + snemænd[i][1] * RUDE, i)
     }
     for i in range(kasser.len) {
         let k = kasser[i]
@@ -812,20 +972,28 @@ fn tegn_oversigt() {
     for i in range(fra, til) {
         let j = i - fra
         let x = 50 + (j % 5) * 142
-        let y = 228 + int(j / 5) * 100
-        let over = m[0] >= x and m[0] < x + 130 and m[1] >= y and m[1] < y + 90
+        let trin = 100
+        let kh = 90
+        if til - fra > 20 {
+            trin = 82
+            kh = 74
+        }
+        let y = 222 + int(j / 5) * trin
+        let over = m[0] >= x and m[0] < x + 130 and m[1] >= y and m[1] < y + kh
         let bg = "#3a2f6a"
         if jul { bg = "#1f3a5a" }
         if bedste[i] > 0 { bg = "#2f5a4a" }
         if over { bg = "#5a48a0" }
         if over and jul { bg = "#b02a3a" }
-        round_rect(x + 3, y + 5, 130, 90, 14, "#120e22")
-        round_rect(x, y, 130, 90, 14, bg)
-        text(x + (130 - text_width("{j + 1}", 3)) / 2, y + 4, "{j + 1}", "#ffffff", 3)
-        text(x + (130 - text_width(BANER[i].navn, 1)) / 2, y + 52, BANER[i].navn, "#c8c0ff", 1)
+        round_rect(x + 3, y + 5, 130, kh, 14, "#120e22")
+        round_rect(x, y, 130, kh, 14, bg)
+        let ts = 3
+        if kh < 90 { ts = 2 }
+        text(x + (130 - text_width("{j + 1}", ts)) / 2, y + 4, "{j + 1}", "#ffffff", ts)
+        text(x + (130 - text_width(BANER[i].navn, 1)) / 2, y + kh - 38, BANER[i].navn, "#c8c0ff", 1)
         if bedste[i] > 0 {
             let b = "{bedste[i]} træk"
-            text(x + (130 - text_width(b, 1)) / 2, y + 70, b, "#7dff9a", 1)
+            text(x + (130 - text_width(b, 1)) / 2, y + kh - 20, b, "#7dff9a", 1)
         }
         if over and clicked() { indlæs(i) }
     }
@@ -843,8 +1011,8 @@ if skud != "" {
         gå(0, -1)
     }
     if scene == "jul" {
-        indlæs(JUL_FRA + 5)
-        gå(-1, 0)
+        indlæs(JUL_FRA + 22)
+        gå(0, 1)
     }
     if scene == "juloversigt" {
         skærm = "oversigt"
