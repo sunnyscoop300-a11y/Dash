@@ -133,7 +133,12 @@ fn hare_build(code: str, out: str, small: bool, arch: str, quiet: bool) bool = {
 		return false;
 	};
 	exec::chdir(&cmd, work);
-	const hp = os::tryenv("HAREPATH", "");
+	// uden HAREPATH bruger hare sin egen standardsti — den skal med,
+	// ellers kan hare ikke finde rt og resten af standardbiblioteket
+	const hp = match (os::getenv("HAREPATH")) {
+	case let s: str => yield s;
+	case void => yield hare_default_path();
+	};
 	exec::setenv(&cmd, "HAREPATH", if (hp == "") work else strings::concat(hp, ":", work)!)!;
 	if (android) {
 		match (android_env(&cmd, work)) {
@@ -393,4 +398,41 @@ fn android_env(cmd: *exec::command, work: str) (void | fs::error) = {
 	os::chmod(ld, 0o755)?;
 	exec::setenv(cmd, "AS", "aarch64-linux-gnu-as")!;
 	exec::setenv(cmd, "LD", ld)!;
+};
+
+// Hares indbyggede HAREPATH, læst fra `hare version -v`:
+//   HAREPATH:
+//   	/usr/src/hare/stdlib
+//   	/usr/src/hare/third-party
+fn hare_default_path() str = {
+	let cmd = match (exec::cmd("hare", "version", "-v")) {
+	case let c: exec::command => yield c;
+	case => return "";
+	};
+	const (r, w) = exec::pipe();
+	exec::addfile(&cmd, os::stdout_file, w)!;
+	exec::addfile(&cmd, os::stderr_file, exec::nullfd)!;
+	const proc = match (exec::start(&cmd)) {
+	case let p: exec::process => yield p;
+	case =>
+		io::close(r)!;
+		io::close(w)!;
+		return "";
+	};
+	io::close(w)!;
+	const data = io::drain(r)!;
+	io::close(r)!;
+	match (exec::wait(&proc)) { case => void; };
+	let paths: []str = [];
+	let inside = false;
+	for (let l .. strings::split(strings::fromutf8_unsafe(data), "\n")!) {
+		if (l == "HAREPATH:") {
+			inside = true;
+		} else if (inside && strings::hasprefix(l, "\t")) {
+			append(paths, strings::trim(l))!;
+		} else if (inside) {
+			break;
+		};
+	};
+	return strings::join(":", paths...)!;
 };
