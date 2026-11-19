@@ -71,8 +71,7 @@ let bland = false
 let gentag = "alle"
 let valgt = 0
 let rul = 0
-let søg = []
-let søg_aktiv = false
+let søg = ""
 let vis = []
 let vis_snavs = true
 let tjek = 0.0
@@ -264,7 +263,7 @@ fn fremskridt() {
 # ── filtrering ───────────────────────────────────────────────────────
 fn byg_vis() {
     vis = []
-    let s = søg.join("").lower()
+    let s = søg.lower()
     for i in range(numre.len) {
         let n = numre[i]
         if s == "" or (n.titel + " " + n.kunstner + " " + n.album + " " + n.fil.name).lower().contains(s) {
@@ -591,21 +590,15 @@ fn listen() {
     let bx = 926 - text_width(gt, 1) - 30 - text_width("Bland", 1) - 20
     if chip(bx, 30, "Bland", bland) { bland = not bland }
     if chip(bx - text_width("Mappe", 1) - 30, 30, "Mappe", false) { åbn_vælger() }
-    # søgefelt
+    # søgefelt (kopiér og indsæt virker, også med højreklik)
     let m = mouse()
-    let sbg = "#f3e6c4"
-    if søg_aktiv { sbg = "#fff8e4" }
-    round_rect(RX, 66, RW, 28, 8, sbg)
-    let st = søg.join("")
-    if st == "" and not søg_aktiv {
-        text(RX + 10, 72, "Søg ( / ) ...", "#a08a60", 1)
-    } else {
-        let blink = ""
-        if søg_aktiv and int(tid * 2) % 2 == 0 { blink = "|" }
-        text(RX + 10, 72, klip(st, RW - 30, 1) + blink, "#4a2e16", 1)
-    }
-    if klik() {
-        søg_aktiv = m[0] >= RX and m[0] < RX + RW and m[1] >= 66 and m[1] < 94
+    let st = textbox("søg", RX, 66, RW, {"h": 28, "r": 8, "tom": "Søg ( / ) ...",
+        "bund": "#f3e6c4", "kant": "#e0cfa0", "fokus": "#b4824a", "tekst": "#4a2e16",
+        "dæmp": "#a08a60", "markering": "#b4824a60", "aktiv": not vælger_aktiv})
+    if st != søg {
+        søg = st
+        vis_snavs = true
+        rul = 0
     }
     # rækkerne
     round_rect(RX, RY - 4, RW, SYNLIGE * RH + 8, 8, "#f3e6c4")
@@ -679,7 +672,7 @@ fn læs_mapper(m) {
 fn åbn_vælger() {
     vælger_aktiv = true
     vælger_ny = true
-    søg_aktiv = false
+    textbox_set("søg", søg, false)
     læs_mapper(mappe)
 }
 
@@ -690,7 +683,8 @@ fn vælg_mappe(m) {
     find_sange(m)
     valgt = 0
     rul = 0
-    søg = []
+    søg = ""
+    textbox_set("søg", "", false)
     vis_snavs = true
     try sh -c "mkdir -p {q(MAPPE_FIL.dir)} && printf '%s' {q(m)} > {q(MAPPE_FIL)}"
     vælger_aktiv = false
@@ -790,32 +784,22 @@ fn tegn_vælger() {
 
 fn taster() {
     if vælger_aktiv { return nil }
-    if søg_aktiv {
-        let t = typed()
-        for c in t.chars { søg.push(c) }
-        if t != "" {
-            vis_snavs = true
-            rul = 0
-        }
-        if pressed("backspace") and søg.len > 0 {
-            søg.pop()
-            vis_snavs = true
-        }
+    if focused("søg") {
         if pressed("esc") {
-            søg = []
-            søg_aktiv = false
+            søg = ""
+            textbox_set("søg", "", false)
             vis_snavs = true
         }
-        if pressed("enter") and vis.len > 0 {
+        if submitted("søg") and vis.len > 0 {
             valgt = vis[0]
             start(vis[0], 0)
-            søg_aktiv = false
+            textbox_set("søg", søg, false)
         }
         return nil
     }
     let t = typed()
     if t == "/" {
-        søg_aktiv = true
+        textbox_set("søg", søg, true)
         return nil
     }
     if pressed("space") { pause_af() }
@@ -864,8 +848,8 @@ if scene == "spiller" and numre.len > 0 {
 }
 if scene == "mappe" { åbn_vælger() }
 if scene == "søg" {
-    søg = "lang".chars
-    søg_aktiv = true
+    søg = "lang"
+    textbox_set("søg", "lang", true)
     vis_snavs = true
 }
 

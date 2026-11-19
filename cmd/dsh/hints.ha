@@ -18,6 +18,7 @@ const JJ_FNS: [_]str = ["window", "frame", "close_window", "clear", "rect", "out
 	"round_rect", "circle", "line", "pixel", "polygon", "text", "text_width",
 	"button", "mouse", "clicked", "right_clicked", "mouse_down", "wheel", "key",
 	"pressed", "typed", "delta", "width", "height", "image", "draw", "image_size", "free_image", "window_icon",
+	"textbox", "focused", "submitted", "textbox_set", "clipboard", "set_clipboard",
 	"sound", "sound_file", "play", "screenshot",
 	"camera", "fog", "box3d", "floor3d", "circle3d", "project", "render3d"];
 

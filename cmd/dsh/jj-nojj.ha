@@ -358,7 +358,11 @@ fn jj_call(name: str, args: []value, line: int) (value | failed | void) = {
 		case void => return nilv: value;
 		case => return dief(line, "screenshot(): kan ikke gemme '{}'", p);
 		};
-	case => return jj3_call(name, args, line);
+	case =>
+		match (jj_text_call(name, args, line)?) {
+		case let v: value => return v;
+		case void => return jj3_call(name, args, line);
+		};
 	};
 };
 

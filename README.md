@@ -284,6 +284,16 @@ Fra nu af får hver version et navn fra Farming Life in Another World
   bogstav (`s[i]` og `.len` tæller bytes).
 - JJGui-farver kan være gennemsigtige: `"#rrggbbaa"`, fx `"#00000060"` til en
   skygge.
+- **Tekstfelter med kopiér og indsæt:** `textbox("navn", x, y, bredde, {valg})`
+  giver et rigtigt tekstfelt: markør, markering med musen (træk eller
+  dobbeltklik), Shift+pile, Home/End/Delete, Ctrl+A/C/X/V og en højreklik-menu
+  (Klip, Kopiér, Indsæt, Markér alt). `focused("navn")`, `submitted("navn")`
+  (Enter) og `textbox_set("navn", "tekst", fokus)`. Valg: `tom`, `skjul`
+  (adgangskode), `h`, `r`, `maks`, `aktiv`, `indryk` og farverne `bund`, `tekst`, `kant`,
+  `fokus`, `markering`, `dæmp`.
+- **Udklipsholderen:** `clipboard()` og `set_clipboard("tekst")` bruger
+  `wl-copy`/`wl-paste`, `xclip`, `xsel` eller Termux, så man kan kopiere
+  mellem Dash-apps og alt andet.
 - **Egne logoer:** hver app har sit logo i `eksempler/ikoner/<app>.png`
   (tegnet med JJGui af `ikoner/tegn-ikoner.Dash`). JJGui giver vinduet app id
   `dash-<app>` og finder selv logoet, og Bob lægger det i menuen.

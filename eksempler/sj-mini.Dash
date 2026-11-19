@@ -58,8 +58,7 @@ let SLUT_H = 260
 let serier = []
 let visning = "grid"
 let fane = "alle"
-let søg = []
-let søg_aktiv = false
+let søg = ""
 let henter = false
 let hent_t = 0.0
 let rul = 0
@@ -228,7 +227,7 @@ fn åbn_web(c) {
 }
 
 fn synlige() {
-    let s = søg.join("").trim().lower()
+    let s = søg.trim().lower()
     let ud = []
     for i in range(serier.len) {
         let c = serier[i]
@@ -413,20 +412,14 @@ fn stjerne(cx, cy, r, c) {
     polygon(p, c)
 }
 
+# søgefeltet (kopiér og indsæt virker, også med højreklik)
 fn søgefelt(x, y, w) {
-    let over = inde(x, y, w, 30)
-    if clicked() { søg_aktiv = over }
-    let kant = LINJE
-    if søg_aktiv { kant = RØD }
-    round_rect(x, y, w, 30, 8, kant)
-    round_rect(x + 1, y + 1, w - 2, 28, 7, KORT)
-    let st = søg.join("")
-    if st == "" and not søg_aktiv {
-        text(x + 10, y + 7, "Titel eller tegner...", DÆMP, 1)
-    } else {
-        let blink = ""
-        if søg_aktiv and int(tid * 2) % 2 == 0 { blink = "|" }
-        text(x + 10, y + 7, klip(st, w - 30) + blink, TEKST, 1)
+    let st = textbox("søg", x, y, w, {"h": 30, "r": 8, "tom": "Titel eller tegner...",
+        "bund": KORT, "kant": LINJE, "fokus": RØD, "tekst": TEKST, "dæmp": DÆMP,
+        "markering": "#e8303a60"})
+    if st != søg {
+        søg = st
+        rul = 0
     }
 }
 
@@ -666,13 +659,6 @@ fn læser_taster() {
     if pressed("enter") and ved_slut() { næste_kapitel() }
 }
 
-fn søg_taster() {
-    if not søg_aktiv { return nil }
-    let t = typed()
-    for c in t.chars { søg.push(c) }
-    if t != "" { rul = 0 }
-    if pressed("backspace") and søg.len > 0 { søg.pop() }
-}
 
 # ═════════════════════════════ LØKKEN ════════════════════════════════
 
@@ -711,13 +697,12 @@ while frame() {
     }
     indlæs_et_cover()
     if visning == "grid" {
-        if esc and søg_aktiv {
-            søg_aktiv = false
-            søg = []
+        if esc and focused("søg") {
+            textbox_set("søg", "", false)
+            søg = ""
         } else if esc {
             break
         }
-        søg_taster()
         rul -= wheel() * 80
         tegn_grid()
     } else if visning == "kapitler" {

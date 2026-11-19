@@ -154,8 +154,7 @@ let H = height()
 
 # ── tilstand ─────────────────────────────────────────────────────────
 let fane = "alle"
-let søg = []
-let søg_aktiv = false
+let søg = ""
 let rul = 0
 let tid = 0.0
 let detalje = ""
@@ -464,19 +463,14 @@ let GAB = 12
 fn butik() {
     rect(220, 46, W - 220, H - 46, "#f6ead0")
     for i in range(0, W, 60) { line(220 + i, 46, 220 + i, H, "#efe0c0") }
-    # søgefelt
-    let sbg = "#ffffff"
-    round_rect(KX, 62, W - KX - 16, 38, 12, "#e0d4b8")
-    round_rect(KX + 2, 64, W - KX - 20, 34, 10, sbg)
-    let st = søg.join("")
-    if st == "" and not søg_aktiv {
-        text(KX + 16, 73, "Søg i butikken ( / )", "#a8a090", 1)
-    } else {
-        let blink = ""
-        if søg_aktiv and int(tid * 2) % 2 == 0 { blink = "|" }
-        text(KX + 16, 73, st + blink, "#2a2a3a", 1)
+    # søgefelt (kopiér og indsæt virker, også med højreklik)
+    let st = textbox("søg", KX, 62, W - KX - 16, {"h": 38, "r": 12, "tom": "Søg i butikken ( / )",
+        "bund": "#ffffff", "kant": "#e0d4b8", "fokus": "#3aa0a0", "tekst": "#2a2a3a",
+        "dæmp": "#a8a090", "markering": "#3aa0a060", "aktiv": detalje == ""})
+    if st != søg {
+        søg = st
+        rul = 0
     }
-    if clicked() and detalje == "" { søg_aktiv = inde(KX, 62, W - KX - 16, 38) }
     # kortene
     let s = st.lower()
     let vis = []
@@ -593,19 +587,15 @@ fn detaljer() {
 # ═════════════════════════════ TASTER ════════════════════════════════
 
 fn taster() {
-    if søg_aktiv {
-        let t = typed()
-        for c in t.chars { søg.push(c) }
-        if t != "" { rul = 0 }
-        if pressed("backspace") and søg.len > 0 { søg.pop() }
+    if focused("søg") {
         if pressed("esc") {
-            søg = []
-            søg_aktiv = false
+            søg = ""
+            textbox_set("søg", "", false)
         }
         return nil
     }
     if detalje != "" { return nil }
-    if typed() == "/" { søg_aktiv = true }
+    if typed() == "/" { textbox_set("søg", søg, true) }
     if pressed("down") { rul += 1 }
     if pressed("up") { rul = max(0, rul - 1) }
 }
