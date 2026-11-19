@@ -80,7 +80,9 @@ fn jj_color(name: str, v: value, line: int) (viper::color | failed) = {
 			if (len(digs) == 6 || len(digs) == 8) {
 				let c = 0u32;
 				for (let k = 0z; k < 6; k += 1) c = c << 4 | digs[k];
-				return 0xff000000 | c;
+				// "#rrggbbaa": de sidste to cifre er gennemsigtighed
+				const a = if (len(digs) == 8) digs[6] << 4 | digs[7] else 0xffu32;
+				return a << 24 | c;
 			};
 		};
 		return dief(line, "{}(): '{}' er ikke en farve (brug fx \"#ff8800\" eller \"gold\")", name, s);

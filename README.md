@@ -224,12 +224,22 @@ med tre baner, hop, glid, tog, bananskræller, P'er og en P STORE med outfits.
 Kører med `dsh` (~50 fps) og hurtigere bygget med Violet.
 
 **Eksempel:** `eksempler/boxman.Dash` — *Boxman*, et 2D-skubbespil: skub kasserne
-hen på de gule mål. 20 baner (alle tjekket løsbare, 2-42 træk), fortryd (Z),
+hen på de gule mål. 20 baner (alle tjekket løsbare, 2-42 træk) + 25 julebaner, fortryd (Z),
 rekorder pr. bane og touch-styring.
 
 **Eksempel:** `eksempler/serietracker.Dash` — en tracker til en series afsnit:
 set/ikke set, stjerner, næste afsnit og fremgang. Seriens data ligger i din
 egen fil (`titel=…` og `S1E1|Titel|dato|beskrivelse`), ikke i koden.
+
+**Eksempel:** `eksempler/nonbiri.Dash` — *Nonbiri* 🌾, en MP3/FLAC-afspiller i
+stemningen fra Farming Life in Another World: solen følger sangen over himlen,
+og afgrøderne på marken vokser, mens den spiller (klik på marken for at spole).
+Søgning (`/`), bland, gentag, lydstyrke og cover fra filen eller `cover.jpg`.
+Afspiller med `mpv` (eller `ffplay`), læser tags med `ffprobe`.
+
+```
+dsh eksempler/nonbiri.Dash ~/Musik
+```
 
 Se `eksempler/jj-demo.Dash`. `make NOJJ=1` bygger dsh uden JJGui,
 `make HARE_ONLY=1` uden SDL2.
@@ -251,6 +261,17 @@ pkg install x11-repo && pkg install termux-x11
 termux-x11 :0 &
 DISPLAY=:0 ./spil
 ```
+
+## Nyt i 0.13 «Hiraku» 🌾
+
+Fra nu af får hver version et navn fra Farming Life in Another World
+(`dsh --version`). Næste bliver «Kuro».
+
+- `"tekst".chars` → bogstaverne som en liste — æ, ø og å tæller som ét
+  bogstav (`s[i]` og `.len` tæller bytes).
+- JJGui-farver kan være gennemsigtige: `"#rrggbbaa"`, fx `"#00000060"` til en
+  skygge.
+- Boxman har fået 25 julebaner med snemand, og Nonbiri er kommet til.
 
 ## Farver i nano og Kate
 

@@ -45,7 +45,20 @@ export fn clear(win: *window, col: color) void = {
 export fn pixel(win: *window, x: int, y: int, col: color) void = {
 	if (x < win.clip_x0 || y < win.clip_y0
 			|| x >= win.clip_x1 || y >= win.clip_y1) return;
-	win.pixels[(y * win.width + x): size] = col;
+	const i = (y * win.width + x): size;
+	win.pixels[i] = if (col >> 24 == 0xff) col else blend(win.pixels[i], col);
+};
+
+// Blends a colour with alpha (0xAARRGGBB) over an opaque pixel.
+fn blend(dst: color, src: color) color = {
+	const a = src >> 24;
+	if (a == 0xff) return src;
+	if (a == 0) return dst;
+	const na = 255 - a;
+	const r = (((src >> 16) & 0xff) * a + ((dst >> 16) & 0xff) * na) / 255;
+	const g = (((src >> 8) & 0xff) * a + ((dst >> 8) & 0xff) * na) / 255;
+	const b = ((src & 0xff) * a + (dst & 0xff) * na) / 255;
+	return 0xff000000 | (r << 16) | (g << 8) | b;
 };
 
 // Draws a filled rectangle.
@@ -56,8 +69,15 @@ export fn rect(win: *window, x: int, y: int, w: int, h: int, col: color) void = 
 	const y1 = if (y + h > win.clip_y1) win.clip_y1 else y + h;
 	for (let yy = y0; yy < y1; yy += 1) {
 		const row = yy * win.width;
-		for (let xx = x0; xx < x1; xx += 1) {
-			win.pixels[(row + xx): size] = col;
+		if (col >> 24 == 0xff) {
+			for (let xx = x0; xx < x1; xx += 1) {
+				win.pixels[(row + xx): size] = col;
+			};
+		} else {
+			for (let xx = x0; xx < x1; xx += 1) {
+				const i = (row + xx): size;
+				win.pixels[i] = blend(win.pixels[i], col);
+			};
 		};
 	};
 };

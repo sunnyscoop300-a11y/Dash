@@ -1,0 +1,808 @@
+#!/usr/bin/env dsh-hare
+# 🌾 Nonbiri — en MP3/FLAC-afspiller i Dash med JJGui
+#
+# Inspireret af stemningen i Farming Life in Another World (Isekai Nonbiri
+# Nouka): en rolig landsby ved et stort træ. Solen følger sangen over himlen,
+# og afgrøderne på marken vokser, mens sangen spiller — klik på marken for
+# at spole.
+#
+#   dsh eksempler/nonbiri.Dash [musikmappe]     (standard: ~/Musik eller ~/Music)
+#
+# Afspilning: mpv (eller ffplay som reserve). Tags og cover: ffprobe/ffmpeg.
+# Taster: mellemrum pause · n/p næste/forrige · ←/→ spol 10 s · ↑/↓ lydstyrke
+#         / søg · Enter afspil · s bland · r gentag
+
+let HJEM = env("HOME", "/root")
+let TMP = env("TMPDIR", "/tmp")
+let mappe = ""
+if args.len > 0 { mappe = args[0] }
+if mappe == "" {
+    for m in ["{HJEM}/Musik", "{HJEM}/Music", "{HJEM}/musik"] {
+        if mappe == "" and is_dir(m) { mappe = m }
+    }
+}
+if mappe == "" { mappe = cwd() }
+
+# ── afspiller-program ────────────────────────────────────────────────
+let spiller = ""
+if which("mpv") { spiller = "mpv" } else if which("ffplay") { spiller = "ffplay" }
+if spiller == "" { fail "Nonbiri skal bruge mpv eller ffplay — fx: sudo pacman -S mpv" }
+let har_ffprobe = which("ffprobe")
+let har_ffmpeg = which("ffmpeg")
+
+fn q(s) { return "'" + s.replace("'", "'\\''") + "'" }
+
+# ── find sangene ─────────────────────────────────────────────────────
+let numre = []
+let fundne = $(sh -c "find {q(mappe)} -type f \\( -iname '*.mp3' -o -iname '*.flac' \\) 2>/dev/null | sort").lines()
+for f in fundne {
+    numre.push({"fil": f, "titel": f.stem, "kunstner": "", "album": "", "varighed": 0.0,
+                "probet": false, "cover": -2, "vt": "", "va": ""})
+}
+
+# ── vindue ───────────────────────────────────────────────────────────
+window("Nonbiri", 960, 640)
+let W = width()
+let H = height()
+let JORD = 490
+
+# ── tilstand ─────────────────────────────────────────────────────────
+let cur = -1
+let pid = ""
+let tilstand = "stop"
+let pos = 0.0
+let vol = 0.7
+let vol_vent = 0.0
+let bland = false
+let gentag = "alle"
+let valgt = 0
+let rul = 0
+let søg = []
+let søg_aktiv = false
+let vis = []
+let vis_snavs = true
+let tjek = 0.0
+let tid = 0.0
+let start_tid = 0.0
+let træk_vol = false
+let besked = ""
+let besked_tid = 0.0
+
+# ── små hjælpere ─────────────────────────────────────────────────────
+fn farve(r, g, b) { return int(r) * 65536 + int(g) * 256 + int(b) }
+fn bl(a, b, t) {
+    return farve(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t)
+}
+fn klem(v, a, b) { return max(a, min(b, v)) }
+fn mmss(s) {
+    let t = int(s)
+    let m = int(t / 60)
+    let r = t % 60
+    if r < 10 { return "{m}:0{r}" }
+    return "{m}:{r}"
+}
+fn klip(s, maxw, st) {
+    if text_width(s, st) <= maxw { return s }
+    let r = ""
+    for c in s.chars {
+        if text_width(r + c + "..", st) > maxw { return r + ".." }
+        r += c
+    }
+    return r
+}
+fn skygge_tekst(x, y, s, c, st) {
+    text(x + st, y + st, s, "#00000060", st)
+    text(x, y, s, c, st)
+}
+fn sig(s) {
+    besked = s
+    besked_tid = 2.5
+}
+
+# ── tags og cover ────────────────────────────────────────────────────
+fn probe(i) {
+    let n = numre[i]
+    n.probet = true
+    if har_ffprobe {
+        let ud = $(sh -c "ffprobe -v quiet -show_entries format=duration:format_tags=title,artist,album -of default=nw=1 {q(n.fil)} 2>/dev/null || true")
+        for l in ud.lines() {
+            let p = l.split("=")
+            if p.len >= 2 {
+                let k = p[0].lower()
+                let v = l.replace(p[0] + "=", "").trim()
+                if k == "duration" and v != "N/A" { n.varighed = float(v) }
+                if k == "tag:title" and v != "" { n.titel = v }
+                if k == "tag:artist" and v != "" { n.kunstner = v }
+                if k == "tag:album" and v != "" { n.album = v }
+            }
+        }
+    }
+    n.vt = klip(n.titel, 320, 1)
+    n.va = klip(n.kunstner, 120, 1)
+    vis_snavs = true
+}
+
+fn hent_cover(i) {
+    let n = numre[i]
+    if n.cover != -2 { return nil }
+    n.cover = -1
+    if not har_ffmpeg { return nil }
+    let ud = "{TMP}/nonbiri-cover-{i}.png"
+    let vf = "scale=200:200:force_original_aspect_ratio=increase,crop=200:200"
+    # indlejret cover først, ellers cover.jpg/folder.jpg i samme mappe
+    let kilder = [n.fil]
+    for navn in ["cover.jpg", "cover.png", "folder.jpg", "Folder.jpg", "front.jpg", "Cover.jpg"] {
+        kilder.push("{n.fil.dir}/{navn}")
+    }
+    for k in kilder {
+        if n.cover == -1 and exists(k) {
+            try sh -c "rm -f {q(ud)}; ffmpeg -y -v quiet -i {q(k)} -an -frames:v 1 -vf {q(vf)} {q(ud)} 2>/dev/null"
+            if exists(ud) { n.cover = image(ud) }
+        }
+    }
+}
+
+# ── afspilning ───────────────────────────────────────────────────────
+fn stop_proc() {
+    if pid != "" {
+        try sh -c "kill -CONT {pid} 2>/dev/null; kill {pid} 2>/dev/null"
+        pid = ""
+    }
+}
+
+fn start(i, fra) {
+    stop_proc()
+    if i < 0 or i >= numre.len { return nil }
+    cur = i
+    if not numre[i].probet { probe(i) }
+    hent_cover(i)
+    let f = q(numre[i].fil)
+    let v = int(vol * 100)
+    let sek = int(fra)
+    let cmd = "mpv --no-video --really-quiet --no-terminal --start={sek} --volume={v} {f}"
+    if spiller == "ffplay" { cmd = "ffplay -nodisp -autoexit -loglevel quiet -ss {sek} -volume {v} {f}" }
+    # vagten stopper musikken, hvis Nonbiri bliver lukket med Ctrl+C
+    let vagt = "( while kill -0 \$PPID 2>/dev/null && kill -0 \$p 2>/dev/null; do sleep 1; done; kill -CONT \$p; kill \$p ) >/dev/null 2>&1 &"
+    pid = $(sh -c "{cmd} </dev/null >/dev/null 2>&1 & p=\$!; {vagt} echo \$p").trim()
+    start_tid = tid
+    pos = sek
+    tilstand = "spiller"
+    tjek = 1.0
+}
+
+fn stop() {
+    stop_proc()
+    tilstand = "stop"
+    pos = 0.0
+}
+
+fn pause_af() {
+    if tilstand == "spiller" {
+        try sh -c "kill -STOP {pid} 2>/dev/null"
+        tilstand = "pause"
+    } else if tilstand == "pause" {
+        try sh -c "kill -CONT {pid} 2>/dev/null"
+        tilstand = "spiller"
+    } else if numre.len > 0 {
+        let i = valgt
+        if cur >= 0 { i = cur }
+        start(i, 0)
+    }
+}
+
+fn næste(auto) {
+    if numre.len == 0 { return nil }
+    if auto and gentag == "én" {
+        start(cur, 0)
+        return nil
+    }
+    let i = cur + 1
+    if bland and numre.len > 1 {
+        i = random(numre.len)
+        while i == cur { i = random(numre.len) }
+    } else if i >= numre.len {
+        if auto and gentag == "fra" {
+            stop()
+            return nil
+        }
+        i = 0
+    }
+    valgt = i
+    start(i, 0)
+}
+
+fn forrige() {
+    if numre.len == 0 { return nil }
+    if pos > 3 {
+        start(cur, 0)
+        return nil
+    }
+    let i = cur - 1
+    if i < 0 { i = numre.len - 1 }
+    valgt = i
+    start(i, 0)
+}
+
+fn spol(t) {
+    if cur < 0 { return nil }
+    let d = numre[cur].varighed
+    if d > 0 { t = klem(t, 0, d - 1) } else { t = max(0, t) }
+    start(cur, t)
+}
+
+fn varighed() {
+    if cur < 0 { return 0 }
+    return numre[cur].varighed
+}
+
+fn fremskridt() {
+    let d = varighed()
+    if tilstand == "stop" or d <= 0 { return 0 }
+    return klem(pos / d, 0, 1)
+}
+
+# ── filtrering ───────────────────────────────────────────────────────
+fn byg_vis() {
+    vis = []
+    let s = søg.join("").lower()
+    for i in range(numre.len) {
+        let n = numre[i]
+        if s == "" or (n.titel + " " + n.kunstner + " " + n.album + " " + n.fil.name).lower().contains(s) {
+            vis.push(i)
+        }
+    }
+    vis_snavs = false
+}
+
+# ═════════════════════════════ TEGNING ═══════════════════════════════
+
+let DAG_TOP = [96, 164, 232]
+let DAG_BUND = [196, 228, 250]
+let GRY_TOP = [120, 140, 200]
+let GRY_BUND = [255, 186, 130]
+let SKUM_TOP = [70, 60, 130]
+let SKUM_BUND = [250, 140, 90]
+let NAT_TOP = [14, 20, 44]
+let NAT_BUND = [40, 52, 96]
+
+fn himmel(p) {
+    let top = DAG_TOP
+    let bund = DAG_BUND
+    let nat = tilstand == "stop"
+    for y in range(0, JORD, 10) {
+        let t = y / JORD
+        let c = 0
+        if nat {
+            c = bl(NAT_TOP, NAT_BUND, t)
+        } else if p < 0.15 {
+            let a = p / 0.15
+            c = bl([GRY_TOP[0] + (DAG_TOP[0] - GRY_TOP[0]) * a, GRY_TOP[1] + (DAG_TOP[1] - GRY_TOP[1]) * a, GRY_TOP[2] + (DAG_TOP[2] - GRY_TOP[2]) * a],
+                   [GRY_BUND[0] + (DAG_BUND[0] - GRY_BUND[0]) * a, GRY_BUND[1] + (DAG_BUND[1] - GRY_BUND[1]) * a, GRY_BUND[2] + (DAG_BUND[2] - GRY_BUND[2]) * a], t)
+        } else if p > 0.8 {
+            let a = (p - 0.8) / 0.2
+            c = bl([DAG_TOP[0] + (SKUM_TOP[0] - DAG_TOP[0]) * a, DAG_TOP[1] + (SKUM_TOP[1] - DAG_TOP[1]) * a, DAG_TOP[2] + (SKUM_TOP[2] - DAG_TOP[2]) * a],
+                   [DAG_BUND[0] + (SKUM_BUND[0] - DAG_BUND[0]) * a, DAG_BUND[1] + (SKUM_BUND[1] - DAG_BUND[1]) * a, DAG_BUND[2] + (SKUM_BUND[2] - DAG_BUND[2]) * a], t)
+        } else {
+            c = bl(top, bund, t)
+        }
+        rect(0, y, W, 10, c)
+    }
+    if nat {
+        # stjerner og måne
+        for i in range(40) {
+            let sx = (i * 197 + 31) % W
+            let sy = (i * 83 + 17) % (JORD - 60)
+            if (i + int(tid * 1.5)) % 9 != 0 { rect(sx, sy, 2, 2, "#cdd8ff") }
+        }
+        circle(760, 428, 20, "#f4f0d8")
+        circle(769, 421, 18, bl(NAT_TOP, NAT_BUND, 0.86))
+        return nil
+    }
+    # solen følger sangen fra øst til vest
+    let sx = 340 + p * (W - 370)
+    let sy = JORD + 8 - sin(p * 3.14159) * 84
+    circle(int(sx), int(sy), 38, "#fff2b030")
+    circle(int(sx), int(sy), 30, "#fff2b050")
+    circle(int(sx), int(sy), 22, "#ffe27a")
+    circle(int(sx), int(sy), 17, "#fff4c0")
+}
+
+fn sky(x, y, s) {
+    let c = "#ffffffd0"
+    circle(int(x), int(y), int(22 * s), c)
+    circle(int(x + 26 * s), int(y - 10 * s), int(28 * s), c)
+    circle(int(x + 56 * s), int(y), int(22 * s), c)
+    rect(int(x), int(y), int(56 * s), int(22 * s), c)
+}
+
+fn skyer() {
+    if tilstand == "stop" { return nil }
+    let fart = 6
+    for i in range(3) {
+        let x = ((i * 380 + tid * fart * (i + 1)) % (W + 200)) - 120
+        sky(x, 70 + i * 55, 0.8 + i * 0.2)
+        let x2 = 340 + ((i * 230 + tid * fart * 2) % (W - 300))
+        sky(x2, 420 + (i % 2) * 18, 0.4)
+    }
+}
+
+fn bakker() {
+    circle(250, JORD + 300, 336, "#4f8f3a")
+    circle(760, JORD + 320, 364, "#57993f")
+    rect(0, JORD, W, H - JORD, "#62a548")
+    # græstotter
+    for i in range(0, W, 23) {
+        let gx = i + (i * 7) % 11
+        line(gx, JORD + 18 + (i % 5), gx + 3, JORD + 10 + (i % 5), "#4f8f3a")
+        line(gx + 4, JORD + 18 + (i % 5), gx + 6, JORD + 12 + (i % 5), "#4f8f3a")
+    }
+}
+
+# det store træ med skiltet, hvor coveret hænger
+fn træet() {
+    polygon([[0, JORD + 6], [26, 120], [64, 120], [92, JORD + 6]], "#6b4424")
+    polygon([[30, JORD + 6], [44, 160], [56, 160], [60, JORD + 6]], "#7d5230")
+    # gren ud til skiltet
+    round_rect(40, 54, 270, 14, 7, "#6b4424")
+    rect(40, 58, 270, 3, "#7d5230")
+    # krone
+    for b in [[30, 30, 90], [110, 10, 70], [0, 110, 70], [180, 30, 50], [80, 70, 60]] {
+        circle(b[0], b[1], b[2], "#2f6b2f")
+    }
+    for b in [[46, 20, 70], [120, 0, 52], [10, 96, 50], [190, 22, 36], [90, 56, 40]] {
+        circle(b[0], b[1], b[2], "#3f8a3a")
+    }
+    for b in [[60, 6, 34], [128, -6, 26], [196, 14, 18]] {
+        circle(b[0], b[1], b[2], "#52a24a")
+    }
+}
+
+fn spire(x, y, s) {
+    line(x, y, x, y - int(14 * s), "#3f8a3a")
+    line(x + 1, y, x + 1, y - int(14 * s), "#3f8a3a")
+    polygon([[x, y - int(10 * s)], [x - int(10 * s), y - int(16 * s)], [x - int(2 * s), y - int(6 * s)]], "#52b04a")
+    polygon([[x + 1, y - int(12 * s)], [x + int(11 * s), y - int(18 * s)], [x + int(3 * s), y - int(7 * s)]], "#52b04a")
+}
+
+fn skiltet() {
+    let sx = 70
+    let sy = 82
+    line(104, 66, 104, sy, "#d8c090")
+    line(105, 66, 105, sy, "#d8c090")
+    line(256, 66, 256, sy, "#d8c090")
+    line(257, 66, 257, sy, "#d8c090")
+    round_rect(sx - 2, sy + 4, 224, 224, 10, "#00000050")
+    round_rect(sx - 6, sy - 6, 228, 228, 10, "#8a5a2b")
+    round_rect(sx - 2, sy - 2, 220, 220, 6, "#5e3b1c")
+    let c = -1
+    if cur >= 0 { c = numre[cur].cover }
+    if c >= 0 {
+        draw(c, sx + 8, sy + 8)
+    } else {
+        # intet cover: en lille spire i jorden
+        rect(sx + 8, sy + 8, 200, 200, "#f3e6c4")
+        round_rect(sx + 48, sy + 150, 120, 30, 14, "#7a5230")
+        spire(sx + 108, sy + 156, 3)
+        let t = "Nonbiri"
+        text(sx + 108 - text_width(t, 2) / 2, sy + 30, t, "#7a5230", 2)
+    }
+}
+
+fn træknap(x, y, r, aktiv) {
+    circle(x + 2, y + 4, r, "#00000050")
+    let c = "#9a6a35"
+    if aktiv { c = "#b4824a" }
+    circle(x, y, r, "#6b4424")
+    circle(x, y, r - 3, c)
+    circle(x - int(r / 3), y - int(r / 3), int(r / 4), "#ffffff20")
+    let m = mouse()
+    let dx = m[0] - x
+    let dy = m[1] - y
+    return dx * dx + dy * dy <= r * r
+}
+
+fn knapper() {
+    let y = 404
+    let m = mouse()
+    # forrige
+    let o = træknap(110, y, 24, false)
+    polygon([[118, y - 10], [118, y + 10], [104, y]], "#fff4dc")
+    rect(100, y - 10, 4, 20, "#fff4dc")
+    if o and clicked() { forrige() }
+    # afspil/pause
+    o = træknap(180, y, 32, true)
+    if tilstand == "spiller" {
+        rect(170, y - 13, 7, 26, "#fff4dc")
+        rect(184, y - 13, 7, 26, "#fff4dc")
+    } else {
+        polygon([[172, y - 15], [172, y + 15], [196, y]], "#fff4dc")
+    }
+    if o and clicked() { pause_af() }
+    # næste
+    o = træknap(250, y, 24, false)
+    polygon([[242, y - 10], [242, y + 10], [256, y]], "#fff4dc")
+    rect(256, y - 10, 4, 20, "#fff4dc")
+    if o and clicked() { næste(false) }
+}
+
+fn info() {
+    round_rect(44, 314, 276, 56, 10, "#00000040")
+    round_rect(40, 310, 276, 56, 10, "#8a5a2b")
+    let t = "Vælg en sang"
+    let u = "{numre.len} sange i {mappe.name}"
+    if cur >= 0 {
+        let n = numre[cur]
+        t = n.titel
+        u = n.kunstner
+        if n.album != "" {
+            if u != "" { u += " · " }
+            u += n.album
+        }
+    }
+    text(54, 316, klip(t, 250, 2), "#fff4dc", 2)
+    text(54, 346, klip(u, 250, 1), "#f0d8a8", 1)
+}
+
+fn lydstyrke() {
+    let x0 = 70
+    let x1 = 300
+    let y = 456
+    let m = mouse()
+    # vandkande
+    round_rect(30, y - 10, 24, 18, 4, "#7090b0")
+    line(54, y - 4, 64, y - 12, "#7090b0")
+    line(54, y - 3, 64, y - 11, "#7090b0")
+    outline(26, y - 8, 6, 12, "#7090b0")
+    round_rect(x0, y - 5, x1 - x0, 10, 5, "#5e3b1c")
+    round_rect(x0, y - 5, int((x1 - x0) * vol), 10, 5, "#4aa8e8")
+    circle(x0 + int((x1 - x0) * vol), y, 9, "#bfe6ff")
+    circle(x0 + int((x1 - x0) * vol), y, 6, "#4aa8e8")
+    if clicked() and m[0] >= x0 - 10 and m[0] <= x1 + 10 and m[1] >= y - 14 and m[1] <= y + 14 { træk_vol = true }
+    if not mouse_down() { træk_vol = false }
+    if træk_vol {
+        let nv = klem((m[0] - x0) / (x1 - x0), 0, 1)
+        if nv != vol {
+            vol = nv
+            vol_vent = 0.4
+        }
+    }
+}
+
+# marken: afgrøderne vokser i takt med sangen
+fn marken(p) {
+    let x0 = 40
+    let x1 = W - 40
+    let y0 = 566
+    let m = mouse()
+    round_rect(x0 - 10, y0 - 8, x1 - x0 + 20, 64, 12, "#6e4a2a")
+    round_rect(x0 - 10, y0 - 8, int((x1 - x0) * p) + 10, 64, 12, "#5a3a1e")
+    for i in range(4) { line(x0, y0 + 6 + i * 13, x1, y0 + 6 + i * 13, "#7f5a36") }
+    let N = 40
+    for j in range(N) {
+        let x = x0 + int((j + 0.5) * (x1 - x0) / N)
+        let g = klem(p * N - j, 0, 1)
+        let by = y0 + 44
+        if tilstand == "stop" or g <= 0 {
+            circle(x, by, 3, "#4a2e16")
+        } else {
+            let h = int(8 + 26 * g)
+            line(x, by, x, by - h, "#3f8a3a")
+            line(x + 1, by, x + 1, by - h, "#3f8a3a")
+            polygon([[x, by - int(h / 2)], [x - 9, by - int(h / 2) - 7], [x - 2, by - int(h / 2) + 3]], "#52b04a")
+            polygon([[x + 1, by - int(h * 0.7)], [x + 10, by - int(h * 0.7) - 7], [x + 3, by - int(h * 0.7) + 3]], "#52b04a")
+            if g >= 1 {
+                circle(x + 5, by - h + 4, 6, "#e04030")
+                circle(x + 3, by - h + 2, 2, "#ff9a80")
+                rect(x + 4, by - h - 3, 2, 3, "#3f8a3a")
+            } else {
+                circle(x + 4, by - h + 4, int(2 + 3 * g), "#8acc50")
+            }
+        }
+    }
+    # tider
+    let d = varighed()
+    skygge_tekst(x0, y0 - 34, mmss(pos), "#ffffff", 2)
+    let dt = "--:--"
+    if d > 0 { dt = mmss(d) }
+    skygge_tekst(x1 - text_width(dt, 2), y0 - 34, dt, "#ffffff", 2)
+    # spol ved klik
+    if m[0] >= x0 and m[0] <= x1 and m[1] >= y0 - 8 and m[1] <= y0 + 56 and cur >= 0 and d > 0 {
+        let t = (m[0] - x0) / (x1 - x0) * d
+        line(m[0], y0 - 8, m[0], y0 + 56, "#fff4dc90")
+        let s = mmss(t)
+        round_rect(m[0] - text_width(s, 1) / 2 - 6, y0 - 30, text_width(s, 1) + 12, 20, 6, "#2a1a0ce0")
+        text(m[0] - text_width(s, 1) / 2, y0 - 28, s, "#fff4dc", 1)
+        if clicked() { spol(t) }
+    }
+}
+
+# sommerfugle om dagen, ildfluer om natten
+fn småkryb() {
+    if tilstand == "stop" {
+        for i in range(8) {
+            let fx = (i * 131 + sin(tid * 0.7 + i) * 40) % W
+            let fy = JORD - 20 + sin(tid * 1.3 + i * 2) * 30
+            if sin(tid * 3 + i * 1.7) > 0 {
+                circle(int(fx), int(fy), 4, "#fff27a50")
+                circle(int(fx), int(fy), 2, "#fff27a")
+            }
+        }
+        return nil
+    }
+    let farver = ["#ffcf3a", "#ffffff", "#ff9ad0"]
+    for i in range(3) {
+        let fx = 380 + i * 200 + sin(tid * 0.6 + i * 2) * 120
+        let fy = JORD + 30 + sin(tid * 1.1 + i) * 18
+        let v = int(abs(sin(tid * 12 + i)) * 6) + 1
+        polygon([[int(fx), int(fy)], [int(fx) - 7, int(fy) - v], [int(fx) - 6, int(fy) + 3]], farver[i])
+        polygon([[int(fx), int(fy)], [int(fx) + 7, int(fy) - v], [int(fx) + 6, int(fy) + 3]], farver[i])
+    }
+}
+
+fn chip(x, y, s, til) {
+    let w = text_width(s, 1) + 20
+    let m = mouse()
+    let over = m[0] >= x and m[0] < x + w and m[1] >= y and m[1] < y + 26
+    let bg = "#6b4424"
+    if til { bg = "#3f8a3a" }
+    if over { bg = "#b4824a" }
+    round_rect(x, y, w, 26, 13, bg)
+    text(x + 10, y + 5, s, "#fff4dc", 1)
+    return over and clicked()
+}
+
+# listen over sange — "marken" med en række pr. sang
+let RX = 356
+let RY = 104
+let RH = 30
+let RW = 568
+let SYNLIGE = 8
+fn listen() {
+    round_rect(344, 24, 600, 372, 16, "#00000050")
+    round_rect(340, 18, 600, 372, 16, "#8a5a2b")
+    for i in range(5) { line(352, 30 + i * 74, 928, 30 + i * 74, "#7a4c22") }
+    skygge_tekst(360, 28, "NONBIRI", "#fff4dc", 3)
+    text(366 + text_width("NONBIRI", 3), 44, "ved det store træ", "#f0d8a8", 1)
+    # bland og gentag
+    let gt = "Gentag: {gentag}"
+    if chip(926 - text_width(gt, 1) - 20, 30, gt, gentag != "fra") {
+        if gentag == "alle" { gentag = "én" } else if gentag == "én" { gentag = "fra" } else { gentag = "alle" }
+    }
+    if chip(926 - text_width(gt, 1) - 30 - text_width("Bland", 1) - 20, 30, "Bland", bland) { bland = not bland }
+    # søgefelt
+    let m = mouse()
+    let sbg = "#f3e6c4"
+    if søg_aktiv { sbg = "#fff8e4" }
+    round_rect(RX, 66, RW, 28, 8, sbg)
+    let st = søg.join("")
+    if st == "" and not søg_aktiv {
+        text(RX + 10, 72, "Søg ( / ) ...", "#a08a60", 1)
+    } else {
+        let blink = ""
+        if søg_aktiv and int(tid * 2) % 2 == 0 { blink = "|" }
+        text(RX + 10, 72, klip(st, RW - 30, 1) + blink, "#4a2e16", 1)
+    }
+    if clicked() {
+        søg_aktiv = m[0] >= RX and m[0] < RX + RW and m[1] >= 66 and m[1] < 94
+    }
+    # rækkerne
+    round_rect(RX, RY - 4, RW, SYNLIGE * RH + 8, 8, "#f3e6c4")
+    if vis_snavs { byg_vis() }
+    rul = klem(rul, 0, max(0, vis.len - SYNLIGE))
+    let over_liste = m[0] >= RX and m[0] < RX + RW and m[1] >= RY and m[1] < RY + SYNLIGE * RH
+    if over_liste and wheel() != 0 { rul = klem(rul - wheel() * 3, 0, max(0, vis.len - SYNLIGE)) }
+    if numre.len == 0 {
+        text(RX + 20, RY + 20, "Ingen sange på marken endnu.", "#7a5230", 2)
+        text(RX + 20, RY + 56, "Fandt ingen .mp3 eller .flac i:", "#7a5230", 1)
+        text(RX + 20, RY + 76, klip(mappe, RW - 40, 1), "#4a2e16", 1)
+        text(RX + 20, RY + 110, "Start med en mappe:  dsh nonbiri.Dash ~/Musik", "#7a5230", 1)
+        return nil
+    }
+    if vis.len == 0 { text(RX + 20, RY + 20, "Ingen sange matcher søgningen.", "#7a5230", 1) }
+    for r in range(SYNLIGE) {
+        let k = rul + r
+        if k < vis.len {
+            let i = vis[k]
+            let n = numre[i]
+            let y = RY + r * RH
+            let over = over_liste and m[1] >= y and m[1] < y + RH
+            if i == cur { round_rect(RX + 4, y, RW - 16, RH - 2, 6, "#cfe8b0") }
+            else if over { round_rect(RX + 4, y, RW - 16, RH - 2, 6, "#ead9ad") }
+            if i == valgt and not over and i != cur { outline(RX + 4, y, RW - 16, RH - 2, "#c0a070") }
+            if n.vt == "" {
+                n.vt = klip(n.titel, 320, 1)
+                n.va = klip(n.kunstner, 120, 1)
+            }
+            # ikon: frø, eller en spire der vugger når sangen spiller
+            if i == cur and tilstand != "stop" {
+                let v = 0
+                if tilstand == "spiller" { v = int(sin(tid * 5) * 2) }
+                spire(RX + 18 + v, y + 24, 1)
+            } else {
+                circle(RX + 18, y + 18, 4, "#8a6a40")
+                circle(RX + 17, y + 17, 1, "#c0a070")
+            }
+            text(RX + 36, y + 7, n.vt, "#3a2412", 1)
+            text(RX + 370, y + 7, n.va, "#8a6a40", 1)
+            if n.varighed > 0 {
+                let d = mmss(n.varighed)
+                text(RX + RW - 24 - text_width(d, 1), y + 7, d, "#8a6a40", 1)
+            }
+            if over and clicked() {
+                valgt = i
+                start(i, 0)
+            }
+        }
+    }
+    # rullebjælke
+    if vis.len > SYNLIGE {
+        let hh = SYNLIGE * RH
+        let bh = max(20, int(hh * SYNLIGE / vis.len))
+        let by = RY + int((hh - bh) * rul / (vis.len - SYNLIGE))
+        round_rect(RX + RW - 9, RY, 5, hh, 2, "#e0cfa0")
+        round_rect(RX + RW - 9, by, 5, bh, 2, "#a07a48")
+    }
+    let fod = "{vis.len} af {numre.len} sange · {spiller}"
+    text(RX, 362, klip(fod, 420, 1), "#f0d8a8", 1)
+}
+
+# ═════════════════════════════ TASTER ════════════════════════════════
+
+fn taster() {
+    if søg_aktiv {
+        let t = typed()
+        for c in t.chars { søg.push(c) }
+        if t != "" {
+            vis_snavs = true
+            rul = 0
+        }
+        if pressed("backspace") and søg.len > 0 {
+            søg.pop()
+            vis_snavs = true
+        }
+        if pressed("esc") {
+            søg = []
+            søg_aktiv = false
+            vis_snavs = true
+        }
+        if pressed("enter") and vis.len > 0 {
+            valgt = vis[0]
+            start(vis[0], 0)
+            søg_aktiv = false
+        }
+        return nil
+    }
+    let t = typed()
+    if t == "/" {
+        søg_aktiv = true
+        return nil
+    }
+    if pressed("space") { pause_af() }
+    if pressed("n") { næste(false) }
+    if pressed("p") { forrige() }
+    if pressed("s") {
+        bland = not bland
+        if bland { sig("Bland: til") } else { sig("Bland: fra") }
+    }
+    if pressed("r") {
+        if gentag == "alle" { gentag = "én" } else if gentag == "én" { gentag = "fra" } else { gentag = "alle" }
+        sig("Gentag: {gentag}")
+    }
+    if pressed("right") { spol(pos + 10) }
+    if pressed("left") { spol(pos - 10) }
+    if pressed("up") {
+        vol = klem(vol + 0.05, 0, 1)
+        vol_vent = 0.4
+        sig("Lydstyrke {int(vol * 100)} %")
+    }
+    if pressed("down") {
+        vol = klem(vol - 0.05, 0, 1)
+        vol_vent = 0.4
+        sig("Lydstyrke {int(vol * 100)} %")
+    }
+    if vis.len > 0 {
+        let k = 0
+        for j in range(vis.len) { if vis[j] == valgt { k = j } }
+        if pressed("j") { k = min(vis.len - 1, k + 1) }
+        if pressed("k") { k = max(0, k - 1) }
+        valgt = vis[k]
+        if k < rul { rul = k }
+        if k >= rul + SYNLIGE { rul = k - SYNLIGE + 1 }
+        if pressed("enter") { start(valgt, 0) }
+    }
+}
+
+# ── testkroge til skærmbilleder ──────────────────────────────────────
+let skud = env("JJ_SKUD", "")
+let scene = env("JJ_SCENE", "")
+let skud_tid = 0.0
+if scene == "spiller" and numre.len > 0 {
+    start(min(1, numre.len - 1), 0)
+    pos = numre[cur].varighed * 0.55
+}
+if scene == "søg" {
+    søg = "lang".chars
+    søg_aktiv = true
+    vis_snavs = true
+}
+
+# ═════════════════════════════ LØKKEN ════════════════════════════════
+
+while frame() {
+    let dt = delta()
+    tid += dt
+    if tilstand == "spiller" and scene == "" { pos += dt }
+    # er sangen færdig?
+    if tilstand == "spiller" and pid != "" and scene == "" {
+        tjek -= dt
+        if tjek <= 0 {
+            tjek = 0.5
+            let lever = $(sh -c "kill -0 {pid} 2>/dev/null && echo ja || echo nej").trim()
+            if lever == "nej" {
+                pid = ""
+                # færdig = stoppede tæt på slutningen; ellers kunne den ikke afspilles
+                let d = numre[cur].varighed
+                let fejl = tid - start_tid < 1.5
+                if d > 0 and pos < d - 3 { fejl = true }
+                if d <= 0 and tid - start_tid < 5 { fejl = true }
+                if fejl {
+                    tilstand = "stop"
+                    sig("Kunne ikke afspille {numre[cur].fil.name}")
+                } else {
+                    næste(true)
+                }
+            }
+        }
+    }
+    # ny lydstyrke: genstart på samme sted, når man har sluppet
+    if vol_vent > 0 {
+        vol_vent -= dt
+        if vol_vent <= 0 and not træk_vol and tilstand == "spiller" { start(cur, pos) }
+        if vol_vent <= 0 and træk_vol { vol_vent = 0.1 }
+    }
+    # hent tags lidt ad gangen — synlige sange først
+    let probet_en = false
+    for k in range(rul, min(vis.len, rul + SYNLIGE)) {
+        if not probet_en and not numre[vis[k]].probet {
+            probe(vis[k])
+            probet_en = true
+        }
+    }
+    if not probet_en {
+        for i in range(numre.len) {
+            if not probet_en and not numre[i].probet {
+                probe(i)
+                probet_en = true
+            }
+        }
+    }
+
+    let p = fremskridt()
+    himmel(p)
+    skyer()
+    bakker()
+    træet()
+    skiltet()
+    info()
+    knapper()
+    lydstyrke()
+    listen()
+    marken(p)
+    småkryb()
+    taster()
+    if besked_tid > 0 {
+        besked_tid -= dt
+        let bw = text_width(besked, 2) + 30
+        round_rect(W / 2 - bw / 2, 500, bw, 36, 12, "#2a1a0ce0")
+        text(W / 2 - bw / 2 + 15, 504, besked, "#fff4dc", 2)
+    }
+
+    if skud != "" {
+        skud_tid += dt
+        if skud_tid > 0.6 {
+            screenshot(skud)
+            break
+        }
+    }
+}
+stop_proc()

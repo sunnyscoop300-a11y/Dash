@@ -406,6 +406,14 @@ fn attr(obj: value, name: str, line: int) (value | failed) = {
 			case let i: size => return if (i == 0) n else strings::sub(n, 0, i);
 			case void => return n;
 			};
+		case "chars" =>
+			// bogstaver, ikke bytes: "Høst".chars → ["H", "ø", "s", "t"]
+			let parts: []value = [];
+			let it = strings::iter(s);
+			for (let r => strings::next(&it)) {
+				append(parts, strings::fromrunes([r])!)!;
+			};
+			return newlist(parts);
 		case "ext" =>
 			const n = path_name(s);
 			match (strings::rindex(n, '.')) {

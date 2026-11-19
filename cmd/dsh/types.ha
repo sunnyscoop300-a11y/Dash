@@ -242,12 +242,14 @@ fn tattr(o: ty, name: str) ty = {
 		if (o.b & T_STR != 0) r.b |= T_STR;
 	case "keys" =>
 		if (o.b & T_MAP != 0) r = join(r, tlist(T_STR));
+	case "chars" =>
+		if (o.b & T_STR != 0) r = join(r, tlist(T_STR));
 	case "values" =>
 		if (o.b & T_MAP != 0) r = join(r, tlist(o.me));
 	case => void;
 	};
 	// felter i et map: m.navn
-	if (o.b & T_MAP != 0 && name != "len" && name != "keys" && name != "values") {
+	if (o.b & T_MAP != 0 && name != "len" && name != "keys" && name != "values" && name != "chars") {
 		r.b |= o.me | T_NIL;
 	};
 	return r;
