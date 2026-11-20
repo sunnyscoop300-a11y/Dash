@@ -1,6 +1,7 @@
 # dsh_vfork_exec(path, argv, envp, fds) — starts a program the way dash does:
 # fds[0..2] = where stdin/stdout/stderr come from (-1 = inherit),
-# fds[3] = flags: 1 = setsid() (background job, own session).
+# fds[3] = flags: 1 = setsid() (background job, own session),
+#                 2 = prctl(PR_SET_PDEATHSIG, SIGKILL) (&( )-job dør med dsh).
 # vfork() + dup2() + execve(), all in registers. The child never touches the
 # stack (it shares memory with dsh until execve), so this has to be assembly.
 # Returns the child's pid, or -errno if vfork failed. If execve fails, the
@@ -31,7 +32,14 @@ dsh_vfork_exec:
 	jz	4f
 	mov	$112, %eax		# SYS_setsid
 	syscall
-4:	mov	%r8, %rdi
+4:	movl	12(%rdx), %eax		# flag 2: dø sammen med dsh (&( )-job)
+	test	$2, %eax
+	jz	5f
+	mov	$1, %edi		# PR_SET_PDEATHSIG
+	mov	$9, %esi		# SIGKILL (virker også på et job på pause)
+	mov	$157, %eax		# SYS_prctl
+	syscall
+5:	mov	%r8, %rdi
 	mov	%r9, %rsi
 	mov	%r10, %rdx
 	mov	$59, %eax		# SYS_execve

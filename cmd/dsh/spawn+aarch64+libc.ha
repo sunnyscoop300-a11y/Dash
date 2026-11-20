@@ -37,6 +37,7 @@ type spawnspec = struct {
 	args: []str,
 	fds: [3]int,
 	detach: bool,    // background job: own session (setsid)
+	diewith: bool,   // &( )-job: dør, når dsh dør (PR_SET_PDEATHSIG)
 };
 
 type spawn_err = !int;    // errno

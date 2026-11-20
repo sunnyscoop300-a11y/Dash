@@ -20,6 +20,7 @@ type spawnspec = struct {
 	args: []str,
 	fds: [3]int,
 	detach: bool,    // background job: own session (setsid)
+	diewith: bool,   // &( )-job: dør, når dsh dør (PR_SET_PDEATHSIG)
 };
 
 type spawn_err = !int;    // errno
@@ -36,7 +37,9 @@ fn spawn(sp: *spawnspec) (exec::process | spawn_err) = {
 	for (let a .. sp.args) append(argv, c::fromstr(a)!)!;
 	append(argv, null)!;
 
-	let fds: [4]int = [sp.fds[0], sp.fds[1], sp.fds[2], if (sp.detach) 1 else 0];
+	let flags = if (sp.detach) 1 else 0;
+	if (sp.diewith) flags |= 2;
+	let fds: [4]int = [sp.fds[0], sp.fds[1], sp.fds[2], flags];
 	const r = vfork_exec(cpath, argv: *[*]nullable *const c::char, rt::envp, &fds);
 	if (r < 0) return (-r): int: spawn_err;
 	return r: int: exec::process;

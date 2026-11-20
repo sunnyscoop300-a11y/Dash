@@ -129,7 +129,9 @@ fn reap_bg() void = {
 	};
 };
 
-// &( … ): en kommando i baggrunden, som man kan vente på.
+// &( … ): en kommando i baggrunden, som man kan vente på. Den dør sammen med
+// scriptet (også ved Ctrl+C eller et nedbrud), så intet bliver hængende —
+// i modsætning til "cmd &", der lever videre efter scriptet.
 //   let job = &(curl -sS -o svar.json $url)
 //   ... (lav noget andet imens, fx en animation)
 //   if not running(job) { let kode = wait(job) }
@@ -338,7 +340,8 @@ fn run_x(stages: []xstage, e: nullable *env, line: int, cap: bool, try_: bool) (
 		const st = &stages[i];
 		const args = argv[i];
 		const last = i == len(stages) - 1;
-		let sp = spawnspec { path = resolve(args[0]), args = args, fds = [-1, -1, -1], detach = bg_null >= 0 };
+		let sp = spawnspec { path = resolve(args[0]), args = args, fds = [-1, -1, -1], detach = bg_null >= 0,
+			diewith = bg_null >= 0 && job_mode };
 		if (bg_null >= 0) sp.fds = [bg_null, bg_null, bg_null];
 		if (!strings::contains(sp.path, "/")) {
 			if (try_) {

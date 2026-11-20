@@ -14,6 +14,7 @@ type spawnspec = struct {
 	args: []str,
 	fds: [3]int,
 	detach: bool,    // background job: own session (setsid)
+	diewith: bool,   // &( )-job: dør, når dsh dør (PR_SET_PDEATHSIG)
 };
 
 type spawn_err = !int;    // errno
@@ -111,6 +112,7 @@ fn spawn(sp: *spawnspec) (exec::process | spawn_err) = {
 			};
 		};
 		if (sp.detach) match (rt::setsid()) { case => void; };
+		if (sp.diewith) match (rt::prctl(rt::PR_SET_PDEATHSIG, 9, 0, 0, 0)) { case => void; };
 		// execve kommer kun tilbage, hvis programmet ikke kunne startes
 		let _ = rt::execve(cpath: *const u8, argv: *[*]nullable *const u8,
 			rt::envp: *[*]nullable *const u8);
