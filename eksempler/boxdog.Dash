@@ -1,0 +1,1429 @@
+#!/usr/bin/env dsh
+# boxdog.Dash — BoxDog: en hundehvalp skubber kasser på plads på lageret (JJGui)
+# bob-navn: BoxDog
+# bob-kategori: spil
+# bob-farve: #f0b040
+# bob-om: Skub kasserne hen på pote-felterne på lageret. 55 baner i ti lagerhaller (to af dem med nisser), julelook i december, fortryd, rekorder, lyd og touch.
+#
+#   dsh eksempler/boxdog.Dash
+#
+# Piletaster eller WASD flytter hunden, Z fortryder, R starter forfra,
+# L viser banerne, M slår lyden til og fra (også under SETTINGS). På telefonen: tryk på den side
+# af hunden, den skal gå til. Rekorderne gemmes i ~/.boxdog.
+#
+# Grafikken ligger i boxdog/ ved siden af og er klippet ud af BoxDog-mockuppen
+# med boxdog/klip.py (python3 klip.py mockup.png boxdog).
+
+window("BoxDog", 1136, 640)
+let W = width()
+let H = height()
+let BANER = [
+    # ── hal 1 ──
+    {"navn": "Første kasse", "hal": 0, "kort": [
+        "#######",
+        "#     #",
+        "# @\$ .#",
+        "#     #",
+        "#######"]},
+    {"navn": "Hjørnet", "hal": 0, "kort": [
+        "######",
+        "#    #",
+        "# \$  #",
+        "#  @ #",
+        "##.  #",
+        " #####"]},
+    {"navn": "To kasser", "hal": 0, "kort": [
+        "########",
+        "#      #",
+        "# @\$ \$ #",
+        "#    ..#",
+        "########"]},
+    {"navn": "Gaflen", "hal": 0, "kort": [
+        "  #####",
+        "###   #",
+        "#.  # #",
+        "# \$\$  #",
+        "#.  @##",
+        "#####  "]},
+    {"navn": "Lager A-01", "hal": 0, "kort": [
+        " ####  #HHH# ",
+        "##  ####   ##",
+        "H        .  H",
+        "H  @\$  \$    #",
+        "#     \$  .  H",
+        "##         ##",
+        " ####    .  # ",
+        "    ######## "]},
+    # ── hal 2 ──
+    {"navn": "Paller", "hal": 1, "kort": [
+        "#######",
+        "#.   .#",
+        "# \$\$\$ #",
+        "#  @  #",
+        "#  .  #",
+        "#######"]},
+    {"navn": "Porten", "hal": 1, "kort": [
+        "#########",
+        "#   #   #",
+        "# \$ . \$ #",
+        "#  @#   #",
+        "# .   \$.#",
+        "#########"]},
+    {"navn": "Reolen", "hal": 1, "kort": [
+        "#######",
+        "#.    #",
+        "#  \$  #",
+        "#.\$#@ #",
+        "#     #",
+        "#######"]},
+    {"navn": "Ben-gemmet", "hal": 1, "kort": [
+        " #######",
+        " #     #",
+        "##.### #",
+        "#  \$ . #",
+        "# @\$\$  #",
+        "##.  ###",
+        " #####  "]},
+    {"navn": "Natvagten", "hal": 1, "kort": [
+        "##########",
+        "#   #    #",
+        "# \$ . \$  #",
+        "#.##*##. #",
+        "#   @ \$  #",
+        "#        #",
+        "##########"]},
+    # ── hal 3 ──
+    {"navn": "Truckbanen", "hal": 2, "kort": [
+        "##########",
+        "#        #",
+        "# \$\$ #.. #",
+        "#  @     #",
+        "#        #",
+        "##########"]},
+    {"navn": "Lastrampen", "hal": 2, "kort": [
+        " #######",
+        " #  .  #",
+        "##\$##\$ #",
+        "#  .@  #",
+        "# \$ ## #",
+        "#.     #",
+        "########"]},
+    {"navn": "Kassebjerget", "hal": 2, "kort": [
+        "########",
+        "#..    #",
+        "#..\$\$\$ #",
+        "###  \$ #",
+        "  # @  #",
+        "  ######"]},
+    {"navn": "Hundekurven", "hal": 2, "kort": [
+        "#########",
+        "#.  #  .#",
+        "# \$   \$ #",
+        "## # # ##",
+        "#  \$@\$  #",
+        "#.  #  .#",
+        "#########"]},
+    {"navn": "Kontoret", "hal": 2, "kort": [
+        "#########",
+        "#   #   #",
+        "# \$   \$ #",
+        "## #.# ##",
+        "# \$.@.  #",
+        "#       #",
+        "#########"]},
+    {"navn": "Stor-lageret", "hal": 2, "kort": [
+        "###########",
+        "#.   #   .#",
+        "# \$\$   \$\$ #",
+        "#  ##@##  #",
+        "# \$ . . \$ #",
+        "#.   #   .#",
+        "###########"]},
+    # ── hal 4 ──
+    {"navn": "Smal gang", "hal": 3, "kort": [
+        "#########",
+        "#@ \$  . #",
+        "# ##\$## #",
+        "#   .   #",
+        "#########"]},
+    {"navn": "Kølerummet", "hal": 3, "kort": [
+        "  #####  ",
+        "###   ###",
+        "# . \$ . #",
+        "#  \$@\$  #",
+        "# . \$ . #",
+        "###   ###",
+        "  #####  "]},
+    {"navn": "Dobbeltdøren", "hal": 3, "kort": [
+        "###########",
+        "#   # .   #",
+        "# \$   \$   #",
+        "## # # ## #",
+        "#.  @  \$ .#",
+        "###########"]},
+    {"navn": "Vagtskuret", "hal": 3, "kort": [
+        " ########",
+        " #  .   #",
+        "## \$##\$ #",
+        "#.  @   #",
+        "# \$ ## .#",
+        "#   ##  #",
+        "#########"]},
+    {"navn": "Pakkebåndet", "hal": 3, "kort": [
+        "##########",
+        "#  .  .  #",
+        "# \$##\$## #",
+        "#  @  \$ .#",
+        "##########"]},
+    {"navn": "Hjørnekontoret", "hal": 3, "kort": [
+        "#######  ",
+        "#.  . #  ",
+        "# \$\$  ###",
+        "#  #\$  .#",
+        "# @   \$ #",
+        "###.  ###",
+        "  #####  "]},
+    # ── hal 5 ──
+    {"navn": "Rampen", "hal": 4, "kort": [
+        "  ######  ",
+        "  #  . #  ",
+        "### \$\$ ###",
+        "#. \$@ \$ .#",
+        "###  . ###",
+        "  ######  "]},
+    {"navn": "Kølediske", "hal": 4, "kort": [
+        "##########",
+        "#.   #   #",
+        "# \$  \$ . #",
+        "#  ## #\$ #",
+        "#.  @    #",
+        "##########"]},
+    {"navn": "Spiralen", "hal": 4, "kort": [
+        "#########",
+        "#.  \$   #",
+        "# ##### #",
+        "# #.  # #",
+        "# # \$@# #",
+        "# #  \$# #",
+        "#      .#",
+        "#########"]},
+    {"navn": "Labyrinten", "hal": 4, "kort": [
+        "###########",
+        "#@  #  .  #",
+        "# \$ # \$ # #",
+        "#   \$   # #",
+        "### # ### #",
+        "#.    .   #",
+        "###########"]},
+    {"navn": "Containeren", "hal": 4, "kort": [
+        "############",
+        "#  .    .  #",
+        "# ### \$### #",
+        "#  \$ @  \$  #",
+        "# ###\$ ### #",
+        "#  .    .  #",
+        "############"]},
+    {"navn": "Hovedlageret", "hal": 4, "kort": [
+        "#############",
+        "#.  #   #  .#",
+        "# \$   \$   \$ #",
+        "#.# ##@## #.#",
+        "# \$   \$     #",
+        "#   # . #   #",
+        "#############"]},
+    # ── hal 6 (svære, lavet af banegeneratoren) ──
+    {"navn": "Kranbanen", "hal": 5, "kort": [
+        "    ########",
+        " #### .##  #",
+        " #     . \$ #",
+        " #     \$ \$ #",
+        " #.      \$@#",
+        "####     ###",
+        "#      ###",
+        "# #    #",
+        "# .   ##",
+        "#######"]},
+    {"navn": "Pallereolen", "hal": 5, "kort": [
+        "############",
+        "#      #   #",
+        "#.   . *   #",
+        "#     #. # #",
+        "#\$#\$     #.#",
+        "#       ##\$#",
+        "#### ###   #",
+        "   #\$   \$@##",
+        "   #   # .#",
+        "   ########"]},
+    {"navn": "Fragtrummet", "hal": 5, "kort": [
+        "############",
+        "#  #       #",
+        "#  .   \$  .#",
+        "# .\$#. \$   #",
+        "# #    \$ \$ #",
+        "#  . ## \$@##",
+        "####  #  ##",
+        "   #  .  #",
+        "   #######"]},
+    {"navn": "Gaffeltrucken", "hal": 5, "kort": [
+        "  #########",
+        "  #       #",
+        " ##  # #\$ #",
+        " # .   .\$ #",
+        " # .  # # #",
+        "##  #  \$  #",
+        "#*.\$    \$ #",
+        "#.       @#",
+        "###########"]},
+    {"navn": "Mørkelageret", "hal": 5, "kort": [
+        "  #########",
+        "  #   #   #",
+        "###      .#",
+        "#  .    #.#",
+        "# # @   # #",
+        "#    \$  . #",
+        "#  #  \$\$\$.#",
+        "## \$      #",
+        " ##       #",
+        "  #########"]},
+    # ── hal 7 (svære, lavet af banegeneratoren) ──
+    {"navn": "Køleskabet", "hal": 6, "kort": [
+        "###########",
+        "#      #  #",
+        "# \$\$ \$    #",
+        "# # \$ #   #",
+        "#  .  ..  #",
+        "# \$  # \$.##",
+        "#  .  @ .#",
+        "##########"]},
+    {"navn": "Postrummet", "hal": 6, "kort": [
+        " ##########",
+        " #     #* #",
+        " #@\$ \$\$#  #",
+        "###    #  #",
+        "#      # ###",
+        "#   ##     #",
+        "##  \$ . .  #",
+        " #     . .##",
+        " ##########"]},
+    {"navn": "Bagdøren", "hal": 6, "kort": [
+        "############",
+        "#@ #      .#",
+        "# \$   .    #",
+        "#### \$#    #",
+        "####   *   #",
+        "#  #       #",
+        "#. #   ### #",
+        "#      \$ #\$#",
+        "#  #    .  #",
+        "############"]},
+    {"navn": "Lastbilen", "hal": 6, "kort": [
+        "  #########",
+        "###@ #    #",
+        "# \$\$\$     #",
+        "#    #  # #",
+        "#   ##  ..#",
+        "###  * #  #",
+        "  ####.   #",
+        "     ######"]},
+    {"navn": "Modtagelsen", "hal": 6, "kort": [
+        "#######",
+        "#.  \$@####",
+        "#  ##\$   #",
+        "#   #  \$ #",
+        "#     \$  #",
+        "# # #  # ##",
+        "#   #    .##",
+        "#   .#.##\$ #",
+        "##  .      #",
+        " ###########"]},
+    # ── hal 8 (svære, lavet af banegeneratoren) ──
+    {"navn": "Hundehuset", "hal": 7, "kort": [
+        " #####",
+        " #  .##",
+        "##  *.####",
+        "#  \$.    #",
+        "#.   .   #",
+        "#        #",
+        "### # #  #",
+        "#@\$\$#\$ \$ #",
+        "#      ###",
+        "########"]},
+    {"navn": "Kassefabrikken", "hal": 7, "kort": [
+        "  #########",
+        " ##       #",
+        "##@\$  #  .##",
+        "# \$        #",
+        "#      . # #",
+        "#  # . . \$ #",
+        "#     ##\$  #",
+        "#   \$     .#",
+        "#   ## *####",
+        "#########"]},
+    {"navn": "Skattekammeret", "hal": 7, "kort": [
+        "    ########",
+        " ####      #",
+        " #         #",
+        " # \$## # . #",
+        "###@ #     #",
+        "#  \$\$##\$## #",
+        "# .   #   .#",
+        "#####     ##",
+        "    ##  . #",
+        "     ######"]},
+    {"navn": "Lagerchefen", "hal": 7, "kort": [
+        "###########",
+        "#  .      ##",
+        "#.##  .  \$ #",
+        "#  \$ # . # #",
+        "#          #",
+        "# . #  \$\$\$ #",
+        "#  ##  # @##",
+        "###########"]},
+    {"navn": "Det store kaos", "hal": 7, "kort": [
+        "#########",
+        "#  @    ####",
+        "# \$\$ ##    #",
+        "#          #",
+        "#    .     #",
+        "##  ##  . .#",
+        "##### \$  #*#",
+        "#    \$  #  #",
+        "#   #   .  #",
+        "############"]},
+    # ── hal 9: nisserne på lageret (N er en nisse, der står i vejen) ──
+    {"navn": "Nissens lygte", "hal": 8, "kort": [
+        "#####",
+        "#  .#######",
+        "# N       #",
+        "#  \$ \$N@ .#",
+        "# .\$   N  #",
+        "#  * .  \$ #",
+        "###  . \$  #",
+        "  #   N   #",
+        "  #########"]},
+    {"navn": "Sovenissen", "hal": 8, "kort": [
+        "############",
+        "#@  \$.    .#",
+        "# \$      \$ #",
+        "#   N.\$.   #",
+        "#       N  #",
+        "#      N# *#",
+        "#  N \$ .#  #",
+        "#######    #",
+        "      ######"]},
+    {"navn": "Gavepakkeriet", "hal": 8, "kort": [
+        "##########",
+        "#    ##. #",
+        "# *  \$ . #",
+        "#.   N  N#",
+        "#  \$ \$   #",
+        "#N  .    #",
+        "#+\$\$ N  ##",
+        "#    #  #",
+        "#########"]},
+    {"navn": "Slikstokken", "hal": 8, "kort": [
+        "############",
+        "#          #",
+        "# \$  .     #",
+        "# N    N   #",
+        "#.N \$@##N  #",
+        "#  . .#   ##",
+        "#   \$.\$ \$  #",
+        "#      #   #",
+        "############"]},
+    {"navn": "Nissemor", "hal": 8, "kort": [
+        "##########",
+        "#  ##    ###",
+        "#  ##\$N \$..#",
+        "#  N..  N  #",
+        "#N .\$  \$   #",
+        "#+\$     #  #",
+        "# \$      # #",
+        "###        #",
+        "  ##########"]},
+    {"navn": "Risengrød", "hal": 8, "kort": [
+        "  #########",
+        "  #  .    #",
+        " ##    N\$ #",
+        "##        #",
+        "#     . N##",
+        "#  \$ N   ##",
+        "# \$N \$  \$@#",
+        "#.   . .  #",
+        "###########"]},
+    # ── hal 10: nisserne på lageret (N er en nisse, der står i vejen) ──
+    {"navn": "Julehjerter", "hal": 9, "kort": [
+        "############",
+        "#  N       #",
+        "#. \$\$ N\$  .#",
+        "#   . N   ##",
+        "#    .    #",
+        "## .N   #\$#",
+        " #    \$ \$+#",
+        " #   #  ###",
+        " ########"]},
+    {"navn": "Pebernødder", "hal": 9, "kort": [
+        "##########",
+        "# .  N   #",
+        "# \$ \$    #",
+        "#  .\$ N. #",
+        "##NN@\$   #",
+        " #  \$ #* #",
+        " #    #  #",
+        " #.   #. #",
+        " #########"]},
+    {"navn": "Nisseloftet", "hal": 9, "kort": [
+        " ########",
+        " #     .##",
+        "##*N     #",
+        "#    .N.\$##",
+        "# \$N \$    #",
+        "#    N   .#",
+        "# #  # #\$##",
+        "#  .   \$@#",
+        "##########"]},
+    {"navn": "Julestjernen", "hal": 9, "kort": [
+        "########",
+        "#   .\$+#",
+        "# N \$ \$##",
+        "# #N .  #",
+        "#    N  ##",
+        "# \$\$  .  #",
+        "#    N.  #",
+        "# \$     .#",
+        "##########"]},
+    {"navn": "Kravlenissen", "hal": 9, "kort": [
+        "       ####",
+        "       #  #",
+        "########  #",
+        "#@\$      .#",
+        "# \$\$\$   \$*#",
+        "##N.   .. #",
+        " #  N  NN #",
+        " #     .  #",
+        " ##########"]},
+    {"navn": "Juleaften", "hal": 9, "kort": [
+        "###########",
+        "#.  ##    #",
+        "#  \$    ..#",
+        "# .   N   #",
+        "#  NN    ##",
+        "##     ###",
+        " #\$\$N\$*#",
+        " #@    #",
+        " #######"]},
+]
+
+let HALLER = ["WAREHOUSE A", "WAREHOUSE B", "WAREHOUSE C", "WAREHOUSE D", "WAREHOUSE E", "WAREHOUSE F", "WAREHOUSE G", "WAREHOUSE H", "SANTA'S WORKSHOP 1", "SANTA'S WORKSHOP 2"]
+let GEM = "{env("HOME", ".")}/.boxdog"
+
+# ── rekorder: én linje pr. bane, navn=træk ──
+let bedste = []
+for i in range(BANER.len) { bedste.push(0) }
+let lyd_til = true
+let tema = ""
+if exists(GEM) {
+    for l in read(GEM).lines() {
+        let d = l.split("=")
+        if d.len >= 2 {
+            if d[0] == "lyd" { lyd_til = d[1] == "1" }
+            if d[0] == "tema" { tema = d[1] }
+            for i in range(BANER.len) { if BANER[i].navn == d[0] { bedste[i] = int(d[1]) } }
+        }
+    }
+}
+fn gem() {
+    let s = []
+    for i in range(BANER.len) { if bedste[i] > 0 { s.push("{BANER[i].navn}={bedste[i]}") } }
+    let l = "0"
+    if lyd_til { l = "1" }
+    s.push("lyd={l}")
+    s.push("tema={tema}")
+    write(GEM, s.join("\n") + "\n")
+}
+
+# ── lyde ──
+let LYD_GÅ = sound("triangle", 620, 560, 0.03, 0.12)
+let LYD_SKUB = sound("square", 150, 110, 0.08, 0.22)
+let LYD_MÅL = sound("sine", 784, 1175, 0.12, 0.35)
+let LYD_BUMP = sound("noise", 400, 200, 0.05, 0.15)
+let LYD_VOV = sound("square", 330, 180, 0.14, 0.3)
+let LYD_SEJR = sound("triangle", 523, 1047, 0.45, 0.4)
+let LYD_FORTRYD = sound("sine", 600, 400, 0.06, 0.2)
+fn spil_lyd(l) { if lyd_til { play(l) } }
+
+# ── grafikken (klippet ud af BoxDog-mockuppen) ──
+let mappe = script.dir
+if mappe == "" { mappe = "." }
+let KUNST = ""
+for d in ["{mappe}/boxdog", "eksempler/boxdog", "{env("HOME", ".")}/.local/share/boxdog"] {
+    if KUNST == "" and exists("{d}/side.png") { KUNST = d }
+}
+if KUNST == "" {
+    print("BoxDog: kan ikke finde mappen boxdog/ med grafikken (ved siden af boxdog.Dash)")
+    exit 1
+}
+let B_SIDE = image("{KUNST}/side.png")
+let B_BAG = image("{KUNST}/bag.png")
+let B_TØNDE = image("{KUNST}/toende.png")
+let B_STAK = image("{KUNST}/kassestak.png")
+let B_PLANTE = image("{KUNST}/plante.png")
+let B_LILLE = image("{KUNST}/kasse_lille.png")
+let B_IKON = image("{KUNST}/kasse.png", 50, 55)
+# animationerne (et felt er 100 px i billederne, de skaleres når de tegnes)
+fn serie(navn, n) {
+    let l = []
+    for i in range(n) { l.push(image("{KUNST}/{navn}_{i}.png")) }
+    return l
+}
+let A_H = serie("hund_h", 6)
+let A_V = serie("hund_v", 6)
+let A_N = serie("hund_n", 4)
+let A_O = serie("hund_o", 4)
+let A_MÅL = serie("maal", 16)
+# julen: rød sidebjælke, sne, lyskæder og en julehund med nissehue
+if tema == "" {
+    tema = "normal"
+    if $(sh -c "date +%m").trim() == "12" { tema = "jul" }
+}
+let J_SIDE = image("{KUNST}/jul/side.png")
+let J_BAG = image("{KUNST}/jul/bag.png")
+let J_TØNDE = image("{KUNST}/jul/toende.png")
+let J_TRÆ = image("{KUNST}/jul/trae.png")
+let J_TRÆ2 = image("{KUNST}/jul/trae2.png")
+let J_GAVE = image("{KUNST}/jul/gave.png")
+let J_GAVE2 = image("{KUNST}/jul/gave2.png")
+let J_SNEMAND = image("{KUNST}/jul/snemand.png")
+let J_KASSER = image("{KUNST}/jul/kasser_hjoerne.png")
+let J_H = serie("jul/jul_h", 4)
+let J_V = serie("jul/jul_v", 4)
+let J_N = serie("jul/jul_n", 4)
+let J_O = serie("jul/jul_o", 4)
+let jul_valgt = tema == "jul"
+let jul = jul_valgt
+let NISSEHAL = 8
+let J_NISSER = [image("{KUNST}/jul/nisse_lygte.png"), image("{KUNST}/jul/nisse_sover.png"),
+                image("{KUNST}/jul/nisse_gave.png"), image("{KUNST}/jul/nisse_stok.png")]
+# snefnug der falder over lageret
+let sne = []
+for i in range(90) { sne.push({"x": random() * 1136, "y": random() * 640, "v": 30 + random() * 50, "r": 1 + random(3)}) }
+let ret = "h"           # h, v, n (nedad, forfra) eller o (opad, bagfra)
+let gangtid = 0.0
+let stille = 0.0
+# gulv og kasser hentes i den størrelse, banen skal bruge
+let B_GULV = -1
+let B_KASSE = -1
+let KASSE_W = 0
+let KASSE_H = 0
+let brik_str = 0
+
+# ── banetilstand ──
+let nr = 0
+let mure = []
+let striber = []
+let nisser = []
+let felter = []
+let murinfo = []
+let mål = []
+let kasser = []
+let hx = 0
+let hy = 0
+let vend = 1            # 1 = hunden kigger til højre, -1 = venstre
+let træk = 0
+let historik = []
+let anim = 0.0
+let anim_kasse = -1
+let fra = [0, 0]
+let klaret = false
+let tid = 0.0
+let skærm = "spil"
+let gnister = []
+let RUDE = 64
+let ox = 0
+let oy = 0
+let rækker = 0
+let søjler = 0
+let gentag = 0.0
+
+let SIDE_W = 273
+let BAG_H = 148
+
+fn er(liste, x, y) {
+    for p in liste { if p[0] == x and p[1] == y { return true } }
+    return false
+}
+fn kasse_ved(x, y) {
+    for i in range(kasser.len) { if kasser[i][0] == x and kasser[i][1] == y { return i } }
+    return -1
+}
+fn bane_navn(i) {
+    let h = BANER[i].hal
+    let n = 0
+    for j in range(i) { if BANER[j].hal == h { n += 1 } }
+    return "{h + 1}-{n + 1}"
+}
+
+fn hent_brikker() {
+    if brik_str == RUDE { return nil }
+    if B_GULV >= 0 {
+        for b in [B_GULV, B_KASSE] { free_image(b) }
+    }
+    let mappe_b = KUNST
+    if jul { mappe_b = "{KUNST}/jul" }
+    B_GULV = image("{mappe_b}/gulv.png", RUDE, RUDE)
+    KASSE_W = int(RUDE * 1.0)
+    KASSE_H = int(RUDE * 1.1)
+    if jul { KASSE_H = int(RUDE * 1.17) }
+    B_KASSE = image("{mappe_b}/kasse.png", KASSE_W, KASSE_H)
+    brik_str = RUDE
+}
+
+fn indlæs(i) {
+    nr = i
+    mure = []
+    striber = []
+    nisser = []
+    mål = []
+    kasser = []
+    let kort = BANER[i].kort
+    rækker = kort.len
+    søjler = 0
+    for y in range(kort.len) {
+        let r = kort[y]
+        søjler = max(søjler, r.len)
+        for x in range(r.len) {
+            let c = r[x]
+            if c == "#" or c == "H" or c == "N" { mure.push([x, y]) }
+            if c == "N" { nisser.push([x, y]) }
+            if c == "H" { striber.push([x, y]) }
+            if c == "." or c == "*" or c == "+" { mål.push([x, y]) }
+            if c == "$" or c == "*" { kasser.push([x, y]) }
+            if c == "@" or c == "+" {
+                hx = x
+                hy = y
+            }
+        }
+    }
+    # gulvet er kun der, hvor hunden kan komme hen
+    felter = [[hx, hy]]
+    let kø = [[hx, hy]]
+    while kø.len > 0 {
+        let p = kø.pop()
+        for d in [[1, 0], [-1, 0], [0, 1], [0, -1]] {
+            let nx = p[0] + d[0]
+            let ny = p[1] + d[1]
+            if ny >= 0 and ny < kort.len and nx >= 0 and nx < kort[ny].len {
+                if not er(mure, nx, ny) and not er(felter, nx, ny) {
+                    felter.push([nx, ny])
+                    kø.push([nx, ny])
+                }
+            }
+        }
+    }
+    # hver mur husker sine naboer, så den kan tegnes som én sammenhængende kant
+    # (nisserne står i vejen som en mur, men tegnes for sig)
+    let rigtige = []
+    for m in mure { if not er(nisser, m[0], m[1]) { rigtige.push(m) } }
+    murinfo = []
+    for m in rigtige {
+        let x = m[0]
+        let y = m[1]
+        murinfo.push({"x": x, "y": y,
+            "v": er(rigtige, x - 1, y), "h": er(rigtige, x + 1, y), "o": er(rigtige, x, y - 1), "n": er(rigtige, x, y + 1),
+            "gv": er(felter, x - 1, y), "gh": er(felter, x + 1, y), "go": er(felter, x, y - 1), "gn": er(felter, x, y + 1),
+            "s": er(striber, x, y)})
+    }
+    let bw = W - SIDE_W - 83
+    let bh = 480
+    RUDE = int(min(72, min(bw / søjler, bh / rækker)))
+    ox = SIDE_W + 6 + int((bw - søjler * RUDE) / 2)
+    oy = 125 + int((bh - rækker * RUDE) / 2)
+    # nissehallerne er altid i julelook
+    let skal_jul = jul_valgt or BANER[i].hal >= NISSEHAL
+    if skal_jul != jul {
+        jul = skal_jul
+        brik_str = 0
+    }
+    hent_brikker()
+    træk = 0
+    historik = []
+    anim = 0.0
+    klaret = false
+    gnister = []
+    vend = 1
+    ret = "h"
+    gangtid = 0.0
+    skærm = "spil"
+}
+
+fn kopi() {
+    let k = []
+    for p in kasser { k.push([p[0], p[1]]) }
+    return {"x": hx, "y": hy, "kasser": k, "træk": træk}
+}
+fn alle_på_mål() {
+    for k in kasser { if not er(mål, k[0], k[1]) { return false } }
+    return true
+}
+fn gnist(x, y, n) {
+    for i in range(n) {
+        let v = random() * 6.283
+        let f = 60 + random() * 160
+        gnister.push({"x": x, "y": y, "vx": cos(v) * f, "vy": sin(v) * f - 80, "liv": 0.6 + random() * 0.6,
+                      "farve": ["#ffcf3a", "#ff8a5a", "#ffffff", "#ffe27a", "#f0b040"][random(5)]})
+    }
+}
+
+fn gå(dx, dy) {
+    if klaret or skærm != "spil" { return nil }
+    if dx != 0 { vend = dx }
+    if dx > 0 { ret = "h" } else if dx < 0 { ret = "v" } else if dy > 0 { ret = "n" } else { ret = "o" }
+    let nx = hx + dx
+    let ny = hy + dy
+    if er(mure, nx, ny) {
+        spil_lyd(LYD_BUMP)
+        return nil
+    }
+    let k = kasse_ved(nx, ny)
+    anim_kasse = -1
+    if k >= 0 {
+        let kx = nx + dx
+        let ky = ny + dy
+        if er(mure, kx, ky) or kasse_ved(kx, ky) >= 0 {
+            spil_lyd(LYD_BUMP)
+            return nil
+        }
+        historik.push(kopi())
+        kasser[k] = [kx, ky]
+        anim_kasse = k
+        if er(mål, kx, ky) {
+            spil_lyd(LYD_MÅL)
+            gnist(ox + kx * RUDE + int(RUDE / 2), oy + ky * RUDE + int(RUDE / 2), 14)
+        } else {
+            spil_lyd(LYD_SKUB)
+        }
+    } else {
+        historik.push(kopi())
+        spil_lyd(LYD_GÅ)
+    }
+    fra = [hx, hy]
+    hx = nx
+    hy = ny
+    træk += 1
+    anim = 0.12
+    if alle_på_mål() {
+        klaret = true
+        spil_lyd(LYD_VOV)
+        spil_lyd(LYD_SEJR)
+        for i in range(5) { gnist(ox + int(søjler * RUDE / 2) - 200 + i * 100, oy + int(rækker * RUDE / 2), 20) }
+        if bedste[nr] == 0 or træk < bedste[nr] {
+            bedste[nr] = træk
+            gem()
+        }
+    }
+}
+
+fn fortryd() {
+    if historik.len == 0 or klaret { return nil }
+    let s = historik.pop()
+    hx = s.x
+    hy = s.y
+    kasser = s.kasser
+    træk = s.træk
+    anim = 0.0
+    spil_lyd(LYD_FORTRYD)
+}
+
+# ═════════════════════════════ TEGNING ═══════════════════════════════
+
+
+
+
+
+
+
+
+
+# ── lageret rundt om banen ──
+
+# murenes farver fra mockuppen
+let C_GULV = "#77739a"
+let C_KANT = "#1c1830"
+let C_KAPPE = "#c2b7d2"
+let C_KAPPE_LYS = "#e4ddee"
+let C_KAPPE_MØRK = "#968ab0"
+let C_FUGE = "#a397ba"
+let C_SIDE = "#34325a"
+let C_SIDE_FUGE = "#25233f"
+
+# gulvet uden for banen (store mørke fliser)
+fn baggulv() {
+    rect(SIDE_W, 0, W - SIDE_W, H, "#67618d")
+    let k = 0
+    for y in range(BAG_H - 4, H, 54) {
+        rect(SIDE_W, y, W - SIDE_W, 2, "#7a729e")
+        let ofs = 0
+        if k % 2 == 1 { ofs = 46 }
+        for x in range(SIDE_W - 92 + ofs, W, 92) { rect(x, y, 2, 54, "#7a729e") }
+        k += 1
+    }
+}
+
+# pynt kun der, hvor den ikke ligger oven i banen
+fn ramt(liste, x, y, w, h) {
+    for c in liste {
+        let cx = ox + c[0] * RUDE
+        let cy = oy + c[1] * RUDE
+        if x < cx + RUDE and x + w > cx and y < cy + RUDE and y + h > cy { return true }
+    }
+    return false
+}
+fn pynt(b, x, y) {
+    let st = image_size(b)
+    if not ramt(mure, x, y, st[0], st[1]) and not ramt(felter, x, y, st[0], st[1]) { draw(b, x, y) }
+}
+
+fn lager() {
+    clear("#2a2640")
+    baggulv()
+    if jul {
+        draw(J_BAG, SIDE_W, 0)
+        pynt(J_TRÆ2, 1066, 204)
+        pynt(J_TØNDE, 1074, 380)
+        pynt(J_SNEMAND, 1015, 454)
+        pynt(J_GAVE2, 934, 559)
+        pynt(J_KASSER, 1079, 569)
+        pynt(J_TØNDE, 272, 488)
+        pynt(J_TRÆ, 300, 548)
+        pynt(J_GAVE, 394, 568)
+    } else {
+        draw(B_BAG, SIDE_W, 0)
+        pynt(B_PLANTE, 1078, 252)
+        pynt(B_TØNDE, 1078, 398)
+        pynt(B_STAK, 1024, 500)
+        pynt(B_TØNDE, 272, 503)
+        pynt(B_LILLE, 364, 547)
+    }
+}
+
+# murkappens kanter: [x0, y0, x1, y1]
+fn kappe(m) {
+    let r = RUDE
+    let x = ox + m.x * r
+    let y = oy + m.y * r
+    let x0 = x + int(r * 0.25)
+    let x1 = x0 + int(r * 0.5)
+    let y0 = y + int(r * 0.04)
+    let y1 = y0 + int(r * 0.5)
+    if m.v { x0 = x }
+    if m.h { x1 = x + r }
+    if m.o { y0 = y }
+    if m.n { y1 = y + r + int(r * 0.04) }
+    return [x0, y0, x1, y1]
+}
+
+# gule og sorte striber inden for et felt
+fn striber_i(x, y, w, h) {
+    rect(x, y, w, h, "#2c2a3a")
+    let per = int(RUDE / 3)
+    let st = int(per / 2)
+    for yy in range(h) {
+        let ofs = (h - yy) % per
+        for k in range(-1, int(w / per) + 2) {
+            let a = k * per + ofs
+            let b = a + st
+            if a < 0 { a = 0 }
+            if b > w { b = w }
+            if b > a { rect(x + a, y + yy, b - a, 1, "#f4c430") }
+        }
+    }
+}
+
+# murene som i mockuppen: lys kappe ovenpå og mørke mursten på forsiden
+fn tegn_mure_under() {
+    let r = RUDE
+    let hv = int(r / 2)
+    for m in murinfo {
+        let x = ox + m.x * r
+        let y = oy + m.y * r
+        if m.gv { rect(x, y, hv, r, C_GULV) }
+        if m.gh { rect(x + hv, y, r - hv, r, C_GULV) }
+        if m.go { rect(x, y, r, hv, C_GULV) }
+        if m.gn { rect(x, y + hv, r, r - hv, C_GULV) }
+    }
+}
+# lyskæder på murenes forside og istapper under sneen
+let LYS_FARVER = ["#ffd040", "#ff8a30", "#ff4a4a", "#ffe680"]
+fn julepynt_mure() {
+    let r = RUDE
+    let n = 0
+    for m in murinfo {
+        if not m.n {
+            let k = kappe(m)
+            let fy = k[3]
+            let fh = oy + m.y * r + r - fy
+            # istapper
+            for ix in range(k[0] + 4, k[2] - 4, int(r / 5)) {
+                let l = int(r * (0.08 + ((ix * 7) % 5) * 0.025))
+                polygon([[ix, fy], [ix + 6, fy], [ix + 3, fy + l]], "#e3eaf8")
+            }
+            # ledningen og pærerne
+            let ly = fy + int(fh * 0.45)
+            rect(k[0], ly, k[2] - k[0], 1, "#1a1424")
+            for bx in range(k[0] + int(r / 6), k[2] - 2, int(r / 3)) {
+                let f = LYS_FARVER[n % 4]
+                let blink = sin(tid * 3 + n * 1.7) > -0.6
+                if blink { circle(bx, ly + 4, int(r / 9), f + "40") }
+                circle(bx, ly + 4, int(r / 22) + 2, f)
+                n += 1
+            }
+        }
+    }
+}
+
+fn tegn_mure() {
+    let r = RUDE
+    for m in murinfo {
+        if not m.n {
+            let k = kappe(m)
+            let fy = k[3]
+            let fh = oy + m.y * r + r - fy + int(r * 0.06)
+            let w = k[2] - k[0]
+            rect(k[0] - 3, fy, w + 6, fh + 3, C_KANT)
+            rect(k[0], fy, w, fh, C_SIDE)
+            let mid = int(fh / 2)
+            rect(k[0], fy + mid, w, 2, C_SIDE_FUGE)
+            let s = int(r / 3)
+            for bx in range(k[0] + int(s / 2), k[2], s) { rect(bx, fy, 2, mid, C_SIDE_FUGE) }
+            for bx in range(k[0] + s, k[2], s) { rect(bx, fy + mid, 2, fh - mid, C_SIDE_FUGE) }
+        }
+    }
+    if jul { julepynt_mure() }
+    for m in murinfo {
+        let k = kappe(m)
+        rect(k[0] - 3, k[1] - 3, k[2] - k[0] + 6, k[3] - k[1] + 6, C_KANT)
+    }
+    for m in murinfo {
+        let k = kappe(m)
+        let w = k[2] - k[0]
+        let h = k[3] - k[1]
+        if m.s {
+            striber_i(k[0], k[1], w, h)
+            if jul and not m.o { rect(k[0], k[1], w, int(r / 8), "#f4f7fd") }
+        } else if jul {
+            rect(k[0], k[1], w, h, "#e9eef9")
+            rect(k[0], k[1], w, int(r / 10) + 1, "#ffffff")
+            if not m.n { rect(k[0], k[3] - 4, w, 4, "#bcc6e0") }
+            if m.v or m.h { rect(ox + m.x * r + int(r / 2), k[1] + 5, 2, h - 10, "#d3dbee") }
+        } else {
+            rect(k[0], k[1], w, h, C_KAPPE)
+            if not m.o { rect(k[0], k[1], w, int(r / 12) + 1, C_KAPPE_LYS) }
+            if not m.n { rect(k[0], k[3] - 3, w, 3, C_KAPPE_MØRK) }
+            if m.v or m.h { rect(ox + m.x * r + int(r / 2), k[1] + 4, 2, h - 8, C_FUGE) }
+            if m.o or m.n { rect(k[0] + 4, oy + m.y * r + int(r / 2), w - 8, 2, C_FUGE) }
+        }
+    }
+}
+
+# nisserne: fire slags på skift, de vugger lidt, og den sovende snorker
+fn tegn_nisse(i, x, y) {
+    let r = RUDE
+    let b = J_NISSER[(nisser[i][0] * 3 + nisser[i][1] * 5 + i) % 4]
+    let st = image_size(b)
+    let w = int(r * 1.12)
+    let h = int(st[1] * w / st[0])
+    let vug = int(sin(tid * 2.2 + i * 1.3) * r * 0.025)
+    round_rect(x + int(r * 0.1), y + int(r * 0.78), int(r * 0.8), int(r * 0.18), int(r * 0.09), "#1a163050")
+    draw(b, x + int((r - w) / 2), y + int(r * 0.98) - h + vug, w, h)
+    if b == J_NISSER[1] {
+        # zzz over den sovende nisse
+        let t = (tid * 0.6 + i * 0.3) % 1.0
+        let zx = x + int(r * 0.7) + int(t * r * 0.3)
+        let zy = y - int(r * 0.25) - int(t * r * 0.5)
+        text(zx, zy, "z", "#ffffff", 1 + int(t * 2))
+    }
+}
+
+fn tegn_bane(dt) {
+    let r = RUDE
+    tegn_mure_under()
+    for f in felter { draw(B_GULV, ox + f[0] * r, oy + f[1] * r) }
+    for f in nisser { draw(B_GULV, ox + f[0] * r, oy + f[1] * r) }
+    let mf = A_MÅL[int(tid / 0.14) % A_MÅL.len]
+    let ms = image_size(mf)
+    let mh = int(ms[1] * r / ms[0])
+    for m in mål { draw(mf, ox + m[0] * r, oy + m[1] * r + int((r - mh) / 2), r, mh) }
+    tegn_mure()
+    # hvor står hunden lige nu (den glider mellem felterne)
+    let t = anim / 0.12
+    let dx = ox + hx * r
+    let dy = oy + hy * r
+    if anim > 0 {
+        dx -= int((hx - fra[0]) * r * t)
+        dy -= int((hy - fra[1]) * r * t)
+    }
+    # kasserne række for række med hunden ind imellem, så de dækker rigtigt
+    for række in range(rækker) {
+        for i in range(nisser.len) {
+            if nisser[i][1] == række { tegn_nisse(i, ox + nisser[i][0] * r, oy + række * r) }
+        }
+        for i in range(kasser.len) {
+            let k = kasser[i]
+            if k[1] == række {
+                let kx = ox + k[0] * r
+                let ky = oy + k[1] * r
+                if i == anim_kasse and anim > 0 {
+                    kx -= int((hx - fra[0]) * r * t)
+                    ky -= int((hy - fra[1]) * r * t)
+                }
+                let x = kx + int((r - KASSE_W) / 2)
+                let y = ky + r - KASSE_H + int(r * 0.02)
+                draw(B_KASSE, x, y)
+                if er(mål, k[0], k[1]) {
+                    # kassen står på en pote: den lyser gult
+                    rect(x, y, KASSE_W, KASSE_H, "#ffd84a30")
+                    rect(x - 2, y - 2, KASSE_W + 4, 3, "#ffe066")
+                    rect(x - 2, y + KASSE_H - 1, KASSE_W + 4, 3, "#ffe066")
+                    rect(x - 2, y, 3, KASSE_H, "#ffe066")
+                    rect(x + KASSE_W - 1, y, 3, KASSE_H, "#ffe066")
+                }
+            }
+        }
+        if række == hy {
+            let hop = 0
+            if klaret { hop = int(abs(sin(tid * 9)) * 10) }
+            let cx = dx + int(r / 2)
+            let l = A_H
+            if ret == "v" { l = A_V } else if ret == "n" { l = A_N } else if ret == "o" { l = A_O }
+            if jul {
+                l = J_H
+                if ret == "v" { l = J_V } else if ret == "n" { l = J_N } else if ret == "o" { l = J_O }
+            }
+            let fi = 0
+            if gangtid > 0 { fi = int(gangtid / 0.08) % l.len }
+            if klaret {
+                # glad hund kigger ud mod en
+                l = A_N
+                if jul { l = J_N }
+                fi = int(tid / 0.12) % l.len
+            }
+            let b = l[fi]
+            let st = image_size(b)
+            let w = int(st[0] * r / 100)
+            let h = int(st[1] * r / 100)
+            let skub = 0
+            let sw = int(r * 0.66)
+            let fra_siden = (ret == "h" or ret == "v") and not klaret
+            if fra_siden { sw = int(r * 0.96) }
+            if fra_siden and ret == "h" { skub = 0 - int(r * 0.1) }
+            if fra_siden and ret == "v" { skub = int(r * 0.1) }
+            round_rect(cx - int(sw / 2), dy + int(r * 0.76), sw, int(r * 0.2), int(r * 0.1), "#1a163050")
+            draw(b, cx - int(w / 2) + skub, dy + int(r * 0.97) - h - hop, w, h)
+        }
+    }
+}
+
+fn tegn_sne(dt) {
+    let nye = []
+    for f in sne {
+        f.y += f.v * dt
+        f.x += sin(tid + f.v) * 12 * dt
+        if f.y > H {
+            f.y = -4.0
+            f.x = SIDE_W + random() * (W - SIDE_W)
+        }
+        if f.x > SIDE_W { circle(int(f.x), int(f.y), f.r, "#ffffffd0") }
+        nye.push(f)
+    }
+    sne = nye
+}
+
+fn tegn_gnister(dt) {
+    let nye = []
+    for g in gnister {
+        g.liv -= dt
+        g.x += g.vx * dt
+        g.y += g.vy * dt
+        g.vy += 260 * dt
+        if g.liv > 0 {
+            rect(int(g.x), int(g.y), 4, 4, g.farve)
+            nye.push(g)
+        }
+    }
+    gnister = nye
+}
+
+# ── sidebjælken ──
+fn logo_tekst(x, y, s, c, st) {
+    for d in [[-3, 0], [3, 0], [0, -3], [0, 3], [-3, -3], [3, 3], [3, -3], [-3, 3], [0, 5], [3, 5], [-3, 5]] {
+        text(x + d[0], y + d[1], s, "#1a1438", st)
+    }
+    text(x, y, s, c, st)
+}
+
+
+
+# samme størrelse som teksten i panelet, lidt fed
+fn tal(x, y, s) {
+    text(x + 2, y + 2, s, "#0e0a2a", 2)
+    text(x + 3, y + 2, s, "#0e0a2a", 2)
+    text(x, y, s, "#ffffff", 2)
+    text(x + 1, y, s, "#ffffff", 2)
+}
+fn sideknap(y) {
+    let m = mouse()
+    let over = m[0] >= 15 and m[0] < 258 and m[1] >= y and m[1] < y + 43 and skærm == "spil"
+    if over { round_rect(17, y + 2, 239, 39, 14, "#ffffff26") }
+    return over and clicked()
+}
+fn sidebjælke() {
+    if jul { draw(J_SIDE, 0, 0) } else { draw(B_SIDE, 0, 0) }
+    let jy = 0
+    let jx = 0
+    if jul {
+        jy = -2
+        jx = -11
+    }
+    tal(188 + jx, 354 + jy, bane_navn(nr))
+    tal(164, 395 + jy, "{træk}")
+    let b = "---"
+    if bedste[nr] > 0 { b = "{bedste[nr]}" }
+    tal(164, 426 + jy, b)
+    if sideknap(481) { indlæs(nr) }
+    if sideknap(532) {
+        skærm = "baner"
+        baneside = int(BANER[nr].hal / 4)
+    }
+    if sideknap(583) { skærm = "settings" }
+}
+
+fn tegn_sejr() {
+    let cx = ox + søjler * RUDE / 2
+    let cy = oy + rækker * RUDE / 2
+    round_rect(cx - 206, cy - 86, 420, 180, 22, "#00000060")
+    round_rect(cx - 210, cy - 92, 420, 180, 22, "#e8e4ff")
+    round_rect(cx - 206, cy - 88, 412, 172, 20, "#2a2060")
+    let s = "GOOD DOG!"
+    logo_tekst(cx - text_width(s, 4) / 2, cy - 78, s, "#ffcf3a", 4)
+    let t = "{træk} MOVES"
+    if bedste[nr] == træk { t += "  ·  NEW BEST!" }
+    text(cx - text_width(t, 2) / 2, cy - 8, t, "#ffffff", 2)
+    let n = "Tap or Enter: next level"
+    if nr == BANER.len - 1 { n = "Every crate is home! Tap: levels" }
+    text(cx - text_width(n, 1) / 2, cy + 42, n, "#d8d0ff", 1)
+}
+
+# baneoversigten har fire haller pr. side
+let baneside = 0
+fn sideknap_lille(x, y, t) {
+    let m = mouse()
+    let over = m[0] >= x and m[0] < x + 56 and m[1] >= y and m[1] < y + 40
+    let bg = "#3c3088"
+    if over { bg = "#5a48c0" }
+    round_rect(x, y, 56, 40, 12, "#e8e4ff")
+    round_rect(x + 2, y + 2, 52, 36, 10, bg)
+    text(x + 28 - int(text_width(t, 2) / 2), y + 6, t, "#ffffff", 2)
+    return over and clicked()
+}
+fn tegn_baner() {
+    rect(SIDE_W, 0, W - SIDE_W, H, "#2a2060e8")
+    let t = "LEVELS"
+    logo_tekst(SIDE_W + (W - SIDE_W - text_width(t, 3)) / 2, 16, t, "#ffffff", 3)
+    let sider = int((HALLER.len + 3) / 4)
+    let st = "{baneside + 1}/{sider}"
+    text(W - 150 - int(text_width(st, 2) / 2), 22, st, "#d8d0ff", 2)
+    if sideknap_lille(W - 250, 14, "<") or pressed("left") { baneside = max(0, baneside - 1) }
+    if sideknap_lille(W - 106, 14, ">") or pressed("right") { baneside = min(sider - 1, baneside + 1) }
+    let m = mouse()
+    let rh = int((H - 70) / 4)
+    for hh in range(4) {
+        let h = baneside * 4 + hh
+        if h < HALLER.len {
+            let y = 66 + hh * rh
+            let hn = "{h + 1}"
+            if h < 9 { hn = "0{h + 1}" }
+            let hc = "#ffcf3a"
+            if h >= NISSEHAL { hc = "#ff8a8a" }
+            text(SIDE_W + 40, y, "{HALLER[h]}  ·  A-{hn}", hc, 2)
+            let k = 0
+            for i in range(BANER.len) {
+                if BANER[i].hal == h {
+                    let x = SIDE_W + 40 + k * 132
+                    let yy = y + 30
+                    let bh = rh - 40
+                    let over = m[0] >= x and m[0] < x + 120 and m[1] >= yy and m[1] < yy + bh
+                    let bg = "#3c3088"
+                    if bedste[i] > 0 { bg = "#2f6a5a" }
+                    if over { bg = "#5a48c0" }
+                    round_rect(x + 3, yy + 4, 120, bh, 14, "#00000050")
+                    round_rect(x, yy, 120, bh, 14, bg)
+                    draw(B_IKON, x + 10, yy + 10, 40, 44)
+                    let bn = bane_navn(i)
+                    text(x + 52 + int((64 - text_width(bn, 2)) / 2), yy + 18, bn, "#ffffff", 2)
+                    let info = BANER[i].navn
+                    if bedste[i] > 0 { info = "BEST {bedste[i]}" }
+                    let ic = "#d8d0ff"
+                    if bedste[i] > 0 { ic = "#9affc8" }
+                    if text_width(info, 1) > 112 { info = BANER[i].navn.chars.first + ".." }
+                    text(x + (120 - text_width(info, 1)) / 2, yy + bh - 20, info, ic, 1)
+                    if over and clicked() { indlæs(i) }
+                    k += 1
+                }
+            }
+        }
+    }
+    if pressed("esc") { skærm = "spil" }
+}
+
+fn tegn_settings() {
+    rect(SIDE_W, 0, W - SIDE_W, H, "#1a143880")
+    let cx = SIDE_W + int((W - SIDE_W) / 2)
+    round_rect(cx - 200, 130, 400, 390, 22, "#e8e4ff")
+    round_rect(cx - 197, 133, 394, 384, 20, "#262050")
+    logo_tekst(cx - int(text_width("SETTINGS", 3) / 2), 150, "SETTINGS", "#ffffff", 3)
+    let m = mouse()
+    let knapper = [["UNDO  (Z)", "undo"], ["SOUND: ON", "lyd"], ["THEME: NORMAL", "tema"], ["BACK", "tilbage"]]
+    if not lyd_til { knapper[1][0] = "SOUND: OFF" }
+    if jul_valgt { knapper[2][0] = "THEME: CHRISTMAS" }
+    for i in range(4) {
+        let y = 214 + i * 70
+        let over = m[0] >= cx - 150 and m[0] < cx + 150 and m[1] >= y and m[1] < y + 52
+        let bg = "#3c3088"
+        if over { bg = "#5a48c0" }
+        round_rect(cx - 150, y, 300, 52, 16, "#e8e4ff")
+        round_rect(cx - 147, y + 3, 294, 46, 14, bg)
+        let t = knapper[i][0]
+        text(cx - int(text_width(t, 2) / 2), y + 10, t, "#ffffff", 2)
+        if over and clicked() {
+            if knapper[i][1] == "undo" {
+                skærm = "spil"
+                fortryd()
+            } else if knapper[i][1] == "lyd" {
+                lyd_til = not lyd_til
+                gem()
+            } else if knapper[i][1] == "tema" {
+                jul_valgt = not jul_valgt
+                tema = "normal"
+                if jul_valgt { tema = "jul" }
+                jul = jul_valgt or BANER[nr].hal >= NISSEHAL
+                brik_str = 0
+                hent_brikker()
+                gem()
+            } else {
+                skærm = "spil"
+            }
+        }
+    }
+    if pressed("esc") { skærm = "spil" }
+}
+
+# touch: tryk på den side af hunden, den skal gå til
+fn touch_gå() {
+    if not clicked() { return nil }
+    let m = mouse()
+    if m[0] < SIDE_W { return nil }
+    if klaret {
+        if nr < BANER.len - 1 { indlæs(nr + 1) } else { skærm = "baner" }
+        return nil
+    }
+    let dx = m[0] - (ox + hx * RUDE + RUDE / 2)
+    let dy = m[1] - (oy + hy * RUDE + RUDE / 2)
+    if abs(dx) < RUDE / 3 and abs(dy) < RUDE / 3 { return nil }
+    if abs(dx) > abs(dy) {
+        if dx > 0 { gå(1, 0) } else { gå(-1, 0) }
+    } else {
+        if dy > 0 { gå(0, 1) } else { gå(0, -1) }
+    }
+}
+
+# ═════════════════════════════ LØKKEN ════════════════════════════════
+indlæs(0)
+let skud = env("JJ_SKUD", "")
+let scene = env("JJ_SCENE", "")
+let skud_tid = 0.0
+if scene == "a01" {
+    for i in range(BANER.len) { if BANER[i].navn == "Lager A-01" { indlæs(i) } }
+}
+if scene == "baner" { skærm = "baner" }
+if scene == "settings" { skærm = "settings" }
+if env("JJ_TEMA", "") == "jul" {
+    jul_valgt = true
+    jul = true
+    brik_str = 0
+    hent_brikker()
+}
+if scene == "klaret" {
+    indlæs(0)
+    gå(1, 0)
+    gå(1, 0)
+}
+
+while frame() {
+    let dt = min(0.1, delta())
+    tid += dt
+    if anim > 0 { anim = max(0, anim - dt) }
+    # gangen kører videre mellem skridtene og stopper, når hunden står stille
+    if anim > 0 {
+        gangtid += dt
+        stille = 0.0
+    } else {
+        stille += dt
+        if stille > 0.15 { gangtid = 0.0 }
+    }
+    if skærm == "spil" {
+        if klaret {
+            if pressed("enter") or pressed("space") {
+                if nr < BANER.len - 1 { indlæs(nr + 1) } else { skærm = "baner" }
+            }
+        } else {
+            # hvert tryk tæller altid; holdes tasten nede, går hunden videre
+            let r = [0, 0]
+            if pressed("right") or pressed("d") { r = [1, 0] }
+            else if pressed("left") or pressed("a") { r = [-1, 0] }
+            else if pressed("down") or pressed("s") { r = [0, 1] }
+            else if pressed("up") or pressed("w") { r = [0, -1] }
+            if r[0] != 0 or r[1] != 0 {
+                gå(r[0], r[1])
+                gentag = 0.22
+            } else if anim <= 0 {
+                gentag -= dt
+                if gentag <= 0 {
+                    if key("right") or key("d") { gå(1, 0) }
+                    else if key("left") or key("a") { gå(-1, 0) }
+                    else if key("down") or key("s") { gå(0, 1) }
+                    else if key("up") or key("w") { gå(0, -1) }
+                }
+            }
+        }
+        if pressed("z") { fortryd() }
+        if pressed("r") { indlæs(nr) }
+        if pressed("l") {
+            skærm = "baner"
+            baneside = int(BANER[nr].hal / 4)
+        }
+        if pressed("m") {
+            lyd_til = not lyd_til
+            gem()
+        }
+        if pressed("esc") { break }
+    }
+    lager()
+    tegn_bane(dt)
+    if jul { tegn_sne(dt) }
+    tegn_gnister(dt)
+    if skærm == "spil" {
+        if klaret { tegn_sejr() }
+        touch_gå()
+    }
+    sidebjælke()
+    if skærm == "baner" { tegn_baner() }
+    if skærm == "settings" { tegn_settings() }
+
+    if skud != "" {
+        skud_tid += dt
+        if skud_tid > 0.8 {
+            screenshot(skud)
+            break
+        }
+    }
+}

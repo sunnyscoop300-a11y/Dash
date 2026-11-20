@@ -9,6 +9,7 @@
 // Kodegeneratoren går syntakstræet igennem i præcis samme rækkefølge som
 // type-analysen, så scope-numrene passer, og hver variabel kan slås op.
 use fmt;
+use os;
 use strconv;
 use strings;
 
@@ -778,7 +779,10 @@ fn compile_program(prog: []stmt, name: str, src: []u8) str = {
 	ms(&out, "fn prog() (void | failed) = {\n");
 	append(out, cbuf...)!;
 	ms(&out, "};\n\nexport fn main() void = {\n");
-	ms(&out, fmt::asprintf("\trt_start({}, {});\n", hlit(name), hlit(strings::fromutf8_unsafe(src)))!);
+	// fuld sti, så `script.dir` peger rigtigt, uanset hvor programmet startes
+	const fuld = if (strings::hasprefix(name, "/")) name
+		else strings::concat(os::getcwd(), "/", strings::trimprefix(name, "./"))!;
+	ms(&out, fmt::asprintf("\trt_start({}, {});\n", hlit(fuld), hlit(strings::fromutf8_unsafe(src)))!);
 	ms(&out, "\trt_end(prog());\n};\n");
 	return strings::fromutf8_unsafe(out);
 };

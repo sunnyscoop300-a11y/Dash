@@ -242,6 +242,10 @@ Afspiller med `mpv` (eller `ffplay`), læser tags med `ffprobe`.
 dsh eksempler/nonbiri.Dash ~/Musik
 ```
 
+**Eksempel:** `eksempler/boxdog.Dash` — *BoxDog* 🐶📦, en hundehvalp med rødt
+halstørklæde skubber kasser hen på pote-felterne på lageret. 16 baner i tre
+lagerhaller (alle tjekket løsbare), fortryd, rekorder, lyd og touch.
+
 **Eksempel:** `eksempler/sj-mini.Dash` — *SJ Mini*, de nyeste kapitler fra
 MANGA Plus: klik på et cover for kapitlerne og læs dem som én lang stribe.
 Hjælperen `eksempler/sj.py` (python3 + pillow) henter listen, kapitlerne og
