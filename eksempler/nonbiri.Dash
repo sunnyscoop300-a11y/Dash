@@ -40,14 +40,13 @@ if spiller == "" { fail "Nonbiri skal bruge mpv eller ffplay — fx: sudo pacman
 let har_ffprobe = which("ffprobe")
 let har_ffmpeg = which("ffmpeg")
 
-fn q(s) { return "'" + s.replace("'", "'\\''") + "'" }
-
 # ── find sangene ─────────────────────────────────────────────────────
 let numre = []
 fn find_sange(m) {
     numre = []
-    let fundne = $(sh -c "find {q(m)} -type f \\( -iname '*.mp3' -o -iname '*.flac' \\) 2>/dev/null | sort").lines()
+    let fundne = $(try find $m -type f "(" -iname "*.mp3" -o -iname "*.flac" ")" 2> /dev/null).lines().sort()
     for f in fundne {
+        if f == "" { continue }
         numre.push({"fil": f, "titel": f.stem, "kunstner": "", "album": "", "varighed": 0.0,
                     "probet": false, "cover": -2, "vt": "", "va": ""})
     }
@@ -62,7 +61,7 @@ let JORD = 490
 
 # ── tilstand ─────────────────────────────────────────────────────────
 let cur = -1
-let pid = ""
+let spil = 0          # afspilleren: et job fra &( ), 0 = ingen
 let tilstand = "stop"
 let pos = 0.0
 let vol = 0.7
@@ -123,7 +122,7 @@ fn probe(i) {
     let n = numre[i]
     n.probet = true
     if har_ffprobe {
-        let ud = $(sh -c "ffprobe -v quiet -show_entries format=duration:format_tags=title,artist,album -of default=nw=1 {q(n.fil)} 2>/dev/null || true")
+        let ud = $(try ffprobe -v quiet -show_entries "format=duration:format_tags=title,artist,album" -of default=nw=1 "{n.fil}" 2> /dev/null)
         for l in ud.lines() {
             let p = l.split("=")
             if p.len >= 2 {
@@ -155,7 +154,8 @@ fn hent_cover(i) {
     }
     for k in kilder {
         if n.cover == -1 and exists(k) {
-            try sh -c "rm -f {q(ud)}; ffmpeg -y -v quiet -i {q(k)} -an -frames:v 1 -vf {q(vf)} {q(ud)} 2>/dev/null"
+            rm -f $ud
+            try ffmpeg -y -v quiet -i $k -an -frames:v 1 -vf $vf $ud 2> /dev/null
             if exists(ud) { n.cover = image(ud) }
         }
     }
@@ -163,9 +163,9 @@ fn hent_cover(i) {
 
 # ── afspilning ───────────────────────────────────────────────────────
 fn stop_proc() {
-    if pid != "" {
-        try sh -c "kill -CONT {pid} 2>/dev/null; kill {pid} 2>/dev/null"
-        pid = ""
+    if spil != 0 {
+        kill(spil, "KILL")    # virker også, mens den er på pause
+        spil = 0
     }
 }
 
@@ -175,14 +175,13 @@ fn start(i, fra) {
     cur = i
     if not numre[i].probet { probe(i) }
     hent_cover(i)
-    let f = q(numre[i].fil)
+    let f = numre[i].fil
     let v = int(vol * 100)
     let sek = int(fra)
-    let cmd = "mpv --no-video --really-quiet --no-terminal --start={sek} --volume={v} {f}"
-    if spiller == "ffplay" { cmd = "ffplay -nodisp -autoexit -loglevel quiet -ss {sek} -volume {v} {f}" }
-    # vagten stopper musikken, hvis Nonbiri bliver lukket med Ctrl+C
-    let vagt = "( while kill -0 \$PPID 2>/dev/null && kill -0 \$p 2>/dev/null; do sleep 1; done; kill -CONT \$p; kill \$p ) >/dev/null 2>&1 &"
-    pid = $(sh -c "{cmd} </dev/null >/dev/null 2>&1 & p=\$!; {vagt} echo \$p").trim()
+    let cmd = ["mpv", "--no-video", "--really-quiet", "--no-terminal", "--start={sek}", "--volume={v}", f]
+    if spiller == "ffplay" { cmd = ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", "-ss", "{sek}", "-volume", "{v}", f] }
+    # et &( )-job dør sammen med Nonbiri, så musikken stopper, også ved Ctrl+C
+    spil = &($cmd < /dev/null)
     start_tid = tid
     pos = sek
     tilstand = "spiller"
@@ -197,10 +196,10 @@ fn stop() {
 
 fn pause_af() {
     if tilstand == "spiller" {
-        try sh -c "kill -STOP {pid} 2>/dev/null"
+        kill(spil, "STOP")
         tilstand = "pause"
     } else if tilstand == "pause" {
-        try sh -c "kill -CONT {pid} 2>/dev/null"
+        kill(spil, "CONT")
         tilstand = "spiller"
     } else if numre.len > 0 {
         let i = valgt
@@ -666,7 +665,10 @@ fn listen() {
 fn læs_mapper(m) {
     vælger_sti = m
     vælger_rul = 0
-    vælger_mapper = $(sh -c "find {q(m)} -mindepth 1 -maxdepth 1 -type d ! -name '.*' 2>/dev/null | sort").lines()
+    vælger_mapper = []
+    for d in $(try find $m -mindepth 1 -maxdepth 1 -type d "!" -name ".*" 2> /dev/null).lines().sort() {
+        if d != "" { vælger_mapper.push(d) }
+    }
 }
 
 fn åbn_vælger() {
@@ -686,7 +688,8 @@ fn vælg_mappe(m) {
     søg = ""
     textbox_set("søg", "", false)
     vis_snavs = true
-    try sh -c "mkdir -p {q(MAPPE_FIL.dir)} && printf '%s' {q(m)} > {q(MAPPE_FIL)}"
+    mkdir -p "{MAPPE_FIL.dir}"
+    write(MAPPE_FIL, m)
     vælger_aktiv = false
     sig("{numre.len} sange i {m.name}")
 }
@@ -860,13 +863,12 @@ while frame() {
     tid += dt
     if tilstand == "spiller" and scene == "" { pos += dt }
     # er sangen færdig?
-    if tilstand == "spiller" and pid != "" and scene == "" {
+    if tilstand == "spiller" and spil != 0 and scene == "" {
         tjek -= dt
         if tjek <= 0 {
             tjek = 0.5
-            let lever = $(sh -c "kill -0 {pid} 2>/dev/null && echo ja || echo nej").trim()
-            if lever == "nej" {
-                pid = ""
+            if not running(spil) {
+                spil = 0
                 # færdig = stoppede tæt på slutningen; ellers kunne den ikke afspilles
                 let d = numre[cur].varighed
                 let fejl = tid - start_tid < 1.5

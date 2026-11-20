@@ -19,7 +19,6 @@
 let HJEM = env("HOME", ".")
 let DATA = "{HJEM}/.local/share/sj-mini"
 
-fn q(s) { return "'" + s.replace("'", "'\\''") + "'" }
 
 let HJÆLPER = env("SJ_PY", "")
 for h in ["{DATA}/sj.py", "{HJEM}/Dash/eksempler/sj.py", "{HJEM}/dash/eksempler/sj.py",
@@ -94,8 +93,9 @@ fn sig(farve, s) {
     besked_t = 6.0
 }
 
+# hjælperen kører i baggrunden; den skriver sine svar i DATA-mappen
 fn baggrund(cmd) {
-    try sh -c "{cmd} >/dev/null 2>&1 &"
+    $cmd < /dev/null &
 }
 
 fn inde(x, y, w, h) {
@@ -165,7 +165,7 @@ fn favoritter() {
 
 fn skift_fav(c) {
     c.fav = not c.fav
-    baggrund("python3 {q(HJÆLPER)} fav {q(c.id)}")
+    baggrund(["python3", HJÆLPER, "fav", c.id])
     if c.fav { sig(STJERNE, "{c.navn} er nu en favorit.") }
     else { sig(DÆMP, "{c.navn} er ikke favorit længere.") }
 }
@@ -217,15 +217,16 @@ fn opdater() {
         sig(RØD, "Kan ikke finde sj.py - læg den i ~/.local/share/sj-mini/ eller sæt SJ_PY.")
         return nil
     }
-    try sh -c "mkdir -p {q(DATA)}; rm -f {q(DATA + "/list.tsv")}"
-    baggrund("python3 {q(HJÆLPER)} list")
+    mkdir -p $DATA
+    rm -f "{DATA}/list.tsv"
+    baggrund(["python3", HJÆLPER, "list"])
     henter = true
     hent_t = 0.0
     sig(RØD, "Henter de nyeste kapitler fra MANGA Plus...")
 }
 
 fn åbn_web(c) {
-    baggrund("python3 {q(HJÆLPER)} open {q(c.id)}")
+    baggrund(["python3", HJÆLPER, "open", c.id])
     sig(GRØN, "Åbner {c.navn}...")
 }
 
@@ -253,8 +254,8 @@ fn åbn_kapitler(i) {
     kap_fejl = ""
     kap_rul = 0
     let c = serier[i]
-    try sh -c "rm -f {q(DATA + "/chapters-" + c.id + ".tsv")}"
-    baggrund("python3 {q(HJÆLPER)} chapters {q(c.id)}")
+    rm -f "{DATA}/chapters-{c.id}.tsv"
+    baggrund(["python3", HJÆLPER, "chapters", c.id])
     kap_henter = true
     kap_t = 0.0
 }
@@ -303,7 +304,7 @@ fn åbn_læser(k) {
     visning = "læs"
     kap_sidst = kapitler[k].id
     # 1350 høje sider: skarpe, også når man zoomer ind (vises 900 høje ved 100 %)
-    baggrund("SJ_SIDE_H=1350 python3 {q(HJÆLPER)} pages {q(serier[valgt].id)} {q(kapitler[k].id)}")
+    baggrund(["env", "SJ_SIDE_H=1350", "python3", HJÆLPER, "pages", serier[valgt].id, kapitler[k].id])
 }
 
 fn læs_info() {

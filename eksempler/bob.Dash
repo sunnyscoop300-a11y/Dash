@@ -31,8 +31,6 @@ let DSH = which("dsh")
 if not DSH { DSH = which("dsh-hare") }
 if not DSH { fail "Bob skal bruge dsh for at bygge programmerne" }
 
-fn q(s) { return "'" + s.replace("'", "'\\''") + "'" }
-
 # ── find programmerne ────────────────────────────────────────────────
 let kilder = []
 if args.len > 0 { kilder.push(args[0]) }
@@ -61,7 +59,9 @@ fn uden_hash(t) {
 }
 
 fn hash(fil) {
-    return $(sh -c "sha256sum {q(fil)} 2>/dev/null | cut -c1-64").trim()
+    let ud = $(try sha256sum $fil 2> /dev/null)
+    if ud == "" { return "" }
+    return ud.split(" ")[0]
 }
 
 let FARVER = ["#e8a33a", "#f07030", "#c060d0", "#62a548", "#4080e0", "#3aa0a0", "#d04a6a", "#8a6ad0"]
@@ -161,6 +161,7 @@ let detalje = ""
 let bob_siger = "Hej! Velkommen i min butik. Hvad skal vi installere i dag?"
 let bob_glad = 0.0
 let job = ""
+let bygger = 0         # Violets job fra &( ), mens et program bygges
 let job_tjek = 0.0
 let job_start = 0.0
 let fejl_log = []
@@ -195,10 +196,9 @@ fn installer(p) {
     job_start = tid
     fejl_log = []
     let log = "{TMP}/bob-{p.id}.log"
-    let færdig = "{TMP}/bob-{p.id}.færdig"
-    try sh -c "rm -f {q(færdig)}; mkdir -p {q(BIN)}"
-    let cmd = "{q(DSH)} build {q(p.fil)} -o {q(BIN + "/" + p.id)} > {q(log)} 2>&1; echo \$? > {q(færdig)}"
-    try sh -c "( {cmd} ) </dev/null >/dev/null 2>&1 &"
+    mkdir -p $BIN
+    let ud = "{BIN}/{p.id}"
+    bygger = &($DSH build "{p.fil}" -o $ud > $log 2>&1)
     bob_siger = "Jeg bygger {p.navn} med Violet. Det tager et øjeblik..."
 }
 
@@ -211,26 +211,26 @@ fn genvej(p) {
     }
     # appens eget logo, hvis den har et
     if p.ikon != "" {
-        try sh -c "mkdir -p {q(IKONER)} && cp {q(p.ikon)} {q(IKONER + "/dash-" + p.id + ".png")}"
+        mkdir -p $IKONER
+        try cp "{p.ikon}" "{IKONER}/dash-{p.id}.png"
         ikon = "{IKONER}/dash-{p.id}.png"
     }
     # JJGui giver vinduet app id "dash-<navn>", så filen hedder det samme
     let d = "[Desktop Entry]\nType=Application\nName={p.navn}\nComment={p.om}\nExec={BIN}/{p.id}\nIcon={ikon}\nStartupWMClass=dash-{p.id}\nTerminal=false\nCategories={kat}\n"
-    try sh -c "mkdir -p {q(APPS)}; rm -f {q(APPS + "/bob-" + p.id + ".desktop")}"
+    mkdir -p $APPS
+    rm -f "{APPS}/bob-{p.id}.desktop"
     write("{APPS}/dash-{p.id}.desktop", d)
-    try sh -c "update-desktop-database {q(APPS)} 2>/dev/null"
+    try update-desktop-database $APPS 2> /dev/null
 }
 
 fn job_færdig() {
     let p = find(job)
-    let færdig = "{TMP}/bob-{job}.færdig"
-    let kode = read(færdig).trim()
-    try sh -c "rm -f {q(færdig)}"
+    let kode = wait(bygger)
     job = ""
     if p == nil { return nil }
     p.job = ""
-    if kode == "0" {
-        try sh -c "mkdir -p {q(DATA + "/installeret")}"
+    if kode == 0 {
+        mkdir -p "{DATA}/installeret"
         write("{DATA}/installeret/{p.id}", hash(p.fil))
         if p.gui { genvej(p) }
         p.status = "installeret"
@@ -244,13 +244,14 @@ fn job_færdig() {
 }
 
 fn fjern(p) {
-    try sh -c "rm -f {q(BIN + "/" + p.id)} {q(APPS + "/bob-" + p.id + ".desktop")} {q(APPS + "/dash-" + p.id + ".desktop")} {q(IKONER + "/dash-" + p.id + ".png")} {q(DATA + "/installeret/" + p.id)}"
+    rm -f "{BIN}/{p.id}" "{APPS}/bob-{p.id}.desktop" "{APPS}/dash-{p.id}.desktop" "{IKONER}/dash-{p.id}.png" "{DATA}/installeret/{p.id}"
     p.status = "ny"
     bob_siger = "{p.navn} er fjernet. Den ligger stadig på hylden, hvis du fortryder."
 }
 
 fn åbn(p) {
-    try sh -c "{q(BIN + "/" + p.id)} </dev/null >/dev/null 2>&1 &"
+    let prog = "{BIN}/{p.id}"
+    $prog < /dev/null &
     bob_siger = "God fornøjelse med {p.navn}!"
     bob_glad = 2.0
 }
@@ -623,7 +624,7 @@ while frame() {
         job_tjek -= dt
         if job_tjek <= 0 {
             job_tjek = 0.3
-            if exists("{TMP}/bob-{job}.færdig") { job_færdig() }
+            if not running(bygger) { job_færdig() }
         }
     }
     nyt_klik = false

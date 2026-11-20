@@ -68,17 +68,26 @@ fn fuld(m) {
 
 # ── terminalen ───────────────────────────────────────────────────────
 # hver terminal vil have programmet på sin egen måde
+# hver terminal vil have programmet på sin egen måde; svaret er en liste,
+# så Dash kan starte terminalen direkte (prog er også en liste)
 fn terminal_kald(t, prog) {
     let navn = t.split("/").last
-    if navn == "kitty" or navn == "foot" { return "{t} {prog}" }
-    if navn == "wezterm" { return "{t} start -- {prog}" }
-    if navn == "gnome-terminal" or navn == "kgx" or navn == "ptyxis" { return "{t} -- {prog}" }
+    let start = [t, "-e"]     # alacritty, urxvt, st, …
+    if navn == "kitty" or navn == "foot" { start = [t] }
+    if navn == "wezterm" { start = [t, "start", "--"] }
+    if navn == "gnome-terminal" or navn == "kgx" or navn == "ptyxis" { start = [t, "--"] }
     # --hold: vinduet bliver stående, selv hvis skallen lukker
-    if navn == "xfce4-terminal" { return "{t} --hold -x {prog}" }
-    if navn == "konsole" { return "{t} --hold -e {prog}" }
-    if navn == "xterm" { return "{t} -hold -e {prog}" }
-    if navn == "tilix" or navn == "terminator" { return "{t} -e {q(prog)}" }
-    return "{t} -e {prog}"     # alacritty, konsole, xterm, urxvt, st, …
+    if navn == "xfce4-terminal" { start = [t, "--hold", "-x"] }
+    if navn == "konsole" { start = [t, "--hold", "-e"] }
+    if navn == "xterm" { start = [t, "-hold", "-e"] }
+    if navn == "tilix" or navn == "terminator" {
+        # de to vil have hele kommandoen som én streng
+        let dele = []
+        for d in prog { dele.push(q(d)) }
+        return [t, "-e", dele.join(" ")]
+    }
+    for d in prog { start.push(d) }
+    return start
 }
 
 fn find_terminal() {
@@ -129,12 +138,13 @@ fn kør(k) {
         "read _ < /dev/tty || read _",
         "rm -f {q(fil)}"]
     write(fil, linjer.join("\n") + "\n")
-    let prog = "{q(skal)} -i {q(fil)}"
+    let prog = [skal, "-i", fil]
     # alt om opstarten logges, så fejl kan findes:  cat ~/.cache/huskebogen.log
     let log = "{HJEM}/.cache/huskebogen.log"
     let kald = terminal_kald(term, prog)
-    try sh -c "mkdir -p {q(HJEM + "/.cache")}; echo \"=== \$(date '+%T') {k.navn.replace("\"", "")}: {kald.replace("\"", "")}\" >> {q(log)}"
-    try sh -c "{kald} </dev/null >> {q(log)} 2>&1 &"
+    mkdir -p "{HJEM}/.cache"
+    append(log, "=== {$(date +%T)} {k.navn}: {kald.join(" ")}\n")
+    $kald < /dev/null >> $log 2>&1 &
     sig("Kører \"{k.navn}\" i {term.split("/").last}")
 }
 

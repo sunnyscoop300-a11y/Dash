@@ -92,10 +92,7 @@ fn gem() {
     write(GEM, s.join("\n") + "\n")
 }
 
-let idag = ""
-let datofil = "{env("TMPDIR", "/tmp")}/serietracker-dato"
-try sh -c "date +%Y-%m-%d" > $datofil 2> /dev/null
-if exists(datofil) { idag = read(datofil).trim() }
+let idag = $(try date +%Y-%m-%d)
 
 window(TITEL, 900, 640)
 let W = width()

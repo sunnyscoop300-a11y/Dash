@@ -584,7 +584,7 @@ let A_MÅL = serie("maal", 16)
 # julen: rød sidebjælke, sne, lyskæder og en julehund med nissehue
 if tema == "" {
     tema = "normal"
-    if $(sh -c "date +%m").trim() == "12" { tema = "jul" }
+    if $(date +%m) == "12" { tema = "jul" }
 }
 let J_SIDE = image("{KUNST}/jul/side.png")
 let J_BAG = image("{KUNST}/jul/bag.png")
