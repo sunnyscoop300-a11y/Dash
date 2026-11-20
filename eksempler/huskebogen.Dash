@@ -1,0 +1,354 @@
+#!/usr/bin/env dsh
+# huskebogen.Dash — Huskebogen: gem dine lange kommandoer og kør dem med ét tryk (JJGui)
+# bob-navn: Huskebogen
+# bob-kategori: program
+# bob-farve: #7a5ac8
+# bob-om: Gem dine lange kommandoer med et navn, og kør dem i terminalen med ét tryk. Så skal du aldrig huske dem selv.
+#
+#   dsh eksempler/huskebogen.Dash
+#
+# Kommandoerne gemmes i ~/.config/huskebogen/kommandoer.txt (én pr. linje:
+# navn, mappe og kommando adskilt af tabulator). KØR åbner en terminal i
+# mappen og kører kommandoen gennem din egen shell ($SHELL -i), så dine
+# aliaser og ~/.local/bin virker som i terminalen. Terminalen bliver stående,
+# til du trykker Enter. Vælg selv terminal med HUSKEBOGEN_TERMINAL=kitty.
+
+let HJEM = env("HOME", "/root")
+let TMP = env("TMPDIR", "/tmp")
+let MAPPE = "{HJEM}/.config/huskebogen"
+let FIL = "{MAPPE}/kommandoer.txt"
+let W = 900
+let H = 640
+
+let LILLA = "#7a5ac8"
+let MØRK = "#2a2240"
+let PAPIR = "#f4f0fa"
+let DÆMP = "#8a80a0"
+
+fn q(s) { return "'" + s.replace("'", "'\\''") + "'" }
+
+# ── kommandoerne ─────────────────────────────────────────────────────
+let kommandoer = []
+
+fn indlæs() {
+    kommandoer = []
+    if not exists(FIL) {
+        # et eksempel, så bogen ikke starter tom
+        kommandoer.push({"navn": "Helen billedprompt", "mappe": "~/Downloads",
+            "cmd": "helen -p -b ~/Pictures/veruca/veruca-ref-1795114297.png -f banks.txt"})
+        gem()
+        return nil
+    }
+    for l in read(FIL).lines() {
+        if l.trim() != "" {
+            let d = l.split("\t")
+            if d.len >= 3 {
+                let rest = []
+                for i in range(2, d.len) { rest.push(d[i]) }
+                kommandoer.push({"navn": d[0], "mappe": d[1], "cmd": rest.join("\t")})
+            }
+        }
+    }
+}
+
+fn gem() {
+    mkdir -p $MAPPE
+    let ud = []
+    for k in kommandoer {
+        ud.push(k.navn.replace("\t", " ") + "\t" + k.mappe.replace("\t", " ") + "\t" + k.cmd.replace("\n", " "))
+    }
+    write(FIL, ud.join("\n") + "\n")
+}
+
+fn fuld(m) {
+    if m == "" or m == "~" { return HJEM }
+    if m.starts_with("~/") { return HJEM + "/" + m.replace("~/", "") }
+    return m
+}
+
+# ── terminalen ───────────────────────────────────────────────────────
+# hver terminal vil have programmet på sin egen måde
+fn terminal_kald(t, prog) {
+    let navn = t.split("/").last
+    if navn == "kitty" or navn == "foot" { return "{t} {prog}" }
+    if navn == "wezterm" { return "{t} start -- {prog}" }
+    if navn == "gnome-terminal" or navn == "kgx" or navn == "ptyxis" { return "{t} -- {prog}" }
+    # --hold: vinduet bliver stående, selv hvis skallen lukker
+    if navn == "xfce4-terminal" { return "{t} --hold -x {prog}" }
+    if navn == "konsole" { return "{t} --hold -e {prog}" }
+    if navn == "xterm" { return "{t} -hold -e {prog}" }
+    if navn == "tilix" or navn == "terminator" { return "{t} -e {q(prog)}" }
+    return "{t} -e {prog}"     # alacritty, konsole, xterm, urxvt, st, …
+}
+
+fn find_terminal() {
+    let valgt = env("HUSKEBOGEN_TERMINAL", env("TERMINAL", ""))
+    if valgt != "" and which(valgt) != nil { return valgt }
+    # skrivebordets egen terminal først (XFCE, KDE, GNOME)
+    let skrivebord = env("XDG_CURRENT_DESKTOP", "").lower()
+    if skrivebord.contains("xfce") and which("xfce4-terminal") != nil { return "xfce4-terminal" }
+    if skrivebord.contains("kde") and which("konsole") != nil { return "konsole" }
+    if skrivebord.contains("gnome") and which("ptyxis") != nil { return "ptyxis" }
+    if skrivebord.contains("gnome") and which("gnome-terminal") != nil { return "gnome-terminal" }
+    for t in ["kitty", "alacritty", "foot", "wezterm", "konsole", "gnome-terminal", "ptyxis", "kgx",
+              "xfce4-terminal", "tilix", "terminator", "xterm", "urxvt", "st"] {
+        if which(t) != nil { return t }
+    }
+    return ""
+}
+
+let besked = ""
+let besked_tid = 0.0
+
+fn sig(s) {
+    besked = s
+    besked_tid = 5.0
+}
+
+fn kør(k) {
+    let term = find_terminal()
+    if term == "" {
+        sig("Fandt ingen terminal. Sæt HUSKEBOGEN_TERMINAL=din-terminal")
+        return nil
+    }
+    let skal = env("SHELL", "/bin/sh")
+    let n = int(now() * 1000)
+    let fil = "{TMP}/huskebogen-{n}.sh"
+    # scriptet: gå til mappen, vis kommandoen, kør den, vent på Enter
+    # terminalen bliver altid stående, også hvis mappen mangler, og kommandoen
+    # kører i sin egen skal, så den ikke kan lukke vinduet
+    let linjer = ["printf '\\033[1;35m▶ %s\\033[0m\\n\\n' {q(k.cmd)}",
+        "if cd {q(fuld(k.mappe))}; then",
+        "    ( " + k.cmd + " )",
+        "    kode=\$?",
+        "else",
+        "    printf '\\033[1;31mfandt ikke mappen: %s\\033[0m\\n' {q(fuld(k.mappe))}",
+        "    kode=1",
+        "fi",
+        "printf '\\n\\033[2m── færdig (kode %s) — tryk Enter for at lukke ──\\033[0m' \"\$kode\"",
+        "read _ < /dev/tty || read _",
+        "rm -f {q(fil)}"]
+    write(fil, linjer.join("\n") + "\n")
+    let prog = "{q(skal)} -i {q(fil)}"
+    # alt om opstarten logges, så fejl kan findes:  cat ~/.cache/huskebogen.log
+    let log = "{HJEM}/.cache/huskebogen.log"
+    let kald = terminal_kald(term, prog)
+    try sh -c "mkdir -p {q(HJEM + "/.cache")}; echo \"=== \$(date '+%T') {k.navn.replace("\"", "")}: {kald.replace("\"", "")}\" >> {q(log)}"
+    try sh -c "{kald} </dev/null >> {q(log)} 2>&1 &"
+    sig("Kører \"{k.navn}\" i {term.split("/").last}")
+}
+
+# ── tegning ──────────────────────────────────────────────────────────
+fn klip(s, maxw, st) {
+    if text_width(s, st) <= maxw { return s }
+    let r = ""
+    for c in s.chars {
+        if text_width(r + c + "..", st) > maxw { return r + ".." }
+        r += c
+    }
+    return r
+}
+
+fn inde(x, y, w, h) {
+    let m = mouse()
+    return m[0] >= x and m[0] < x + w and m[1] >= y and m[1] < y + h
+}
+
+fn knap(x, y, w, h, s, bg) {
+    let over = inde(x, y, w, h)
+    round_rect(x, y + 3, w, h, 10, "#00000030")
+    round_rect(x, y, w, h, 10, bg)
+    if over { round_rect(x, y, w, h, 10, "#ffffff30") }
+    text(x + (w - text_width(s, 1)) / 2, y + (h - 16) / 2, s, "#ffffff", 1)
+    return over and clicked()
+}
+
+let FELT = {"h": 36, "r": 10, "bund": "#ffffff", "kant": "#d8d0e8", "fokus": LILLA, "tekst": MØRK,
+    "dæmp": "#b0a8c4", "markering": "#7a5ac850"}
+
+fn felt(id, x, y, w, tom) {
+    let o = {}
+    for k in FELT.keys { o[k] = FELT[k] }
+    o["tom"] = tom
+    return textbox(id, x, y, w, o)
+}
+
+# bogen i hjørnet (logoet)
+fn bog(x, y) {
+    round_rect(x, y, 34, 40, 5, "#5a3aa8")
+    round_rect(x + 4, y + 3, 30, 34, 4, "#fffaf0")
+    round_rect(x, y, 30, 40, 5, LILLA)
+    rect(x + 6, y, 3, 40, "#5a3aa8")
+    rect(x + 12, y + 12, 13, 2, "#ffffffa0")
+    rect(x + 12, y + 18, 10, 2, "#ffffffa0")
+    polygon([[x + 22, y + 34], [x + 27, y + 34], [x + 27, y + 46], [x + 24, y + 42], [x + 22, y + 46]], "#ffcf3a")
+}
+
+let rul = 0
+let søg = ""
+let retter = -1        # hvilken kommando der rettes (-1 = ny)
+let slet_spørg = -1    # klik én gang til for at slette
+
+fn listen() {
+    let s = søg.lower()
+    let vis = []
+    for i in range(kommandoer.len) {
+        let k = kommandoer[i]
+        if s == "" or (k.navn + " " + k.cmd).lower().contains(s) { vis.push(i) }
+    }
+    let y0 = 112
+    let kh = 66
+    let synlige = 4
+    if vis.len == 0 {
+        let t = "Ingen kommandoer endnu. Skriv en nedenfor og tryk GEM."
+        if kommandoer.len > 0 { t = "Ingen kommandoer passer til søgningen." }
+        text(40, y0 + 20, t, DÆMP, 1)
+        return nil
+    }
+    if inde(0, y0, W, synlige * kh) and wheel() != 0 {
+        rul = max(0, min(max(0, vis.len - synlige), rul - wheel()))
+    }
+    rul = min(rul, max(0, vis.len - synlige))
+    for r in range(synlige) {
+        let j = r + rul
+        if j < vis.len {
+            let i = vis[j]
+            let k = kommandoer[i]
+            let y = y0 + r * kh
+            let bg = "#ffffff"
+            if i == retter { bg = "#efe6ff" }
+            round_rect(24, y, W - 48, kh - 8, 12, bg)
+            round_rect(24, y, 6, kh - 8, 3, LILLA)
+            text(44, y + 6, klip(k.navn, 380, 1), MØRK, 1)
+            let m = k.mappe
+            if m == "" { m = "~" }
+            text(44 + text_width(klip(k.navn, 380, 1), 1) + 12, y + 6, "i " + klip(m, 200, 1), DÆMP, 1)
+            text(44, y + 30, klip(k.cmd, W - 48 - 44 - 330, 1), "#5a5070", 1)
+            let bx = W - 24 - 320
+            if knap(bx, y + 12, 80, 34, "KØR", "#3a9a5a") { kør(k) }
+            if knap(bx + 86, y + 12, 80, 34, "KOPIÉR", "#5a7ac8") {
+                set_clipboard(k.cmd)
+                sig("Kommandoen er kopieret")
+            }
+            if knap(bx + 172, y + 12, 64, 34, "RET", LILLA) { begynd_ret(i) }
+            let st = "SLET"
+            let sc = "#b05a6a"
+            if slet_spørg == i {
+                st = "SIKKER?"
+                sc = "#d03a4a"
+            }
+            if knap(bx + 242, y + 12, 72, 34, st, sc) {
+                if slet_spørg == i {
+                    kommandoer = fjern_nr(kommandoer, i)
+                    gem()
+                    slet_spørg = -1
+                    if retter == i { ryd_form() }
+                    sig("Slettet \"{k.navn}\"")
+                } else {
+                    slet_spørg = i
+                }
+            }
+        }
+    }
+    # rullebjælke
+    if vis.len > synlige {
+        let total = synlige * kh - 8
+        let bh = max(30, int(total * synlige / vis.len))
+        let by = y0 + int((total - bh) * rul / (vis.len - synlige))
+        round_rect(W - 16, y0, 6, total, 3, "#e4dcf0")
+        round_rect(W - 16, by, 6, bh, 3, LILLA)
+    }
+}
+
+fn fjern_nr(l, n) {
+    let ny = []
+    for i in range(l.len) { if i != n { ny.push(l[i]) } }
+    return ny
+}
+
+fn begynd_ret(i) {
+    retter = i
+    let k = kommandoer[i]
+    textbox_set("navn", k.navn, false)
+    textbox_set("cmd", k.cmd, true)
+    textbox_set("mappe", k.mappe, false)
+}
+
+fn ryd_form() {
+    retter = -1
+    textbox_set("navn", "", false)
+    textbox_set("cmd", "", false)
+    textbox_set("mappe", "", false)
+}
+
+fn formular() {
+    let y = 392
+    round_rect(16, y, W - 32, H - y - 44, 16, "#ffffff")
+    let t = "NY KOMMANDO"
+    if retter >= 0 { t = "RET KOMMANDO" }
+    text(36, y + 12, t, LILLA, 1)
+    text(36, y + 44, "Navn", DÆMP, 1)
+    let navn = felt("navn", 130, y + 36, 360, "fx Helen billedprompt")
+    text(510, y + 44, "Mappe", DÆMP, 1)
+    let mappe = felt("mappe", 580, y + 36, W - 580 - 36, "~/Downloads  (tom = ~)")
+    text(36, y + 92, "Kommando", DÆMP, 1)
+    let cmd = felt("cmd", 130, y + 84, W - 130 - 36, "fx helen -p -b ~/Pictures/veruca/figur.png -f banks.txt")
+    let gem_nu = knap(W - 36 - 120, y + 136, 120, 38, "GEM", "#3a9a5a") or submitted("cmd") or submitted("navn")
+    if retter >= 0 {
+        if knap(W - 36 - 250, y + 136, 120, 38, "ANNULLÉR", "#9a90b0") { ryd_form() }
+    } else if knap(W - 36 - 250, y + 136, 120, 38, "RYD", "#9a90b0") {
+        ryd_form()
+    }
+    text(36, y + 146, "Enter i et felt gemmer også. Højreklik for kopiér og indsæt.", DÆMP, 1)
+    if gem_nu {
+        if cmd.trim() == "" {
+            sig("Skriv en kommando først")
+        } else {
+            let n = navn.trim()
+            if n == "" { n = cmd.trim().split(" ")[0] }
+            let k = {"navn": n, "mappe": mappe.trim(), "cmd": cmd.trim()}
+            if retter >= 0 and retter < kommandoer.len {
+                kommandoer[retter] = k
+                sig("Rettet \"{n}\"")
+            } else {
+                kommandoer.push(k)
+                sig("Gemt \"{n}\"")
+            }
+            gem()
+            ryd_form()
+        }
+    }
+}
+
+# ── løkken ───────────────────────────────────────────────────────────
+indlæs()
+window("Huskebogen", W, H)
+let scene = env("JJ_SCENE", "")
+if scene == "ret" and kommandoer.len > 0 { begynd_ret(0) }
+
+while frame() {
+    let dt = delta()
+    if besked_tid > 0 { besked_tid -= dt }
+    clear(PAPIR)
+    # topbjælken
+    rect(0, 0, W, 52, LILLA)
+    bog(20, 4)
+    text(68, 12, "Huskebogen", "#ffffff", 2)
+    let antal = "{kommandoer.len} kommandoer"
+    text(W - 24 - text_width(antal, 1), 18, antal, "#e8e0ff", 1)
+    # søgning
+    let st = felt("søg", 24, 64, W - 48, "Søg i dine kommandoer")
+    if st != søg {
+        søg = st
+        rul = 0
+    }
+    if clicked() and slet_spørg >= 0 and not inde(W - 24 - 80, 0, 80, H) { slet_spørg = -1 }
+    listen()
+    formular()
+    # statuslinjen
+    if besked_tid > 0 {
+        text(24, H - 32, besked, MØRK, 1)
+    } else {
+        text(24, H - 32, "KØR åbner en terminal i mappen. Terminalen bliver stående, til du trykker Enter.", DÆMP, 1)
+    }
+}
