@@ -9,6 +9,7 @@ type problem = struct { line: int, msg: str, hint: str };
 let checking = false;
 let recovered: []str = [];    // names from let/fn lines that failed to parse
 let problems: []problem = [];
+let warnings: []problem = [];    // ⚠: virker, men er ikke god Dash
 
 fn record() void = {
 	for (let p .. problems) {
@@ -141,7 +142,30 @@ fn walk_parts(parts: []part, n: *names, line: int) void = {
 	};
 };
 
+// sh -c "…" inde i et Dash-script: Dash kan selv køre kommandoer med pipes,
+// > >> < 2> 2>&1 &> & og $( ) / &( ), så skallen skal ikke med.
+// En linje med "# sh-ok" springes over (fx når brugerens egne kommandoer
+// med vilje skal køre i hans egen shell).
+fn warn_shell(c: *s_cmd) void = {
+	for (let st .. c.stages) {
+		if (len(st.args) < 2) continue;
+		const a = &st.args[0];
+		const b = &st.args[1];
+		if (len(a.parts) != 1 || !(a.parts[0] is p_lit)) continue;
+		if (len(b.parts) != 1 || !(b.parts[0] is p_lit)) continue;
+		const prog = (a.parts[0] as p_lit): str;
+		const flag = (b.parts[0] as p_lit): str;
+		const shells = ["sh", "bash", "zsh", "dash", "/bin/sh", "/bin/bash"];
+		if (!has(shells, prog) || flag != "-c") continue;
+		if (strings::contains(source_line(c.line), "sh-ok")) continue;
+		append(warnings, problem { line = c.line,
+			msg = fmt::asprintf("{} -c gemmer en shell inde i Dash", prog)!,
+			hint = "skriv kommandoen direkte: Dash kan | > >> < 2> 2>&1 &> & $( ) og &( ) selv (# sh-ok på linjen, hvis det er med vilje)" })!;
+	};
+};
+
 fn walk_cmd(c: *s_cmd, n: *names) void = {
+	warn_shell(c);
 	for (let st .. c.stages) {
 		for (let w .. st.args) walk_parts(w.parts, n, c.line);
 		if (len(st.args) == 0 || c.try_) continue;    // try: may be missing
@@ -232,7 +256,19 @@ fn check_main(src: []u8) never = {
 		if (len(l) > 0) fmt::printfln("{}     {:4} │ {}{}", dim(), pr.line, l, reset())!;
 		if (len(pr.hint) > 0) fmt::printfln("{}          ↳ {}{}", orange(), pr.hint, reset())!;
 	};
+	sort::sort(warnings: []opaque, size(problem), &cmp_problem)!;
+	for (let pr .. warnings) {
+		fmt::printfln("  {}⚠ linje {}:{} {}", orange(), pr.line, reset(), pr.msg)!;
+		const l = source_line(pr.line);
+		if (len(l) > 0) fmt::printfln("{}     {:4} │ {}{}", dim(), pr.line, l, reset())!;
+		if (len(pr.hint) > 0) fmt::printfln("{}          ↳ {}{}", orange(), pr.hint, reset())!;
+	};
 	if (len(problems) == 0) {
+		if (len(warnings) > 0) {
+			fmt::printfln("  {}✔ ingen fejl, men {} {} ⚡{}", col("\x1b[1;32m"), len(warnings),
+				if (len(warnings) == 1) "advarsel" else "advarsler", reset())!;
+			os::exit(0);
+		};
 		fmt::printfln("  {}✔ ingen fejl fundet — klar til at løbe ⚡{}", col("\x1b[1;32m"), reset())!;
 		os::exit(0);
 	};

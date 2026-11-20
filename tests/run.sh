@@ -20,6 +20,29 @@ check "$(./dsh-hare -e 'let l = ["a", "b"]
 echo $l')" "a b" "liste bliver til argumenter"
 check "$(./dsh-hare -e 'for i in range(4) parallel 4 { true }
 echo ok' 2>/dev/null)" "ok" "parallel"
+# 0.14: 2>&1, &> og jobs med &( ) / wait() / running()
+check "$(./dsh-hare -e 'try ls /findesikke > /tmp/dsh-2.txt 2>&1
+print(read("/tmp/dsh-2.txt").contains("findesikke"))')" "true" "2>&1"
+check "$(./dsh-hare -e 'try ls /findesikke &> /tmp/dsh-2.txt
+try ls /heller_ikke &>> /tmp/dsh-2.txt
+print(read("/tmp/dsh-2.txt").lines().len)')" "2" "&> og &>>"
+rm -f /tmp/dsh-2.txt
+check "$(./dsh-hare -e 'let j = &(sleep 0.3)
+let n = 0
+while running(j) {
+  n += 1
+  sleep(0.05)
+}
+print(wait(j), n > 2)')" "0 true" "job: running() og wait()"
+check "$(./dsh-hare -e 'let j = &(ls /findesikke)
+print(wait(j), status)')" "2 2" "job: exitkode"
+check "$(./dsh-hare -e 'let j = &(sleep 5)
+kill(j)
+print(wait(j))')" "143" "job: kill()"
+check "$(./dsh-hare -e 'let u = $(try ls /findesikke 2>&1)
+print(status, u.contains("findesikke"))')" "2 true" "\$(try …)"
+check "$(printf 'sh -c "echo hej"\nsh -c "echo ok"  # sh-ok\n' > /tmp/dsh-w.Dash; ./dsh-hare check /tmp/dsh-w.Dash | grep -c "⚠")" "1" "check: advarsel ved sh -c"
+rm -f /tmp/dsh-w.Dash
 for c in 'false' 'findesikke' 'echo $nope' 'x = 1' 'fail "stop"' 'let a = 1 / 0'; do
 	if ./dsh-hare -e "$c" >/dev/null 2>&1; then bad=$((bad+1)); echo "✘ skulle fejle: $c"; else ok=$((ok+1)); fi
 done

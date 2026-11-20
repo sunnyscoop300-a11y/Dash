@@ -182,6 +182,7 @@ fn texpr(e: *expr) ty = {
 		tparts(s.parts);
 		return t(T_STR);
 	case e_cap => return t(T_STR);
+	case e_job => return t(T_INT);
 	case let v: e_var => return tvar(v.name);
 	case let l: e_list =>
 		let le = 0u16;
@@ -339,7 +340,8 @@ fn tcall(c: *e_call) ty = {
 	case "random" => return t(if (len(at) == 0) T_FLOAT else T_INT);
 	case "float", "now" => return t(T_FLOAT);
 	case "str", "type", "read", "cwd" => return t(T_STR);
-	case "exists", "is_dir", "is_file", "ask" => return t(T_BOOL);
+	case "exists", "is_dir", "is_file", "ask", "running" => return t(T_BOOL);
+	case "wait" => return t(T_INT);
 	case "print", "write", "append", "sleep", "progress" => return t(T_NIL);
 	case "range" => return tlist(T_INT);
 	case "glob" => return tlist(T_STR);

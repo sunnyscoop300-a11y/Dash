@@ -9,6 +9,7 @@ type tkind = enum {
 	STR,      // "..." (raw contents, interpolated later)
 	RSTR,     // '...'
 	CAP,      // $( ... )
+	JOB,      // &( ... ) — en kommando i baggrunden
 	IDENT,
 	KW,
 	OP,
@@ -153,6 +154,11 @@ fn lex(src: []u8, line: int) ([]token | failed) = {
 		} else if (c == '$' && i + 1 < len(src) && src[i + 1] == '(') {
 			const end = scan_balanced(src, i + 1, '(', ')', line)?;
 			t.kind = tkind::CAP;
+			t.val = sub(src, i + 2, end - 1);
+			i = end;
+		} else if (c == '&' && i + 1 < len(src) && src[i + 1] == '(') {
+			const end = scan_balanced(src, i + 1, '(', ')', line)?;
+			t.kind = tkind::JOB;
 			t.val = sub(src, i + 2, end - 1);
 			i = end;
 		} else if (c == '$' && i + 1 < len(src) && ident_start(src[i + 1])) {

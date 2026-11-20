@@ -9,7 +9,7 @@ let err_hint: str = "";
 const HINT_SPLIT: str = "er linjen blevet delt i to? en streng skal stå på én linje (nano: Alt+S slår ombrydning fra)";
 
 const BUILTIN_FNS: [_]str = ["print", "len", "str", "int", "float", "type", "range",
-	"env", "exists", "is_dir", "is_file", "which", "read", "write", "append",
+	"env", "exists", "wait", "running", "kill", "is_dir", "is_file", "which", "read", "write", "append",
 	"glob", "input", "now", "sleep", "round", "abs", "min", "max", "cwd",
 	"ask", "menu", "progress", "sin", "cos", "sqrt", "floor", "random"];
 

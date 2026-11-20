@@ -40,7 +40,7 @@ Alt fra Python-prototypen — de samme scripts giver det samme output:
 
 - `let`, `=`, `+=` …, `if`/`else if`/`else`, `for … in … [parallel N]`, `while`,
   `break`, `continue`, `fn navn(a, b) { … return … }`
-- kommandoer med `|`, `>`, `>>`, `<`, `2>`, `2>>`, `$(…)`, `try`, `fail`,
+- kommandoer med `|`, `>`, `>>`, `<`, `2>`, `2>>`, `2>&1`, `&>`, `&>>`, `$(…)`, `&(…)`, `try`, `fail`,
   `echo`, `cd`, `exit`
 - `"…{udtryk}…"`, `$navn`, `${udtryk}`, heltal, kommatal, lister `[…]`,
   maps `{"k": v}`, `l[i] = v`, `m["k"] = v`, `m.k`
@@ -49,7 +49,36 @@ Alt fra Python-prototypen — de samme scripts giver det samme output:
   .get .has`
 - egenskaber: `.len .first .last .name .stem .ext .dir .keys .values`
 - funktioner: `print len str int float type range env exists is_dir is_file
-  which read write append glob input now sleep round min max abs cwd ask menu progress`
+  which read write append glob input now sleep round min max abs cwd ask menu progress
+  wait running`
+
+## Ingen shell inde i Dash
+
+Dash skal ikke have `sh -c "…"` gemt inde i sig. Alt det, man plejede at
+hente skallen til, kan Dash selv:
+
+```
+try curl -sS $url > svar.json 2> fejl.txt    # stdout og stderr hver for sig
+try make > byg.log 2>&1                      # begge i samme fil (eller &> byg.log)
+let ud = $(ffmpeg -version 2>&1)             # fang også fejl-output
+
+let job = &(curl -sS -o svar.json $url)      # i baggrunden, men husket
+while running(job) {
+    progress(...)                            # lav noget imens
+    sleep(0.3)
+}
+let kode = wait(job)                         # exitkoden (sætter også $status)
+```
+
+- `&(kommando)` starter kommandoen i baggrunden og giver et job-nummer.
+  `running(job)` siger, om den stadig kører; `wait(job)` venter og giver
+  exitkoden. Output forsvinder, med mindre du sender det til en fil.
+- `kill(job)` stopper jobbet; `kill(job, "STOP")` og `kill(job, "CONT")`
+  sætter det på pause og fortsætter.
+- `$(try kommando)` giver outputtet, også når kommandoen fejler (`$status`
+  har exitkoden), ligesom `try` på en almindelig kommando.
+- `dsh check` advarer (⚠) ved `sh -c`, `bash -c` og `zsh -c`. Skal en
+  linje med vilje køre i brugerens egen shell, så skriv `# sh-ok` på den.
 
 ## Nyt i 0.5
 

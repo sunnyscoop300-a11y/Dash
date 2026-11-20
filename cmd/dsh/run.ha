@@ -1,10 +1,12 @@
 // Running commands: pipes, redirects, built-ins and strict errors.
+use ascii;
 use bufio;
 use fs;
 use io;
 use os;
 use os::exec;
 use strings;
+use unix::signal;
 use unix::tty;
 
 fn is_tty(f: io::file) bool = tty::isatty(f);
@@ -57,9 +59,19 @@ fn one(w: *word, e: *env, line: int) (str | failed) = {
 	return strings::join(" ", a...)!;
 };
 
+// $(try …): som try på en kommando — fejler den, fås outputtet alligevel
+fn cap_try(raw: str) (str, bool) = {
+	const t = strings::ltrim(raw);
+	if (strings::hasprefix(t, "try ") || strings::hasprefix(t, "try\t")) {
+		return (strings::ltrim(strings::sub(t, 4, strings::end)), true);
+	};
+	return (raw, false);
+};
+
 fn capture(raw: str, e: *env, line: int) (value | failed) = {
+	const (raw, try_) = cap_try(raw);
 	const stages = parse_command(strings::toutf8(raw), line)?;
-	match (run_cmd(stages, e, line, true, false)?) {
+	match (run_cmd(stages, e, line, true, try_)?) {
 	case let s: str => return s;
 	case => return "";
 	};
@@ -117,6 +129,101 @@ fn reap_bg() void = {
 	};
 };
 
+// &( … ): en kommando i baggrunden, som man kan vente på.
+//   let job = &(curl -sS -o svar.json $url)
+//   ... (lav noget andet imens, fx en animation)
+//   if not running(job) { let kode = wait(job) }
+type job = struct { procs: []exec::process, names: []str, codes: []int };
+let jobs: []job = [];
+let job_mode = false;
+let last_job = 0i64;
+
+fn job_start(raw: str, e: *env, line: int) (value | failed) = {
+	const stages = parse_command(strings::toutf8(raw), line)?;
+	job_mode = true;
+	defer job_mode = false;
+	run_bg(stages, e, line)?;
+	return last_job;
+};
+
+fn job_x(stages: []xstage, line: int) (i64 | failed) = {
+	job_mode = true;
+	defer job_mode = false;
+	run_bg_x(stages, line)?;
+	return last_job;
+};
+
+fn job_get(name: str, v: value, line: int) (*job | failed) = {
+	const n = match (v) {
+	case let n: i64 => yield n;
+	case => return dief(line, "{}() vil have et job fra &( … )", name);
+	};
+	if (n < 1 || n > len(jobs): i64) return dief(line, "{}(): der er intet job nummer {}", name, n);
+	return &jobs[(n - 1): size];
+};
+
+fn exit_code(st: *exec::status) int = match (exec::exit(st)) {
+case let c: exec::exited => yield c: int;
+case let s: exec::signaled => yield 128 + s: int;
+case => yield 1;
+};
+
+// pipefail som almindelige kommandoer: den sidste stage, der fejlede, bestemmer
+fn job_rc(j: *job) int = {
+	let rc = 0;
+	for (let c .. j.codes) if (c != 0) rc = c;
+	return rc;
+};
+
+// running(job): kører jobbet stadig?
+fn job_running(v: value, line: int) (bool | failed) = {
+	const j = job_get("running", v, line)?;
+	let alive = false;
+	for (let i = 0z; i < len(j.procs); i += 1) {
+		if (j.codes[i] >= 0) continue;
+		match (exec::peek(&j.procs[i])) {
+		case let st: exec::status => j.codes[i] = exit_code(&st);
+		case void => alive = true;
+		case => j.codes[i] = 1;
+		};
+	};
+	return alive;
+};
+
+// kill(job [, "STOP"]): sender et signal (standard TERM) til jobbets processer.
+// STOP sætter på pause, CONT fortsætter, KILL stopper med det samme.
+fn job_kill(v: value, signame: str, line: int) (void | failed) = {
+	const j = job_get("kill", v, line)?;
+	const s: signal::sig = switch (ascii::strupper(strings::trimprefix(signame, "SIG"))!) {
+	case "TERM" => yield signal::sig::TERM;
+	case "KILL" => yield signal::sig::KILL;
+	case "STOP" => yield signal::sig::STOP;
+	case "CONT" => yield signal::sig::CONT;
+	case "INT" => yield signal::sig::INT;
+	case "HUP" => yield signal::sig::HUP;
+	case => return dief(line, "kill(): kender ikke signalet '{}' (brug TERM, KILL, STOP, CONT, INT eller HUP)", signame);
+	};
+	for (let i = 0z; i < len(j.procs); i += 1) {
+		if (j.codes[i] >= 0) continue;
+		match (exec::sig(j.procs[i], s)) { case => void; };
+	};
+};
+
+// wait(job): venter, til jobbet er færdigt, og giver exitkoden
+fn job_wait(v: value, line: int) (i64 | failed) = {
+	const j = job_get("wait", v, line)?;
+	for (let i = 0z; i < len(j.procs); i += 1) {
+		if (j.codes[i] >= 0) continue;
+		match (exec::wait(&j.procs[i])) {
+		case let st: exec::status => j.codes[i] = exit_code(&st);
+		case => j.codes[i] = 1;
+		};
+	};
+	const rc = job_rc(j);
+	define(root, "status", rc: i64);
+	return rc: i64;
+};
+
 // A pipeline stage with every word already expanded to plain strings.
 // The interpreter makes these from the syntax tree; Violet's compiled
 // programs build them directly.
@@ -126,6 +233,7 @@ type xstage = struct {
 	out_app: bool,
 	err: (str | void),
 	err_app: bool,
+	err_out: bool,
 	inp: (str | void),
 };
 
@@ -144,7 +252,7 @@ fn run_cmd(stages: []stage, e: *env, line: int, cap: bool, try_: bool) ((str | i
 		let a: []str = [];
 		for (let w .. st.args) expand(&w, e, line, &a)?;
 		if (len(a) == 0) return die(line, "tom kommando");
-		let x = xstage { args = a, out = void, err = void, inp = opt_word(st.inp, e, line)?, ... };
+		let x = xstage { args = a, out = void, err = void, err_out = st.err_out, inp = opt_word(st.inp, e, line)?, ... };
 		match (st.out) {
 		case let r: *redir =>
 			x.out = one(&r.target, e, line)?;
@@ -178,6 +286,7 @@ fn run_x(stages: []xstage, e: nullable *env, line: int, cap: bool, try_: bool) (
 	if (len(stages) == 1) {
 		switch (name) {
 		case "echo" =>
+			define(root, "status", 0i64);
 			const text = strings::concat(strings::join(" ", argv[0][1..]...)!, "\n")!;
 			if (cap) return strings::rtrim(text, '\n');
 			match (stages[0].out) {
@@ -295,6 +404,8 @@ fn run_x(stages: []xstage, e: nullable *env, line: int, cap: bool, try_: bool) (
 			sp.fds[2] = f: int;
 		case void => void;
 		};
+		// 2>&1 / &>: stderr samme sted som stdout (fil, rør eller terminalen)
+		if (st.err_out) sp.fds[2] = if (sp.fds[1] >= 0) sp.fds[1] else 1;
 
 		match (spawn(&sp)) {
 		case let p: exec::process => append(procs, p)!;
@@ -325,6 +436,17 @@ fn run_x(stages: []xstage, e: nullable *env, line: int, cap: bool, try_: bool) (
 
 	if (bg_null >= 0) {
 		// background: don't wait — the jobs live on in their own session
+		if (job_mode) {
+			// &( … ): husk processerne, så wait() og running() kan spørge til dem
+			let names: []str = [];
+			for (let i = 0z; i < len(procs); i += 1) append(names, argv[i + first][0])!;
+			let codes: []int = [];
+			for (let i = 0z; i < len(procs); i += 1) append(codes, -1)!;
+			append(jobs, job { procs = procs, names = names, codes = codes })!;
+			last_job = len(jobs): i64;
+			define(root, "status", 0i64);
+			return 0;
+		};
 		append(bg_jobs, procs...)!;
 		define(root, "status", 0i64);
 		return 0;

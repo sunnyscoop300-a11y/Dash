@@ -180,6 +180,16 @@ fn call(name: str, args: []value, line: int) (value | failed) = {
 			return if (name == "is_dir") fs::isdir(st.mode) else fs::isfile(st.mode);
 		case fs::error => return false;
 		};
+	case "wait" =>
+		need(name, args, 1, line)?;
+		return job_wait(args[0], line)?;
+	case "running" =>
+		need(name, args, 1, line)?;
+		return job_running(args[0], line)?;
+	case "kill" =>
+		if (len(args) < 1 || len(args) > 2) return dief(line, "kill() vil have et job og evt. et signal: kill(job) eller kill(job, \"STOP\")");
+		job_kill(args[0], if (len(args) == 2) tostr(args[1]) else "TERM", line)?;
+		return nilv;
 	case "which" =>
 		need(name, args, 1, line)?;
 		match (exec::lookup(tostr(args[0]))) {

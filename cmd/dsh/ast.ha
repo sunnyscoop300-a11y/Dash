@@ -14,10 +14,11 @@ type e_un = struct { op: str, a: *expr, line: int };
 type e_call = struct { name: str, args: []*expr, line: int };
 type e_method = struct { obj: *expr, name: str, args: []*expr, line: int };
 type e_cap = struct { raw: str, line: int };
+type e_job = struct { raw: str, line: int };
 type e_index = struct { obj: *expr, idx: *expr, line: int };
 type e_attr = struct { obj: *expr, name: str, line: int };
 type expr = (e_num | e_fnum | e_const | e_str | e_var | e_list | e_map | e_bin
-	| e_un | e_call | e_method | e_cap | e_index | e_attr);
+	| e_un | e_call | e_method | e_cap | e_job | e_index | e_attr);
 
 // Parts of a "string" or of a command word.
 type p_lit = str;
@@ -34,6 +35,7 @@ type stage = struct {
 	args: []word,
 	out: nullable *redir,
 	err: nullable *redir,
+	err_out: bool,     // 2>&1 eller &>: stderr følger stdout
 	inp: nullable *word,
 };
 

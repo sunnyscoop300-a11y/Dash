@@ -151,9 +151,9 @@ fn run_c(xs: []xstage, line: int, try_: bool) (void | failed) = {
 	free(xs);
 };
 
-fn cap_x(xs: []xstage, line: int) (str | failed) = {
+fn cap_x(xs: []xstage, line: int, try_: bool = false) (str | failed) = {
 	defer free(xs);
-	match (run_x(xs, null, line, true, false)?) {
+	match (run_x(xs, null, line, true, try_)?) {
 	case let s: str => return s;
 	case => return "";
 	};

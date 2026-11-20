@@ -248,9 +248,11 @@ fn gparts_str(parts: []part, line: int) gx = {
 };
 
 fn gcap(raw: str, line: int) gx = {
+	const (raw, try_) = cap_try(raw);
 	match (parse_command(strings::toutf8(raw), line)) {
 	case let st: []stage =>
-		return gx { c = fmt::asprintf("cap_x({}, {})?", gstages(st, line), line)!, k = kind::S };
+		return gx { c = fmt::asprintf("cap_x({}, {}, {})?", gstages(st, line), line,
+			if (try_) "true" else "false")!, k = kind::S };
 	case failed =>
 		cerr(line, fmt::asprintf("kan ikke læse kommandoen $({})", raw)!);
 		return gx { c = "\"\"", k = kind::S };
@@ -304,6 +306,14 @@ fn gex(e: *expr) gx = {
 	case let c: e_const => return gconst(c.v);
 	case let s: e_str => return gparts_str(s.parts, s.line);
 	case let c: e_cap => return gcap(c.raw, c.line);
+	case let j: e_job =>
+		match (parse_command(strings::toutf8(j.raw), j.line)) {
+		case let st: []stage =>
+			return gx { c = fmt::asprintf("job_x({}, {})?", gstages(st, j.line), j.line)!, k = kind::I };
+		case failed =>
+			cerr(j.line, fmt::asprintf("kan ikke læse kommandoen &({})", j.raw)!);
+			return gx { c = "0i64", k = kind::I };
+		};
 	case let v: e_var => return gvar(v.name, v.line);
 	case let l: e_list =>
 		if (len(l.items) == 0) return gx { c = "vlist0()", k = kind::V };
@@ -444,6 +454,7 @@ fn gstages(stages: []stage, line: int) str = {
 				if (r.app) "true" else "false")!;
 		case null => x = strings::concat(x, ", err = void")!;
 		};
+		if (st.err_out) x = strings::concat(x, ", err_out = true")!;
 		match (st.inp) {
 		case let w: *word => x = fmt::asprintf("{}, inp = {}", x, gword_str(w, line))!;
 		case null => x = strings::concat(x, ", inp = void")!;

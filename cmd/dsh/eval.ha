@@ -292,6 +292,8 @@ fn eval(x: *expr, e: *env) (value | failed) = {
 		return method(obj, m.name, args, m.line);
 	case let c: e_cap =>
 		return capture(c.raw, e, c.line);
+	case let j: e_job =>
+		return job_start(j.raw, e, j.line);
 	case let ix: e_index =>
 		const obj = eval(ix.obj, e)?;
 		const k = eval(ix.idx, e)?;

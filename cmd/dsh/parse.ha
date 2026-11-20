@@ -176,7 +176,7 @@ fn statement(p: *parser) (stmt | failed) = {
 		};
 	};
 	if (t.kind == tkind::NUM || t.kind == tkind::STR || t.kind == tkind::RSTR
-			|| t.kind == tkind::CAP || (t.kind == tkind::OP && t.val == "[")) {
+			|| t.kind == tkind::CAP || t.kind == tkind::JOB || (t.kind == tkind::OP && t.val == "[")) {
 		return s_expr { e = pexpr(p)?, line = line };
 	};
 	return command(p, t, false)?;
@@ -281,6 +281,10 @@ fn parse_command(text: []u8, line: int) ([]stage | failed) = {
 			i += 1;
 			continue;
 		};
+		// 2>&1 og &> / &>>: fejl-output går samme vej som almindeligt output
+		if (prefix(rest, "2>&1")) { cur.err_out = true; i += 4; continue; };
+		if (prefix(rest, "&>>")) { cur.err_out = true; redirect = 2; i += 3; continue; };
+		if (prefix(rest, "&>")) { cur.err_out = true; redirect = 1; i += 2; continue; };
 		if (prefix(rest, "2>>")) { redirect = 4; i += 3; continue; };
 		if (prefix(rest, "2>")) { redirect = 3; i += 2; continue; };
 		if (prefix(rest, ">>")) { redirect = 2; i += 2; continue; };
@@ -566,6 +570,7 @@ fn primary(p: *parser) (*expr | failed) = {
 	case tkind::STR => return mk(e_str { parts = interp(strings::toutf8(t.val), t.line)?, line = t.line });
 	case tkind::RSTR => return mk(e_const { v = t.val });
 	case tkind::CAP => return mk(e_cap { raw = t.val, line = t.line });
+	case tkind::JOB => return mk(e_job { raw = t.val, line = t.line });
 	case tkind::IDENT =>
 		const n = peek(p);
 		if (n.kind == tkind::OP && n.val == "(" && !n.space) {
