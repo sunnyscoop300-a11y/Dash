@@ -339,10 +339,10 @@ fn tcall(c: *e_call) ty = {
 	case "sin", "cos", "sqrt" => return t(T_FLOAT);
 	case "random" => return t(if (len(at) == 0) T_FLOAT else T_INT);
 	case "float", "now" => return t(T_FLOAT);
-	case "str", "type", "read", "cwd" => return t(T_STR);
+	case "str", "type", "read", "cwd", "parr.fmt" => return t(T_STR);
 	case "exists", "is_dir", "is_file", "ask", "running" => return t(T_BOOL);
 	case "wait" => return t(T_INT);
-	case "print", "write", "append", "sleep", "progress" => return t(T_NIL);
+	case "print", "write", "append", "sleep", "progress", "parr.ln", "parr.err", "parr.tabel" => return t(T_NIL);
 	case "range" => return tlist(T_INT);
 	case "glob" => return tlist(T_STR);
 	case "which", "input" => return t(T_STR | T_NIL);

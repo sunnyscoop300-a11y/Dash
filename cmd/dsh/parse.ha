@@ -414,7 +414,7 @@ fn interp(raw: []u8, line: int) ([]part | failed) = {
 				append(parts, strings::dup(strings::fromutf8_unsafe(buf))!: p_lit)!;
 				buf = [];
 			};
-			append(parts, parse_expr_src(raw[i + 1..end - 1], line)?: p_expr)!;
+			append(parts, interp_expr(raw[i + 1..end - 1], line)?: p_expr)!;
 			i = end;
 			continue;
 		};
@@ -434,6 +434,47 @@ fn interp(raw: []u8, line: int) ([]part | failed) = {
 	};
 	if (len(buf) > 0) append(parts, strings::dup(strings::fromutf8_unsafe(buf))!: p_lit)!;
 	return parts;
+};
+
+// {udtryk} eller {udtryk:spec} — en spec bliver til parr.fmt(udtryk, "spec")
+fn interp_expr(src: []u8, line: int) (*expr | failed) = {
+	match (spec_colon(src)) {
+	case let c: size =>
+		const spec = strings::fromutf8_unsafe(src[c + 1..]);
+		if (parse_pspec(spec) is pspec && c > 0) {
+			const v = parse_expr_src(src[..c], line)?;
+			const sp = mk(e_const { v = strings::dup(spec)! });
+			return mk(e_call { name = "parr.fmt", args = alloc([v, sp])!, line = line });
+		};
+	case void => void;
+	};
+	return parse_expr_src(src, line);
+};
+
+// Det sidste ':' uden for parenteser og strenge
+fn spec_colon(src: []u8) (size | void) = {
+	let depth = 0;
+	let q: u8 = 0;
+	let found: (size | void) = void;
+	for (let i = 0z; i < len(src); i += 1) {
+		const c = src[i];
+		if (q != 0) {
+			if (c == '\\') {
+				i += 1;
+			} else if (c == q) {
+				q = 0;
+			};
+			continue;
+		};
+		switch (c) {
+		case '"', '\'' => q = c;
+		case '(', '[', '{' => depth += 1;
+		case ')', ']', '}' => depth -= 1;
+		case ':' => if (depth == 0) found = i;
+		case => void;
+		};
+	};
+	return found;
 };
 
 fn parse_expr_src(src: []u8, line: int) (*expr | failed) = {
@@ -534,6 +575,16 @@ fn postfix(p: *parser) (*expr | failed) = {
 			next(p);
 			const paren = peek(p);
 			if (paren.kind == tkind::OP && paren.val == "(" && !paren.space) {
+				match (*e) {
+				case let v: e_var =>
+					if (v.name == "parr") {
+						// parr.ln(…) osv. er familien Parr, ikke en metode
+						e = mk(e_call { name = strings::concat("parr.", n.val)!,
+							args = call_args(p)?, line = t.line });
+						continue;
+					};
+				case => void;
+				};
 				e = mk(e_method { obj = e, name = n.val, args = call_args(p)?, line = t.line });
 			} else {
 				e = mk(e_attr { obj = e, name = n.val, line = t.line });

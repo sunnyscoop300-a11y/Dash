@@ -96,6 +96,7 @@ let rng: random::random = 0;
 let rng_ready = false;
 
 fn call(name: str, args: []value, line: int) (value | failed) = {
+	if (strings::hasprefix(name, "parr.")) return parr_call(name, args, line);
 	switch (name) {
 	case "print" =>
 		for (let i = 0z; i < len(args); i += 1) {

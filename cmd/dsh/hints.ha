@@ -11,7 +11,8 @@ const HINT_SPLIT: str = "er linjen blevet delt i to? en streng skal stå på én
 const BUILTIN_FNS: [_]str = ["print", "len", "str", "int", "float", "type", "range",
 	"env", "exists", "wait", "running", "kill", "is_dir", "is_file", "which", "read", "write", "append",
 	"glob", "input", "now", "sleep", "round", "abs", "min", "max", "cwd",
-	"ask", "menu", "progress", "sin", "cos", "sqrt", "floor", "random"];
+	"ask", "menu", "progress", "sin", "cos", "sqrt", "floor", "random",
+	"parr.ln", "parr.err", "parr.fmt", "parr.tabel"];
 
 // JJGui (jj-nojj.ha): vinduer, grafik, mus, tastatur og lyd.
 const JJ_FNS: [_]str = ["window", "frame", "close_window", "clear", "rect", "outline",

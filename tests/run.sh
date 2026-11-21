@@ -116,6 +116,22 @@ check "$(./dsh-hare -e 'progress(50, "x")')" "  ██████████�
 check "$(./dsh-hare -e 'try findesikke
 echo $status')" "127" "try fanger manglende kommando"
 
+# Parr: formatering og udskrift
+check "$(./dsh-hare -e 'parr.ln("a", 1, 2.5, true, [1, 2])')" "a 1 2.5 true [1, 2]" "parr.ln"
+check "$(./dsh-hare -e 'parr.err("ups", 7)' 2>&1 >/dev/null)" "ups 7" "parr.err til stderr"
+check "$(./dsh-hare -e 'let n = "Bo"
+let p = 12.5
+echo "[{n:<6}|{p:>8.2}|{n:^6}]"')" "[Bo    |   12.50|  Bo  ]" "{x:spec} justering og decimaler"
+check "$(./dsh-hare -e 'echo "{255:x} {255:X} {5:03} {7:b} {8:o} {-5:05} {3:+}"')" "ff FF 005 111 10 -0005 +3" "{x:spec} hex/bin/oct/nuller/fortegn"
+check "$(./dsh-hare -e 'echo "{1234567:,} {1234.5:,.2} {0.38:%} {0.3851:.1%} {"Katcha":.3}"')" "1,234,567 1,234.50 38% 38.5% Kat" "{x:spec} tusinder/procent/tekst"
+check "$(./dsh-hare -e 'let m = {"a": 1}
+echo "{m.a}: { {"b": 2}.b }"')" "1: 2" "kolon uden spec er bare tekst"
+check "$(./dsh-hare -e 'print(parr.fmt(3.14159, ".3"))')" "3.142" "parr.fmt"
+check "$(./dsh-hare -e 'parr.tabel([["Navn", "Pris"], ["Hirdi", 12.5], ["Ællingen", 1000]])')" "Navn      Pris
+Hirdi     12.5
+Ællingen  1000" "parr.tabel"
+case "$(./dsh-hare -e 'print(parr.fmt(1, "q"))' 2>&1)" in *"ugyldig format-spec"*) ok=$((ok+1));; *) bad=$((bad+1)); echo "✘ parr.fmt ugyldig spec";; esac
+
 # dsh check: den ødelagte fil skal give præcis disse fejl og forslag
 out=$(./dsh-hare check tests/ødelagt.Dash 2>&1)
 for want in "linje 3: kommandoen '⚡'" "mangler der et # foran" "mangler der et komma i slutningen af linje 11" \

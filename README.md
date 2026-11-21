@@ -51,6 +51,7 @@ Alt fra Python-prototypen — de samme scripts giver det samme output:
 - funktioner: `print len str int float type range env exists is_dir is_file
   which read write append glob input now sleep round min max abs cwd ask menu progress
   wait running`
+- Parr: `parr.ln parr.err parr.fmt parr.tabel` og `"{udtryk:spec}"` (se nedenfor)
 
 ## Ingen shell inde i Dash
 
@@ -79,6 +80,44 @@ let kode = wait(job)                         # exitkoden (sætter også $status)
   har exitkoden), ligesom `try` på en almindelig kommando.
 - `dsh check` advarer (⚠) ved `sh -c`, `bash -c` og `zsh -c`. Skal en
   linje med vilje køre i brugerens egen shell, så skriv `# sh-ok` på den.
+
+## Parr 🦸 — formatering og udskrift
+
+Hare har `fmt`, Nim har `echo` — Dash har familien **Parr**:
+
+```
+let navn = "Bossun"
+let pris = 12.5
+parr.ln("pris", pris, true)        # pris 12.5 true   (alle typer, med mellemrum)
+parr.err("noget gik galt")         # samme, men til stderr
+echo "{navn:<12}|{pris:>8.2}|"     # Bossun      |   12.50|
+echo "{255:x} {5:03} {7:b}"        # ff 005 111
+echo "{1234567:,} {0.38:%}"        # 1,234,567 38%
+let s = parr.fmt(3.14159, ".3")    # "3.142"
+parr.tabel([["Navn", "Pris"],
+            ["Hirdi", 12.5],
+            ["Katcha", 3]])
+# Navn    Pris
+# Hirdi   12.5
+# Katcha     3
+```
+
+En spec skrives efter `:` inde i `{…}` (eller som 2. argument til `parr.fmt`):
+
+| spec | betyder |
+|---|---|
+| `<` `>` `^` | venstre, højre, midt (tal står til højre, tekst til venstre) |
+| `8` | mindst 8 tegn bred (æøå tæller som ét tegn) |
+| `0` | fyld op med nuller: `{5:03}` → `005` |
+| `+` | fortegn også på positive tal |
+| `,` | tusindtalsskiller: `1,234,567` |
+| `.2` | to decimaler — på tekst: højst 2 tegn |
+| `x` `X` `b` `o` | hex, HEX, binær, oktal |
+| `%` | procent: `{0.385:.1%}` → `38.5%` |
+
+Et `:` uden en gyldig spec efter er bare almindelig tekst, så `"{navn}: ok"`
+virker som før. `parr.tabel` sætter kolonnerne op efter den bredeste celle og
+stiller talkolonner til højre. Det hele virker også i Violet.
 
 ## Nyt i 0.5
 
