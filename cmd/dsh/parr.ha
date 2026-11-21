@@ -252,7 +252,7 @@ fn parr_tabel(args: []value, line: int) (value | failed) = {
 				append(out, strings::concat(s, pad)!)!;
 			};
 		};
-		fmt::println(strings::join("  ", out...)!)!;
+		fmt::println(strings::rtrim(strings::join("  ", out...)!))!;
 	};
 	return nilv;
 };

@@ -130,6 +130,7 @@ check "$(./dsh-hare -e 'print(parr.fmt(3.14159, ".3"))')" "3.142" "parr.fmt"
 check "$(./dsh-hare -e 'parr.tabel([["Navn", "Pris"], ["Hirdi", 12.5], ["Ællingen", 1000]])')" "Navn      Pris
 Hirdi     12.5
 Ællingen  1000" "parr.tabel"
+check "$(./dsh-hare -e 'parr.tabel([["a", "b"], ["ccc", ""]])' | cat -A | head -1)" 'a    b$' "parr.tabel uden mellemrum for enden"
 case "$(./dsh-hare -e 'print(parr.fmt(1, "q"))' 2>&1)" in *"ugyldig format-spec"*) ok=$((ok+1));; *) bad=$((bad+1)); echo "✘ parr.fmt ugyldig spec";; esac
 
 # dsh check: den ødelagte fil skal give præcis disse fejl og forslag
