@@ -521,8 +521,44 @@ fn sys_find() {
     }
 }
 
+# ── NVIDIA: passer kernemodulet og flatpaks driverkopi med driveren? ──
+# Efter en ny NVIDIA-driver skal man genstarte, og bagefter skal flatpak-
+# programmer (fx Steam) have en GL-udvidelse med præcis samme version —
+# ellers falder spillene stille tilbage til Intel-grafikken og lagger.
+let nv_driver = ""       # fx 620.73.04 (installeret)
+let nv_mangler = ""      # fx 620-73-04, når flatpak mangler den
+let nv_genstart = false
+fn nv_tjek() {
+    nv_driver = ""
+    nv_mangler = ""
+    nv_genstart = false
+    if which("nvidia-smi") == nil { return nil }
+    if which("pacman") != nil {
+        let q = $(try pacman -Q nvidia-utils 2> /dev/null).trim().split(" ")
+        if q.len >= 2 { nv_driver = q[1].split("-")[0] }
+    }
+    let kerne = ""
+    if exists("/proc/driver/nvidia/version") {
+        for o in read("/proc/driver/nvidia/version").lines()[0].split() {
+            if o.split(".").len == 3 and o.chars[0] >= "0" and o.chars[0] <= "9" { kerne = o }
+        }
+    }
+    if nv_driver == "" { nv_driver = kerne }
+    if nv_driver == "" { return nil }
+    if kerne != "" and kerne != nv_driver { nv_genstart = true }
+    # bruger flatpak NVIDIA? så skal udvidelsen passe med driveren
+    if which("flatpak") != nil and not nv_genstart {
+        let rt = $(try flatpak list --runtime --columns=application 2> /dev/null)
+        let ønsket = "org.freedesktop.Platform.GL.nvidia-{nv_driver.replace(".", "-")}"
+        if rt.contains("org.freedesktop.Platform.GL.nvidia-") and not rt.contains(ønsket) {
+            nv_mangler = nv_driver.replace(".", "-")
+        }
+    }
+}
+
 fn sys_tjek() {
     mkdir -p $SYS_TMP
+    nv_tjek()
     for k in sys_kilder {
         k.antal = -1
         k.linjer = []
@@ -570,6 +606,7 @@ fn sys_poll() {
 
 fn sys_antal() {
     let n = 0
+    if nv_mangler != "" or nv_genstart { n += 1 }
     for k in sys_kilder { if k.antal > 0 { n += k.antal } }
     return n
 }
@@ -626,6 +663,13 @@ fn sys_opdater() {
             s.push("if status != 0 \{ fejl += 1 \}")
         }
     }
+    if nv_mangler != "" {
+        let gl = "org.freedesktop.Platform.GL.nvidia-{nv_mangler} org.freedesktop.Platform.GL32.nvidia-{nv_mangler}"
+        s.push("echo \"\"")
+        s.push("echo \"\\e[1;33m▶ NVIDIA-driveren til flatpak (Steam): {nv_mangler}\\e[0m\"")
+        s.push("try flatpak install -y --system flathub {gl}")
+        s.push("if status != 0 \{ fejl += 1; echo \"(Flathub har den måske ikke endnu — prøv igen i morgen)\" \}")
+    }
     s.push("write(\"{sys_færdig_fil}\", str(fejl))")
     s.push("echo \"\"")
     s.push("if fejl == 0 \{ echo \"\\e[1;32m✔ Færdig! Systemet er opdateret.\\e[0m\" \} else \{ echo \"\\e[1;31m✘ \{fejl\} trin fejlede — se ovenfor.\\e[0m\" \}")
@@ -661,8 +705,16 @@ fn system_side() {
         text(x, y + 80, "Bob kender ikke din pakkehåndtering.", "#7a6a50", 2)
         return nil
     }
-    # en boks pr. kilde
     let by = y + 64
+    # NVIDIA-advarsler
+    if nv_genstart or nv_mangler != "" {
+        let t = "Ny NVIDIA {nv_driver} er installeret - genstart før du spiller!"
+        if not nv_genstart { t = "Flatpak/Steam mangler NVIDIA {nv_driver} - tryk Opdater alt" }
+        round_rect(x, by, w, 36, 10, "#d0453a")
+        text(x + 14, by + 10, klip(pæn(t), w - 28, 1), "#ffffff", 1)
+        by += 46
+    }
+    # en boks pr. kilde
     let bw = int((w - (sys_kilder.len - 1) * 10) / sys_kilder.len)
     for i in range(sys_kilder.len) {
         let k = sys_kilder[i]
