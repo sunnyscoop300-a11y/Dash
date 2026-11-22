@@ -8,7 +8,8 @@
 #   dsh eksempler/zuzubox.Dash
 #
 # Piletaster eller WASD flytter Zuzu, Z fortryder, R starter forfra,
-# L viser banerne, M slår lyden til og fra. På telefonen: tryk på den side
+# L viser banerne, M slår lyden til og fra, J skifter til juletema
+# (det kommer også af sig selv i december; ellers under Settings). På telefonen: tryk på den side
 # af Zuzu, hun skal gå til. Rekorderne gemmes i ~/.zuzubox.
 #
 # Grafikken ligger i zuzubox/ ved siden af og er klippet ud af ZuzuBox-mockuppen
@@ -522,11 +523,13 @@ let GEM = "{env("HOME", ".")}/.zuzubox"
 let bedste = []
 for i in range(BANER.len) { bedste.push(0) }
 let lyd_til = true
+let tema = ""
 if exists(GEM) {
     for l in read(GEM).lines() {
         let d = l.split("=")
         if d.len >= 2 {
             if d[0] == "lyd" { lyd_til = d[1] == "1" }
+            if d[0] == "tema" { tema = d[1] }
             for i in range(BANER.len) { if BANER[i].navn == d[0] { bedste[i] = int(d[1]) } }
         }
     }
@@ -537,6 +540,7 @@ fn gem() {
     let l = "0"
     if lyd_til { l = "1" }
     s.push("lyd={l}")
+    s.push("tema={tema}")
     write(GEM, s.join("\n") + "\n")
 }
 
@@ -561,27 +565,36 @@ if KUNST == "" {
     parr.err("ZuzuBox: kan ikke finde mappen zuzubox/ med grafikken (ved siden af zuzubox.Dash)")
     exit 1
 }
-let B_SIDE = image("{KUNST}/side.png")
-let B_BUND = image("{KUNST}/bund.png")
-let B_IKON = image("{KUNST}/kasse_lille.png")
-let B_GARGOIL = image("{KUNST}/gargoil.png")
+# juletemaet ligger i zuzubox/jul (lavet med zuzubox/klip_jul.py); i december
+# er det standard, indtil man selv vælger
+let har_jul = exists("{KUNST}/jul/side.png")
+if tema == "" {
+    tema = "normal"
+    if har_jul and $(try date +%m).trim() == "12" { tema = "jul" }
+}
+if not har_jul { tema = "normal" }
+let MAPPE = KUNST
+let B_SIDE = -1
+let B_BUND = -1
+let B_IKON = -1
+let B_GARGOIL = -1
+let A_N = []
+let A_H = []
+let A_O = []
+let A_V = []
+let A_MÅL = []
 fn serie(navn, liste) {
     let l = []
-    for i in liste { l.push(image("{KUNST}/{navn}_{i}.png")) }
+    for i in liste { l.push(image("{MAPPE}/{navn}_{i}.png")) }
     return l
 }
-# GIF'en: 0-1 forfra, 2-3 mod højre, 4-5 bagfra, 6-7 mod venstre
-let A_N = serie("zuzu", [0, 1])
-let A_H = serie("zuzu", [2, 3])
-let A_O = serie("zuzu", [4, 5])
-let A_V = serie("zuzu", [6, 7])
-let A_MÅL = serie("maal", range(12))
 let ret = "n"           # h, v, n (nedad, forfra) eller o (opad, bagfra)
 let gangtid = 0.0
 let stille = 0.0
 # gulv og kasser hentes i den størrelse, banen skal bruge
 let B_GULV = -1
 let B_KASSE = -1
+let B_KASSE2 = -1
 let KASSE_W = 0
 let KASSE_H = 0
 let brik_str = 0
@@ -645,12 +658,27 @@ fn hent_brikker() {
     if brik_str == RUDE { return nil }
     if B_GULV >= 0 {
         for b in [B_GULV, B_KASSE] { free_image(b) }
+        if B_KASSE2 != B_KASSE { free_image(B_KASSE2) }
     }
-    B_GULV = image("{KUNST}/gulv.png", RUDE, RUDE)
+    B_GULV = image("{MAPPE}/gulv.png", RUDE, RUDE)
     KASSE_W = int(RUDE * 0.96)
     KASSE_H = int(RUDE * 0.95)
-    B_KASSE = image("{KUNST}/kasse.png", KASSE_W, KASSE_H)
+    B_KASSE = image("{MAPPE}/kasse.png", KASSE_W, KASSE_H)
+    B_KASSE2 = B_KASSE
+    if exists("{MAPPE}/kasse2.png") { B_KASSE2 = image("{MAPPE}/kasse2.png", KASSE_W, KASSE_H) }
     brik_str = RUDE
+}
+
+# banens felter placeres midt i krypten (juletemaet har hylder højere oppe)
+fn placer() {
+    let by0 = BY0
+    if tema == "jul" { by0 = 170 }
+    let bw = BX1 - BX0
+    let bh = BY1 - by0
+    RUDE = int(min(72, min(bw / søjler, bh / rækker)))
+    ox = BX0 + int((bw - søjler * RUDE) / 2)
+    oy = by0 + int((bh - rækker * RUDE) / 2)
+    hent_brikker()
 }
 
 fn indlæs(i) {
@@ -708,12 +736,7 @@ fn indlæs(i) {
             "gv": er(felter, x - 1, y), "gh": er(felter, x + 1, y), "go": er(felter, x, y - 1), "gn": er(felter, x, y + 1),
             "s": er(striber, x, y)})
     }
-    let bw = BX1 - BX0
-    let bh = BY1 - BY0
-    RUDE = int(min(72, min(bw / søjler, bh / rækker)))
-    ox = BX0 + int((bw - søjler * RUDE) / 2)
-    oy = BY0 + int((bh - rækker * RUDE) / 2)
-    hent_brikker()
+    placer()
     træk = 0
     historik = []
     anim = 0.0
@@ -810,6 +833,40 @@ let C_KAPPE = "#9c7ad8"
 let C_KAPPE_LYS = "#dcc8ff"
 let C_KAPPE_MØRK = "#6c46b0"
 let C_FUGE = "#7b58c0"
+
+# skifter al grafikken mellem det normale tema og julen
+fn sæt_tema(t) {
+    tema = t
+    if B_SIDE >= 0 {
+        for b in [B_SIDE, B_BUND, B_IKON, B_GARGOIL] { free_image(b) }
+        for l in [A_N, A_H, A_O, A_V, A_MÅL] { for b in l { free_image(b) } }
+    }
+    MAPPE = KUNST
+    if tema == "jul" { MAPPE = "{KUNST}/jul" }
+    B_SIDE = image("{MAPPE}/side.png")
+    B_BUND = image("{MAPPE}/bund.png")
+    B_IKON = image("{MAPPE}/kasse_lille.png")
+    B_GARGOIL = image("{MAPPE}/gargoil.png")
+    # 0-1 forfra, 2-3 mod højre, 4-5 bagfra, 6-7 mod venstre
+    A_N = serie("zuzu", [0, 1])
+    A_H = serie("zuzu", [2, 3])
+    A_O = serie("zuzu", [4, 5])
+    A_V = serie("zuzu", [6, 7])
+    A_MÅL = serie("maal", range(12))
+    # julens mure har sne på toppen
+    if tema == "jul" {
+        C_KAPPE = "#e4e9f8"
+        C_KAPPE_LYS = "#ffffff"
+        C_KAPPE_MØRK = "#aab4d6"
+        C_FUGE = "#c4cce6"
+    } else {
+        C_KAPPE = "#9c7ad8"
+        C_KAPPE_LYS = "#dcc8ff"
+        C_KAPPE_MØRK = "#6c46b0"
+        C_FUGE = "#7b58c0"
+    }
+    brik_str = 0
+}
 let C_SIDE = "#4a2f7c"
 let C_SIDE_FUGE = "#2c1c4e"
 let C_SLIM = "#c24cf2"
@@ -821,9 +878,14 @@ fn krypt() {
     # skiltet på muren viser banen
     let s = skilt_navn(nr)
     let sx = 715 - int(text_width(s, 3) / 2)
-    text(sx + 1, 20, s, "#00000030", 3)
-    text(sx, 18, s, "#1e1430", 3)
-    text(sx + 1, 18, s, "#1e1430", 3)
+    let sy = 18
+    if tema == "jul" {
+        sx = 712 - int(text_width(s, 3) / 2)
+        sy = 42
+    }
+    text(sx + 1, sy + 2, s, "#00000030", 3)
+    text(sx, sy, s, "#1e1430", 3)
+    text(sx + 1, sy, s, "#1e1430", 3)
 }
 
 # murkappens kanter: [x0, y0, x1, y1]
@@ -984,7 +1046,7 @@ fn tegn_bane(dt) {
                 let x = kx + int((r - KASSE_W) / 2)
                 let y = ky + r - KASSE_H - int(r * 0.02)
                 round_rect(x + 3, y + KASSE_H - int(r * 0.12), KASSE_W - 2, int(r * 0.16), 6, "#10082050")
-                draw(B_KASSE, x, y)
+                if i % 2 == 1 { draw(B_KASSE2, x, y) } else { draw(B_KASSE, x, y) }
                 if er(mål, k[0], k[1]) {
                     # kassen står på et kranie: den lyser giftgrønt
                     let p = 0.5 + 0.5 * sin(tid * 5)
@@ -1014,6 +1076,7 @@ fn tegn_bane(dt) {
             let b = l[fi]
             let st = image_size(b)
             let h = int(r * 1.55)
+            if tema == "jul" { h = int(r * 1.8) }
             let w = int(st[0] * h / st[1])
             round_rect(cx - int(r * 0.32), dy + int(r * 0.8), int(r * 0.64), int(r * 0.18), int(r * 0.09), "#10082060")
             draw(b, cx - int(w / 2), dy + int(r * 0.96) - h - hop, w, h)
@@ -1060,17 +1123,22 @@ fn sideknap(y) {
 fn sidebjælke() {
     draw(B_SIDE, 0, 0)
     let bn = bane_navn(nr)
-    if text_width(bn, 3) <= 76 { tal(184, 360, bn, 3) } else { tal(184, 366, bn, 2) }
-    tal(167, 402, "{træk}", 2)
+    # tallene og knapperne sidder lidt forskelligt i de to mockups
+    let p = [184, 360, 167, 402, 432, 480, 531, 582]
+    if tema == "jul" { p = [176, 362, 158, 408, 436, 475, 524, 573] }
+    if tema == "jul" {
+        tal(p[0], p[1] + 6, bn, 2)
+    } else if text_width(bn, 3) <= 76 { tal(p[0], p[1], bn, 3) } else { tal(p[0], p[1] + 6, bn, 2) }
+    tal(p[2], p[3], "{træk}", 2)
     let b = "---"
     if bedste[nr] > 0 { b = "{bedste[nr]}" }
-    tal(167, 432, b, 2)
-    if sideknap(480) { indlæs(nr) }
-    if sideknap(531) {
+    tal(p[2], p[4], b, 2)
+    if sideknap(p[5]) { indlæs(nr) }
+    if sideknap(p[6]) {
         skærm = "baner"
         baneside = int(BANER[nr].hal / 4)
     }
-    if sideknap(582) { skærm = "settings" }
+    if sideknap(p[7]) { skærm = "settings" }
 }
 
 fn tegn_sejr() {
@@ -1080,6 +1148,7 @@ fn tegn_sejr() {
     round_rect(cx - 210, cy - 92, 420, 180, 22, "#c6ff3a")
     round_rect(cx - 206, cy - 88, 412, 172, 20, "#2a1450")
     let s = "SPOOKY GOOD!"
+    if tema == "jul" { s = "SPOOKY XMAS!" }
     logo_tekst(cx - text_width(s, 4) / 2, cy - 78, s, "#c6ff3a", 4)
     let t = "{træk} MOVES"
     if bedste[nr] == træk { t += "  ·  NEW BEST!" }
@@ -1152,14 +1221,16 @@ fn tegn_baner() {
 fn tegn_settings() {
     rect(SIDE_W, 0, W - SIDE_W, H, "#14082c90")
     let cx = SIDE_W + int((W - SIDE_W) / 2)
-    round_rect(cx - 200, 150, 400, 320, 22, "#c6ff3a")
-    round_rect(cx - 197, 153, 394, 314, 20, "#2a1450")
-    logo_tekst(cx - int(text_width("SETTINGS", 3) / 2), 170, "SETTINGS", "#ffffff", 3)
+    round_rect(cx - 200, 130, 400, 390, 22, "#c6ff3a")
+    round_rect(cx - 197, 133, 394, 384, 20, "#2a1450")
+    logo_tekst(cx - int(text_width("SETTINGS", 3) / 2), 150, "SETTINGS", "#ffffff", 3)
     let m = mouse()
-    let knapper = [["UNDO  (Z)", "undo"], ["SOUND: ON", "lyd"], ["BACK", "tilbage"]]
+    let knapper = [["UNDO  (Z)", "undo"], ["SOUND: ON", "lyd"], ["CHRISTMAS: OFF", "jul"], ["BACK", "tilbage"]]
     if not lyd_til { knapper[1][0] = "SOUND: OFF" }
-    for i in range(3) {
-        let y = 236 + i * 70
+    if tema == "jul" { knapper[2][0] = "CHRISTMAS: ON" }
+    if not har_jul { knapper[2][0] = "CHRISTMAS: -" }
+    for i in range(4) {
+        let y = 210 + i * 70
         let over = m[0] >= cx - 150 and m[0] < cx + 150 and m[1] >= y and m[1] < y + 52
         let bg = "#4a2488"
         if over { bg = "#7a3ac8" }
@@ -1174,12 +1245,21 @@ fn tegn_settings() {
             } else if knapper[i][1] == "lyd" {
                 lyd_til = not lyd_til
                 gem()
+            } else if knapper[i][1] == "jul" {
+                skift_tema()
             } else {
                 skærm = "spil"
             }
         }
     }
     if pressed("esc") { skærm = "spil" }
+}
+
+fn skift_tema() {
+    if not har_jul { return nil }
+    if tema == "jul" { sæt_tema("normal") } else { sæt_tema("jul") }
+    placer()
+    gem()
 }
 
 # touch: tryk på den side af Zuzu, hun skal gå til
@@ -1202,6 +1282,7 @@ fn touch_gå() {
 }
 
 # ═════════════════════════════ LØKKEN ════════════════════════════════
+sæt_tema(tema)
 indlæs(0)
 let skud = env("JJ_SKUD", "")
 let scene = env("JJ_SCENE", "")
@@ -1209,6 +1290,10 @@ let skud_tid = 0.0
 if scene.starts_with("nr") { indlæs(int(scene.replace("nr", ""))) }
 if scene == "baner" { skærm = "baner" }
 if scene == "settings" { skærm = "settings" }
+if env("JJ_TEMA", "") != "" {
+    sæt_tema(env("JJ_TEMA", ""))
+    placer()
+}
 if scene == "klaret" {
     indlæs(0)
     gå(1, 0)
@@ -1258,6 +1343,7 @@ while frame() {
             skærm = "baner"
             baneside = int(BANER[nr].hal / 4)
         }
+        if pressed("j") { skift_tema() }
         if pressed("m") {
             lyd_til = not lyd_til
             gem()
