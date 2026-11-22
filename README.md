@@ -314,6 +314,11 @@ dsh eksempler/nonbiri.Dash ~/Musik
 halstørklæde skubber kasser hen på pote-felterne på lageret. 16 baner i tre
 lagerhaller (alle tjekket løsbare), fortryd, rekorder, lyd og touch.
 
+**Eksempel:** `eksempler/zuzubox.Dash` — *ZuzuBox* 💀📦, zombiepigen Zuzu
+skubber kasser hen på de grønne kranier i en lilla krypt. 55 baner i ti krypter,
+to af dem med gargoiler der står i vejen. Grafikken er klippet ud af mockuppen
+med `eksempler/zuzubox/klip.py`.
+
 **Eksempel:** `eksempler/sj-mini.Dash` — *SJ Mini*, de nyeste kapitler fra
 MANGA Plus: klik på et cover for kapitlerne og læs dem som én lang stribe.
 Hjælperen `eksempler/sj.py` (python3 + pillow) henter listen, kapitlerne og
@@ -323,6 +328,8 @@ siderne. Højreklik eller stjernen gør en serie til favorit.
 egne Dash-programmer og spil. Bob finder `.Dash`-filerne i `~/Dash/eksempler`
 (eller `BOB_KILDER`), bygger dem med Violet til `~/.local/bin` og laver en
 genvej i menuen. Den kan også opdatere (når kildekoden er ændret) og fjerne.
+Fanen **System** viser de opdateringer, der venter (pacman, AUR, apt, dnf,
+zypper, xbps, flatpak og snap), og opdaterer Linux'en i terminalen.
 Et program beskriver sig selv med `# bob-navn:`, `# bob-kategori:`,
 `# bob-farve:` og `# bob-om:` øverst i filen.
 

@@ -1,0 +1,1285 @@
+#!/usr/bin/env dsh
+# zuzubox.Dash — ZuzuBox: zombiepigen Zuzu skubber kasser hen på kranierne i krypten (JJGui)
+# bob-navn: ZuzuBox
+# bob-kategori: spil
+# bob-farve: #a24fe0
+# bob-om: Hjælp zombiepigen Zuzu med at skubbe kasserne hen på de grønne kranier. 55 baner i ti krypter (to af dem med gargoiler), fortryd, rekorder, lyd og touch.
+#
+#   dsh eksempler/zuzubox.Dash
+#
+# Piletaster eller WASD flytter Zuzu, Z fortryder, R starter forfra,
+# L viser banerne, M slår lyden til og fra. På telefonen: tryk på den side
+# af Zuzu, hun skal gå til. Rekorderne gemmes i ~/.zuzubox.
+#
+# Grafikken ligger i zuzubox/ ved siden af og er klippet ud af ZuzuBox-mockuppen
+# med zuzubox/klip.py (python3 klip.py mockup.png zuzu.gif maal.png kasse.png zuzubox).
+
+window("ZuzuBox", 1136, 640)
+let W = width()
+let H = height()
+let BANER = [
+    # ── krypt 1 ──
+    {"navn": "Første kasse", "hal": 0, "kort": [
+        "#######",
+        "#     #",
+        "# @\$ .#",
+        "#     #",
+        "#######"]},
+    {"navn": "Hjørnet", "hal": 0, "kort": [
+        "######",
+        "#    #",
+        "# \$  #",
+        "#  @ #",
+        "##.  #",
+        " #####"]},
+    {"navn": "To kasser", "hal": 0, "kort": [
+        "########",
+        "#      #",
+        "# @\$ \$ #",
+        "#    ..#",
+        "########"]},
+    {"navn": "Gaflen", "hal": 0, "kort": [
+        "  #####",
+        "###   #",
+        "#.  # #",
+        "# \$\$  #",
+        "#.  @##",
+        "#####  "]},
+    {"navn": "Krypt A-01", "hal": 0, "kort": [
+        " ####  #HHH# ",
+        "##  ####   ##",
+        "H        .  H",
+        "H  @\$  \$    #",
+        "#     \$  .  H",
+        "##         ##",
+        " ####    .  # ",
+        "    ######## "]},
+    # ── krypt 2 ──
+    {"navn": "Kisterne", "hal": 1, "kort": [
+        "#######",
+        "#.   .#",
+        "# \$\$\$ #",
+        "#  @  #",
+        "#  .  #",
+        "#######"]},
+    {"navn": "Jernporten", "hal": 1, "kort": [
+        "#########",
+        "#   #   #",
+        "# \$ . \$ #",
+        "#  @#   #",
+        "# .   \$.#",
+        "#########"]},
+    {"navn": "Bogreolen", "hal": 1, "kort": [
+        "#######",
+        "#.    #",
+        "#  \$  #",
+        "#.\$#@ #",
+        "#     #",
+        "#######"]},
+    {"navn": "Knoglegemmet", "hal": 1, "kort": [
+        " #######",
+        " #     #",
+        "##.### #",
+        "#  \$ . #",
+        "# @\$\$  #",
+        "##.  ###",
+        " #####  "]},
+    {"navn": "Midnatsvagten", "hal": 1, "kort": [
+        "##########",
+        "#   #    #",
+        "# \$ . \$  #",
+        "#.##*##. #",
+        "#   @ \$  #",
+        "#        #",
+        "##########"]},
+    # ── krypt 3 ──
+    {"navn": "Kranievejen", "hal": 2, "kort": [
+        "##########",
+        "#        #",
+        "# \$\$ #.. #",
+        "#  @     #",
+        "#        #",
+        "##########"]},
+    {"navn": "Trappen ned", "hal": 2, "kort": [
+        " #######",
+        " #  .  #",
+        "##\$##\$ #",
+        "#  .@  #",
+        "# \$ ## #",
+        "#.     #",
+        "########"]},
+    {"navn": "Kassebjerget", "hal": 2, "kort": [
+        "########",
+        "#..    #",
+        "#..\$\$\$ #",
+        "###  \$ #",
+        "  # @  #",
+        "  ######"]},
+    {"navn": "Zuzus seng", "hal": 2, "kort": [
+        "#########",
+        "#.  #  .#",
+        "# \$   \$ #",
+        "## # # ##",
+        "#  \$@\$  #",
+        "#.  #  .#",
+        "#########"]},
+    {"navn": "Heksekøkkenet", "hal": 2, "kort": [
+        "#########",
+        "#   #   #",
+        "# \$   \$ #",
+        "## #.# ##",
+        "# \$.@.  #",
+        "#       #",
+        "#########"]},
+    {"navn": "Den store krypt", "hal": 2, "kort": [
+        "###########",
+        "#.   #   .#",
+        "# \$\$   \$\$ #",
+        "#  ##@##  #",
+        "# \$ . . \$ #",
+        "#.   #   .#",
+        "###########"]},
+    # ── krypt 4 ──
+    {"navn": "Smal gang", "hal": 3, "kort": [
+        "#########",
+        "#@ \$  . #",
+        "# ##\$## #",
+        "#   .   #",
+        "#########"]},
+    {"navn": "Isgraven", "hal": 3, "kort": [
+        "  #####  ",
+        "###   ###",
+        "# . \$ . #",
+        "#  \$@\$  #",
+        "# . \$ . #",
+        "###   ###",
+        "  #####  "]},
+    {"navn": "Dobbeltdøren", "hal": 3, "kort": [
+        "###########",
+        "#   # .   #",
+        "# \$   \$   #",
+        "## # # ## #",
+        "#.  @  \$ .#",
+        "###########"]},
+    {"navn": "Graverens skur", "hal": 3, "kort": [
+        " ########",
+        " #  .   #",
+        "## \$##\$ #",
+        "#.  @   #",
+        "# \$ ## .#",
+        "#   ##  #",
+        "#########"]},
+    {"navn": "Edderkoppespindet", "hal": 3, "kort": [
+        "##########",
+        "#  .  .  #",
+        "# \$##\$## #",
+        "#  @  \$ .#",
+        "##########"]},
+    {"navn": "Hjørnetårnet", "hal": 3, "kort": [
+        "#######  ",
+        "#.  . #  ",
+        "# \$\$  ###",
+        "#  #\$  .#",
+        "# @   \$ #",
+        "###.  ###",
+        "  #####  "]},
+    # ── krypt 5 ──
+    {"navn": "Rampen", "hal": 4, "kort": [
+        "  ######  ",
+        "  #  . #  ",
+        "### \$\$ ###",
+        "#. \$@ \$ .#",
+        "###  . ###",
+        "  ######  "]},
+    {"navn": "Flaskehylden", "hal": 4, "kort": [
+        "##########",
+        "#.   #   #",
+        "# \$  \$ . #",
+        "#  ## #\$ #",
+        "#.  @    #",
+        "##########"]},
+    {"navn": "Spiralen", "hal": 4, "kort": [
+        "#########",
+        "#.  \$   #",
+        "# ##### #",
+        "# #.  # #",
+        "# # \$@# #",
+        "# #  \$# #",
+        "#      .#",
+        "#########"]},
+    {"navn": "Labyrinten", "hal": 4, "kort": [
+        "###########",
+        "#@  #  .  #",
+        "# \$ # \$ # #",
+        "#   \$   # #",
+        "### # ### #",
+        "#.    .   #",
+        "###########"]},
+    {"navn": "Sarkofagen", "hal": 4, "kort": [
+        "############",
+        "#  .    .  #",
+        "# ### \$### #",
+        "#  \$ @  \$  #",
+        "# ###\$ ### #",
+        "#  .    .  #",
+        "############"]},
+    {"navn": "Hovedkrypten", "hal": 4, "kort": [
+        "#############",
+        "#.  #   #  .#",
+        "# \$   \$   \$ #",
+        "#.# ##@## #.#",
+        "# \$   \$     #",
+        "#   # . #   #",
+        "#############"]},
+    # ── krypt 6 (svære, lavet af banegeneratoren) ──
+    {"navn": "Klokkerebet", "hal": 5, "kort": [
+        "    ########",
+        " #### .##  #",
+        " #     . \$ #",
+        " #     \$ \$ #",
+        " #.      \$@#",
+        "####     ###",
+        "#      ###",
+        "# #    #",
+        "# .   ##",
+        "#######"]},
+    {"navn": "Kistereolen", "hal": 5, "kort": [
+        "############",
+        "#      #   #",
+        "#.   . *   #",
+        "#     #. # #",
+        "#\$#\$     #.#",
+        "#       ##\$#",
+        "#### ###   #",
+        "   #\$   \$@##",
+        "   #   # .#",
+        "   ########"]},
+    {"navn": "Ligkapellet", "hal": 5, "kort": [
+        "############",
+        "#  #       #",
+        "#  .   \$  .#",
+        "# .\$#. \$   #",
+        "# #    \$ \$ #",
+        "#  . ## \$@##",
+        "####  #  ##",
+        "   #  .  #",
+        "   #######"]},
+    {"navn": "Flagermusloftet", "hal": 5, "kort": [
+        "  #########",
+        "  #       #",
+        " ##  # #\$ #",
+        " # .   .\$ #",
+        " # .  # # #",
+        "##  #  \$  #",
+        "#*.\$    \$ #",
+        "#.       @#",
+        "###########"]},
+    {"navn": "Mørkekælderen", "hal": 5, "kort": [
+        "  #########",
+        "  #   #   #",
+        "###      .#",
+        "#  .    #.#",
+        "# # @   # #",
+        "#    \$  . #",
+        "#  #  \$\$\$.#",
+        "## \$      #",
+        " ##       #",
+        "  #########"]},
+    # ── krypt 7 (svære, lavet af banegeneratoren) ──
+    {"navn": "Frysegraven", "hal": 6, "kort": [
+        "###########",
+        "#      #  #",
+        "# \$\$ \$    #",
+        "# # \$ #   #",
+        "#  .  ..  #",
+        "# \$  # \$.##",
+        "#  .  @ .#",
+        "##########"]},
+    {"navn": "Spøgelsesposten", "hal": 6, "kort": [
+        " ##########",
+        " #     #* #",
+        " #@\$ \$\$#  #",
+        "###    #  #",
+        "#      # ###",
+        "#   ##     #",
+        "##  \$ . .  #",
+        " #     . .##",
+        " ##########"]},
+    {"navn": "Bagdøren", "hal": 6, "kort": [
+        "############",
+        "#@ #      .#",
+        "# \$   .    #",
+        "#### \$#    #",
+        "####   *   #",
+        "#  #       #",
+        "#. #   ### #",
+        "#      \$ #\$#",
+        "#  #    .  #",
+        "############"]},
+    {"navn": "Ligvognen", "hal": 6, "kort": [
+        "  #########",
+        "###@ #    #",
+        "# \$\$\$     #",
+        "#    #  # #",
+        "#   ##  ..#",
+        "###  * #  #",
+        "  ####.   #",
+        "     ######"]},
+    {"navn": "Velkomstkrypten", "hal": 6, "kort": [
+        "#######",
+        "#.  \$@####",
+        "#  ##\$   #",
+        "#   #  \$ #",
+        "#     \$  #",
+        "# # #  # ##",
+        "#   #    .##",
+        "#   .#.##\$ #",
+        "##  .      #",
+        " ###########"]},
+    # ── krypt 8 (svære, lavet af banegeneratoren) ──
+    {"navn": "Zombiehuset", "hal": 7, "kort": [
+        " #####",
+        " #  .##",
+        "##  *.####",
+        "#  \$.    #",
+        "#.   .   #",
+        "#        #",
+        "### # #  #",
+        "#@\$\$#\$ \$ #",
+        "#      ###",
+        "########"]},
+    {"navn": "Kassefabrikken", "hal": 7, "kort": [
+        "  #########",
+        " ##       #",
+        "##@\$  #  .##",
+        "# \$        #",
+        "#      . # #",
+        "#  # . . \$ #",
+        "#     ##\$  #",
+        "#   \$     .#",
+        "#   ## *####",
+        "#########"]},
+    {"navn": "Skattekammeret", "hal": 7, "kort": [
+        "    ########",
+        " ####      #",
+        " #         #",
+        " # \$## # . #",
+        "###@ #     #",
+        "#  \$\$##\$## #",
+        "# .   #   .#",
+        "#####     ##",
+        "    ##  . #",
+        "     ######"]},
+    {"navn": "Gravkongen", "hal": 7, "kort": [
+        "###########",
+        "#  .      ##",
+        "#.##  .  \$ #",
+        "#  \$ # . # #",
+        "#          #",
+        "# . #  \$\$\$ #",
+        "#  ##  # @##",
+        "###########"]},
+    {"navn": "Det store kaos", "hal": 7, "kort": [
+        "#########",
+        "#  @    ####",
+        "# \$\$ ##    #",
+        "#          #",
+        "#    .     #",
+        "##  ##  . .#",
+        "##### \$  #*#",
+        "#    \$  #  #",
+        "#   #   .  #",
+        "############"]},
+    # ── krypt 9: gargoilerne (N er en gargoil, der står i vejen) ──
+    {"navn": "Gargoilens lygte", "hal": 8, "kort": [
+        "#####",
+        "#  .#######",
+        "# N       #",
+        "#  \$ \$N@ .#",
+        "# .\$   N  #",
+        "#  * .  \$ #",
+        "###  . \$  #",
+        "  #   N   #",
+        "  #########"]},
+    {"navn": "Den sovende sten", "hal": 8, "kort": [
+        "############",
+        "#@  \$.    .#",
+        "# \$      \$ #",
+        "#   N.\$.   #",
+        "#       N  #",
+        "#      N# *#",
+        "#  N \$ .#  #",
+        "#######    #",
+        "      ######"]},
+    {"navn": "Stenvagten", "hal": 8, "kort": [
+        "##########",
+        "#    ##. #",
+        "# *  \$ . #",
+        "#.   N  N#",
+        "#  \$ \$   #",
+        "#N  .    #",
+        "#+\$\$ N  ##",
+        "#    #  #",
+        "#########"]},
+    {"navn": "Vingefang", "hal": 8, "kort": [
+        "############",
+        "#          #",
+        "# \$  .     #",
+        "# N    N   #",
+        "#.N \$@##N  #",
+        "#  . .#   ##",
+        "#   \$.\$ \$  #",
+        "#      #   #",
+        "############"]},
+    {"navn": "Gargoilmor", "hal": 8, "kort": [
+        "##########",
+        "#  ##    ###",
+        "#  ##\$N \$..#",
+        "#  N..  N  #",
+        "#N .\$  \$   #",
+        "#+\$     #  #",
+        "# \$      # #",
+        "###        #",
+        "  ##########"]},
+    {"navn": "Gravkapellet", "hal": 8, "kort": [
+        "  #########",
+        "  #  .    #",
+        " ##    N\$ #",
+        "##        #",
+        "#     . N##",
+        "#  \$ N   ##",
+        "# \$N \$  \$@#",
+        "#.   . .  #",
+        "###########"]},
+    # ── krypt 10: flere gargoiler (N er en gargoil, der står i vejen) ──
+    {"navn": "Stenhjerter", "hal": 9, "kort": [
+        "############",
+        "#  N       #",
+        "#. \$\$ N\$  .#",
+        "#   . N   ##",
+        "#    .    #",
+        "## .N   #\$#",
+        " #    \$ \$+#",
+        " #   #  ###",
+        " ########"]},
+    {"navn": "Klokketårnet", "hal": 9, "kort": [
+        "##########",
+        "# .  N   #",
+        "# \$ \$    #",
+        "#  .\$ N. #",
+        "##NN@\$   #",
+        " #  \$ #* #",
+        " #    #  #",
+        " #.   #. #",
+        " #########"]},
+    {"navn": "Tagrenden", "hal": 9, "kort": [
+        " ########",
+        " #     .##",
+        "##*N     #",
+        "#    .N.\$##",
+        "# \$N \$    #",
+        "#    N   .#",
+        "# #  # #\$##",
+        "#  .   \$@#",
+        "##########"]},
+    {"navn": "Månestenen", "hal": 9, "kort": [
+        "########",
+        "#   .\$+#",
+        "# N \$ \$##",
+        "# #N .  #",
+        "#    N  ##",
+        "# \$\$  .  #",
+        "#    N.  #",
+        "# \$     .#",
+        "##########"]},
+    {"navn": "Kravlekrypten", "hal": 9, "kort": [
+        "       ####",
+        "       #  #",
+        "########  #",
+        "#@\$      .#",
+        "# \$\$\$   \$*#",
+        "##N.   .. #",
+        " #  N  NN #",
+        " #     .  #",
+        " ##########"]},
+    {"navn": "Midnat", "hal": 9, "kort": [
+        "###########",
+        "#.  ##    #",
+        "#  \$    ..#",
+        "# .   N   #",
+        "#  NN    ##",
+        "##     ###",
+        " #\$\$N\$*#",
+        " #@    #",
+        " #######"]},
+]
+
+let HALLER = ["CRYPT A", "CRYPT B", "CRYPT C", "CRYPT D", "CRYPT E", "CRYPT F", "CRYPT G", "CRYPT H", "GARGOYLE HALL 1", "GARGOYLE HALL 2"]
+let GARGOILHAL = 8
+let GEM = "{env("HOME", ".")}/.zuzubox"
+
+# ── rekorder: én linje pr. bane, navn=træk ──
+let bedste = []
+for i in range(BANER.len) { bedste.push(0) }
+let lyd_til = true
+if exists(GEM) {
+    for l in read(GEM).lines() {
+        let d = l.split("=")
+        if d.len >= 2 {
+            if d[0] == "lyd" { lyd_til = d[1] == "1" }
+            for i in range(BANER.len) { if BANER[i].navn == d[0] { bedste[i] = int(d[1]) } }
+        }
+    }
+}
+fn gem() {
+    let s = []
+    for i in range(BANER.len) { if bedste[i] > 0 { s.push("{BANER[i].navn}={bedste[i]}") } }
+    let l = "0"
+    if lyd_til { l = "1" }
+    s.push("lyd={l}")
+    write(GEM, s.join("\n") + "\n")
+}
+
+# ── lyde ──
+let LYD_GÅ = sound("triangle", 520, 470, 0.03, 0.12)
+let LYD_SKUB = sound("square", 140, 100, 0.08, 0.22)
+let LYD_MÅL = sound("sine", 659, 1319, 0.14, 0.35)
+let LYD_BUMP = sound("noise", 300, 150, 0.06, 0.15)
+let LYD_UUH = sound("square", 220, 110, 0.35, 0.22)
+let LYD_SEJR = sound("triangle", 392, 1175, 0.5, 0.4)
+let LYD_FORTRYD = sound("sine", 500, 330, 0.07, 0.2)
+fn spil_lyd(l) { if lyd_til { play(l) } }
+
+# ── grafikken (klippet ud af ZuzuBox-mockuppen) ──
+let mappe = script.dir
+if mappe == "" { mappe = "." }
+let KUNST = ""
+for d in ["{mappe}/zuzubox", "eksempler/zuzubox", "{env("HOME", ".")}/.local/share/zuzubox"] {
+    if KUNST == "" and exists("{d}/side.png") { KUNST = d }
+}
+if KUNST == "" {
+    parr.err("ZuzuBox: kan ikke finde mappen zuzubox/ med grafikken (ved siden af zuzubox.Dash)")
+    exit 1
+}
+let B_SIDE = image("{KUNST}/side.png")
+let B_BUND = image("{KUNST}/bund.png")
+let B_IKON = image("{KUNST}/kasse_lille.png")
+let B_GARGOIL = image("{KUNST}/gargoil.png")
+fn serie(navn, liste) {
+    let l = []
+    for i in liste { l.push(image("{KUNST}/{navn}_{i}.png")) }
+    return l
+}
+# GIF'en: 0-1 forfra, 2-3 mod højre, 4-5 bagfra, 6-7 mod venstre
+let A_N = serie("zuzu", [0, 1])
+let A_H = serie("zuzu", [2, 3])
+let A_O = serie("zuzu", [4, 5])
+let A_V = serie("zuzu", [6, 7])
+let A_MÅL = serie("maal", range(12))
+let ret = "n"           # h, v, n (nedad, forfra) eller o (opad, bagfra)
+let gangtid = 0.0
+let stille = 0.0
+# gulv og kasser hentes i den størrelse, banen skal bruge
+let B_GULV = -1
+let B_KASSE = -1
+let KASSE_W = 0
+let KASSE_H = 0
+let brik_str = 0
+
+# ── banetilstand ──
+let nr = 0
+let mure = []
+let striber = []
+let gargoiler = []
+let felter = []
+let murinfo = []
+let mål = []
+let kasser = []
+let hx = 0
+let hy = 0
+let træk = 0
+let historik = []
+let anim = 0.0
+let anim_kasse = -1
+let fra = [0, 0]
+let klaret = false
+let tid = 0.0
+let skærm = "spil"
+let gnister = []
+let RUDE = 64
+let ox = 0
+let oy = 0
+let rækker = 0
+let søjler = 0
+let gentag = 0.0
+
+let SIDE_W = 279
+# krypten i midten, hvor banen tegnes
+let BX0 = 300
+let BY0 = 124
+let BX1 = 1078
+let BY1 = 604
+
+fn er(liste, x, y) {
+    for p in liste { if p[0] == x and p[1] == y { return true } }
+    return false
+}
+fn kasse_ved(x, y) {
+    for i in range(kasser.len) { if kasser[i][0] == x and kasser[i][1] == y { return i } }
+    return -1
+}
+fn nr_i_hal(i) {
+    let h = BANER[i].hal
+    let n = 0
+    for j in range(i) { if BANER[j].hal == h { n += 1 } }
+    return n + 1
+}
+fn bane_navn(i) { return "{BANER[i].hal + 1}-{nr_i_hal(i)}" }
+# skiltet på muren: A-01, B-03, …
+fn skilt_navn(i) {
+    let bogstaver = "ABCDEFGHIJ"
+    return "{bogstaver.chars[BANER[i].hal]}-{nr_i_hal(i):02}"
+}
+
+fn hent_brikker() {
+    if brik_str == RUDE { return nil }
+    if B_GULV >= 0 {
+        for b in [B_GULV, B_KASSE] { free_image(b) }
+    }
+    B_GULV = image("{KUNST}/gulv.png", RUDE, RUDE)
+    KASSE_W = int(RUDE * 0.96)
+    KASSE_H = int(RUDE * 0.95)
+    B_KASSE = image("{KUNST}/kasse.png", KASSE_W, KASSE_H)
+    brik_str = RUDE
+}
+
+fn indlæs(i) {
+    nr = i
+    mure = []
+    striber = []
+    gargoiler = []
+    mål = []
+    kasser = []
+    let kort = BANER[i].kort
+    rækker = kort.len
+    søjler = 0
+    for y in range(kort.len) {
+        let r = kort[y]
+        søjler = max(søjler, r.len)
+        for x in range(r.len) {
+            let c = r[x]
+            if c == "#" or c == "H" or c == "N" { mure.push([x, y]) }
+            if c == "N" { gargoiler.push([x, y]) }
+            if c == "H" { striber.push([x, y]) }
+            if c == "." or c == "*" or c == "+" { mål.push([x, y]) }
+            if c == "$" or c == "*" { kasser.push([x, y]) }
+            if c == "@" or c == "+" {
+                hx = x
+                hy = y
+            }
+        }
+    }
+    # gulvet er kun der, hvor Zuzu kan komme hen
+    felter = [[hx, hy]]
+    let kø = [[hx, hy]]
+    while kø.len > 0 {
+        let p = kø.pop()
+        for d in [[1, 0], [-1, 0], [0, 1], [0, -1]] {
+            let nx = p[0] + d[0]
+            let ny = p[1] + d[1]
+            if ny >= 0 and ny < kort.len and nx >= 0 and nx < kort[ny].len {
+                if not er(mure, nx, ny) and not er(felter, nx, ny) {
+                    felter.push([nx, ny])
+                    kø.push([nx, ny])
+                }
+            }
+        }
+    }
+    # hver mur husker sine naboer, så den kan tegnes som én sammenhængende kant
+    # (gargoilerne står i vejen som en mur, men tegnes for sig)
+    let rigtige = []
+    for m in mure { if not er(gargoiler, m[0], m[1]) { rigtige.push(m) } }
+    murinfo = []
+    for m in rigtige {
+        let x = m[0]
+        let y = m[1]
+        murinfo.push({"x": x, "y": y,
+            "v": er(rigtige, x - 1, y), "h": er(rigtige, x + 1, y), "o": er(rigtige, x, y - 1), "n": er(rigtige, x, y + 1),
+            "gv": er(felter, x - 1, y), "gh": er(felter, x + 1, y), "go": er(felter, x, y - 1), "gn": er(felter, x, y + 1),
+            "s": er(striber, x, y)})
+    }
+    let bw = BX1 - BX0
+    let bh = BY1 - BY0
+    RUDE = int(min(72, min(bw / søjler, bh / rækker)))
+    ox = BX0 + int((bw - søjler * RUDE) / 2)
+    oy = BY0 + int((bh - rækker * RUDE) / 2)
+    hent_brikker()
+    træk = 0
+    historik = []
+    anim = 0.0
+    klaret = false
+    gnister = []
+    ret = "n"
+    gangtid = 0.0
+    skærm = "spil"
+}
+
+fn kopi() {
+    let k = []
+    for p in kasser { k.push([p[0], p[1]]) }
+    return {"x": hx, "y": hy, "kasser": k, "træk": træk}
+}
+fn alle_på_mål() {
+    for k in kasser { if not er(mål, k[0], k[1]) { return false } }
+    return true
+}
+fn gnist(x, y, n) {
+    for i in range(n) {
+        let v = random() * 6.283
+        let f = 60 + random() * 160
+        gnister.push({"x": x, "y": y, "vx": cos(v) * f, "vy": sin(v) * f - 80, "liv": 0.6 + random() * 0.6,
+                      "farve": ["#c6ff3a", "#e070ff", "#ffffff", "#9aff5a", "#b45cff"][random(5)]})
+    }
+}
+
+fn gå(dx, dy) {
+    if klaret or skærm != "spil" { return nil }
+    if dx > 0 { ret = "h" } else if dx < 0 { ret = "v" } else if dy > 0 { ret = "n" } else { ret = "o" }
+    let nx = hx + dx
+    let ny = hy + dy
+    if er(mure, nx, ny) {
+        spil_lyd(LYD_BUMP)
+        return nil
+    }
+    let k = kasse_ved(nx, ny)
+    anim_kasse = -1
+    if k >= 0 {
+        let kx = nx + dx
+        let ky = ny + dy
+        if er(mure, kx, ky) or kasse_ved(kx, ky) >= 0 {
+            spil_lyd(LYD_BUMP)
+            return nil
+        }
+        historik.push(kopi())
+        kasser[k] = [kx, ky]
+        anim_kasse = k
+        if er(mål, kx, ky) {
+            spil_lyd(LYD_MÅL)
+            gnist(ox + kx * RUDE + int(RUDE / 2), oy + ky * RUDE + int(RUDE / 2), 14)
+        } else {
+            spil_lyd(LYD_SKUB)
+        }
+    } else {
+        historik.push(kopi())
+        spil_lyd(LYD_GÅ)
+    }
+    fra = [hx, hy]
+    hx = nx
+    hy = ny
+    træk += 1
+    anim = 0.12
+    if alle_på_mål() {
+        klaret = true
+        spil_lyd(LYD_UUH)
+        spil_lyd(LYD_SEJR)
+        for i in range(5) { gnist(ox + int(søjler * RUDE / 2) - 200 + i * 100, oy + int(rækker * RUDE / 2), 20) }
+        if bedste[nr] == 0 or træk < bedste[nr] {
+            bedste[nr] = træk
+            gem()
+        }
+    }
+}
+
+fn fortryd() {
+    if historik.len == 0 or klaret { return nil }
+    let s = historik.pop()
+    hx = s.x
+    hy = s.y
+    kasser = s.kasser
+    træk = s.træk
+    anim = 0.0
+    spil_lyd(LYD_FORTRYD)
+}
+
+# ═════════════════════════════ TEGNING ═══════════════════════════════
+
+# murenes farver fra mockuppen: lilla sten med lys kant og lilla slim
+let C_GULV = "#6d5f95"
+let C_KANT = "#160d26"
+let C_KAPPE = "#9c7ad8"
+let C_KAPPE_LYS = "#dcc8ff"
+let C_KAPPE_MØRK = "#6c46b0"
+let C_FUGE = "#7b58c0"
+let C_SIDE = "#4a2f7c"
+let C_SIDE_FUGE = "#2c1c4e"
+let C_SLIM = "#c24cf2"
+let C_SLIM_LYS = "#ec9cff"
+
+fn krypt() {
+    clear("#2a1a46")
+    draw(B_BUND, SIDE_W, 0)
+    # skiltet på muren viser banen
+    let s = skilt_navn(nr)
+    let sx = 715 - int(text_width(s, 3) / 2)
+    text(sx + 1, 20, s, "#00000030", 3)
+    text(sx, 18, s, "#1e1430", 3)
+    text(sx + 1, 18, s, "#1e1430", 3)
+}
+
+# murkappens kanter: [x0, y0, x1, y1]
+fn kappe(m) {
+    let r = RUDE
+    let x = ox + m.x * r
+    let y = oy + m.y * r
+    let x0 = x + int(r * 0.25)
+    let x1 = x0 + int(r * 0.5)
+    let y0 = y + int(r * 0.04)
+    let y1 = y0 + int(r * 0.5)
+    if m.v { x0 = x }
+    if m.h { x1 = x + r }
+    if m.o { y0 = y }
+    if m.n { y1 = y + r + int(r * 0.04) }
+    return [x0, y0, x1, y1]
+}
+
+# advarselsstriber (H i banerne): giftgrøn og sort
+fn striber_i(x, y, w, h) {
+    rect(x, y, w, h, "#20182c")
+    let per = int(RUDE / 3)
+    let st = int(per / 2)
+    for yy in range(h) {
+        let ofs = (h - yy) % per
+        for k in range(-1, int(w / per) + 2) {
+            let a = k * per + ofs
+            let b = a + st
+            if a < 0 { a = 0 }
+            if b > w { b = w }
+            if b > a { rect(x + a, y + yy, b - a, 1, "#b8f030") }
+        }
+    }
+}
+
+fn tegn_mure_under() {
+    let r = RUDE
+    let hv = int(r / 2)
+    for m in murinfo {
+        let x = ox + m.x * r
+        let y = oy + m.y * r
+        if m.gv { rect(x, y, hv, r, C_GULV) }
+        if m.gh { rect(x + hv, y, r - hv, r, C_GULV) }
+        if m.go { rect(x, y, r, hv, C_GULV) }
+        if m.gn { rect(x, y + hv, r, r - hv, C_GULV) }
+    }
+}
+
+# lilla slim der drypper ned ad murenes forside (fast mønster pr. mur)
+fn slim(m, k, fy, fh) {
+    let r = RUDE
+    let w = k[2] - k[0]
+    rect(k[0], fy, w, int(r / 14) + 2, C_SLIM)
+    let n = (m.x * 7 + m.y * 13) % 5
+    let step = int(r / 4)
+    for i in range(int(w / step)) {
+        if (i * 3 + n) % 5 < 2 {
+            let dx = k[0] + i * step + int(step / 2)
+            let l = int(fh * (0.25 + ((i * 5 + n) % 4) * 0.12))
+            rect(dx - 2, fy, 5, l, C_SLIM)
+            circle(dx, fy + l, 3, C_SLIM)
+            rect(dx - 1, fy + 2, 1, l - 4, C_SLIM_LYS)
+        }
+    }
+}
+
+fn tegn_mure() {
+    let r = RUDE
+    for m in murinfo {
+        if not m.n {
+            let k = kappe(m)
+            let fy = k[3]
+            let fh = oy + m.y * r + r - fy + int(r * 0.06)
+            let w = k[2] - k[0]
+            rect(k[0] - 3, fy, w + 6, fh + 3, C_KANT)
+            rect(k[0], fy, w, fh, C_SIDE)
+            let mid = int(fh / 2)
+            rect(k[0], fy + mid, w, 2, C_SIDE_FUGE)
+            let s = int(r / 3)
+            for bx in range(k[0] + int(s / 2), k[2], s) { rect(bx, fy, 2, mid, C_SIDE_FUGE) }
+            for bx in range(k[0] + s, k[2], s) { rect(bx, fy + mid, 2, fh - mid, C_SIDE_FUGE) }
+            slim(m, k, fy, fh)
+        }
+    }
+    for m in murinfo {
+        let k = kappe(m)
+        rect(k[0] - 3, k[1] - 3, k[2] - k[0] + 6, k[3] - k[1] + 6, C_KANT)
+    }
+    for m in murinfo {
+        let k = kappe(m)
+        let w = k[2] - k[0]
+        let h = k[3] - k[1]
+        if m.s {
+            striber_i(k[0], k[1], w, h)
+        } else {
+            rect(k[0], k[1], w, h, C_KAPPE)
+            rect(k[0] + 2, k[1] + 2, w - 4, int(h * 0.35), "#ab8ce4")
+            if not m.o { rect(k[0], k[1], w, int(r / 10) + 1, C_KAPPE_LYS) }
+            if not m.n { rect(k[0], k[3] - 3, w, 3, C_KAPPE_MØRK) }
+            if m.v or m.h { rect(ox + m.x * r + int(r / 2), k[1] + 4, 2, h - 8, C_FUGE) }
+            if m.o or m.n { rect(k[0] + 4, oy + m.y * r + int(r / 2), w - 8, 2, C_FUGE) }
+        }
+    }
+}
+
+# gargoilerne sidder på en sokkel og vugger lidt med vingerne
+fn tegn_gargoil(i, x, y) {
+    let r = RUDE
+    let sx = x + int(r * 0.12)
+    let sw = int(r * 0.76)
+    let sy = y + int(r * 0.5)
+    let sh = int(r * 0.46)
+    round_rect(x + int(r * 0.08), y + int(r * 0.8), int(r * 0.84), int(r * 0.18), int(r * 0.09), "#1a103050")
+    rect(sx - 2, sy - 2, sw + 4, sh + 4, C_KANT)
+    rect(sx, sy, sw, sh, "#5a4a86")
+    rect(sx, sy, sw, int(sh * 0.3), "#7c6aac")
+    rect(sx + int(sw * 0.15), sy + int(sh * 0.45), int(sw * 0.7), 2, "#3c2e60")
+    let st = image_size(B_GARGOIL)
+    let w = int(r * 1.08)
+    let h = int(st[1] * w / st[0])
+    let vug = int(sin(tid * 2.0 + i * 1.3) * r * 0.03)
+    draw(B_GARGOIL, x + int((r - w) / 2), sy - h + int(r * 0.1) + vug, w, h)
+}
+
+fn tegn_bane(dt) {
+    let r = RUDE
+    tegn_mure_under()
+    for f in felter { draw(B_GULV, ox + f[0] * r, oy + f[1] * r) }
+    for f in gargoiler { draw(B_GULV, ox + f[0] * r, oy + f[1] * r) }
+    let mf = A_MÅL[int(tid / 0.1) % A_MÅL.len]
+    let ms = image_size(mf)
+    let mw = int(r * 0.94)
+    let mh = int(ms[1] * mw / ms[0])
+    for m in mål { draw(mf, ox + m[0] * r + int((r - mw) / 2), oy + m[1] * r + int((r - mh) / 2), mw, mh) }
+    tegn_mure()
+    # hvor står Zuzu lige nu (hun glider mellem felterne)
+    let t = anim / 0.12
+    let dx = ox + hx * r
+    let dy = oy + hy * r
+    if anim > 0 {
+        dx -= int((hx - fra[0]) * r * t)
+        dy -= int((hy - fra[1]) * r * t)
+    }
+    # kasserne række for række med Zuzu ind imellem, så de dækker rigtigt
+    for række in range(rækker) {
+        for i in range(gargoiler.len) {
+            if gargoiler[i][1] == række { tegn_gargoil(i, ox + gargoiler[i][0] * r, oy + række * r) }
+        }
+        for i in range(kasser.len) {
+            let k = kasser[i]
+            if k[1] == række {
+                let kx = ox + k[0] * r
+                let ky = oy + k[1] * r
+                if i == anim_kasse and anim > 0 {
+                    kx -= int((hx - fra[0]) * r * t)
+                    ky -= int((hy - fra[1]) * r * t)
+                }
+                let x = kx + int((r - KASSE_W) / 2)
+                let y = ky + r - KASSE_H - int(r * 0.02)
+                round_rect(x + 3, y + KASSE_H - int(r * 0.12), KASSE_W - 2, int(r * 0.16), 6, "#10082050")
+                draw(B_KASSE, x, y)
+                if er(mål, k[0], k[1]) {
+                    # kassen står på et kranie: den lyser giftgrønt
+                    let p = 0.5 + 0.5 * sin(tid * 5)
+                    rect(x + 4, y + 4, KASSE_W - 8, KASSE_H - 8, "#b8ff3a28")
+                    let c = "#c6ff3a"
+                    if p > 0.5 { c = "#e4ff8a" }
+                    rect(x - 2, y - 2, KASSE_W + 4, 3, c)
+                    rect(x - 2, y + KASSE_H - 1, KASSE_W + 4, 3, c)
+                    rect(x - 2, y, 3, KASSE_H, c)
+                    rect(x + KASSE_W - 1, y, 3, KASSE_H, c)
+                }
+            }
+        }
+        if række == hy {
+            let hop = 0
+            if klaret { hop = int(abs(sin(tid * 9)) * 10) }
+            let cx = dx + int(r / 2)
+            let l = A_N
+            if ret == "h" { l = A_H } else if ret == "v" { l = A_V } else if ret == "o" { l = A_O }
+            let fi = 0
+            if gangtid > 0 { fi = int(gangtid / 0.12) % l.len }
+            if klaret {
+                # glad Zuzu kigger ud mod en og hopper
+                l = A_N
+                fi = int(tid / 0.18) % l.len
+            }
+            let b = l[fi]
+            let st = image_size(b)
+            let h = int(r * 1.55)
+            let w = int(st[0] * h / st[1])
+            round_rect(cx - int(r * 0.32), dy + int(r * 0.8), int(r * 0.64), int(r * 0.18), int(r * 0.09), "#10082060")
+            draw(b, cx - int(w / 2), dy + int(r * 0.96) - h - hop, w, h)
+        }
+    }
+}
+
+fn tegn_gnister(dt) {
+    let nye = []
+    for g in gnister {
+        g.liv -= dt
+        g.x += g.vx * dt
+        g.y += g.vy * dt
+        g.vy += 260 * dt
+        if g.liv > 0 {
+            rect(int(g.x), int(g.y), 4, 4, g.farve)
+            nye.push(g)
+        }
+    }
+    gnister = nye
+}
+
+# ── sidebjælken ──
+fn logo_tekst(x, y, s, c, st) {
+    for d in [[-3, 0], [3, 0], [0, -3], [0, 3], [-3, -3], [3, 3], [3, -3], [-3, 3], [0, 5], [3, 5], [-3, 5]] {
+        text(x + d[0], y + d[1], s, "#1a0c30", st)
+    }
+    text(x, y, s, c, st)
+}
+
+# samme størrelse som teksten i panelet, lidt fed
+fn tal(x, y, s, st) {
+    text(x + 2, y + 2, s, "#0e0620", st)
+    text(x + 3, y + 2, s, "#0e0620", st)
+    text(x, y, s, "#ffffff", st)
+    text(x + 1, y, s, "#ffffff", st)
+}
+fn sideknap(y) {
+    let m = mouse()
+    let over = m[0] >= 15 and m[0] < 262 and m[1] >= y and m[1] < y + 43 and skærm == "spil"
+    if over { round_rect(17, y + 2, 243, 39, 14, "#ffffff22") }
+    return over and clicked()
+}
+fn sidebjælke() {
+    draw(B_SIDE, 0, 0)
+    let bn = bane_navn(nr)
+    if text_width(bn, 3) <= 76 { tal(184, 360, bn, 3) } else { tal(184, 366, bn, 2) }
+    tal(167, 402, "{træk}", 2)
+    let b = "---"
+    if bedste[nr] > 0 { b = "{bedste[nr]}" }
+    tal(167, 432, b, 2)
+    if sideknap(480) { indlæs(nr) }
+    if sideknap(531) {
+        skærm = "baner"
+        baneside = int(BANER[nr].hal / 4)
+    }
+    if sideknap(582) { skærm = "settings" }
+}
+
+fn tegn_sejr() {
+    let cx = ox + søjler * RUDE / 2
+    let cy = oy + rækker * RUDE / 2
+    round_rect(cx - 206, cy - 86, 420, 180, 22, "#00000060")
+    round_rect(cx - 210, cy - 92, 420, 180, 22, "#c6ff3a")
+    round_rect(cx - 206, cy - 88, 412, 172, 20, "#2a1450")
+    let s = "SPOOKY GOOD!"
+    logo_tekst(cx - text_width(s, 4) / 2, cy - 78, s, "#c6ff3a", 4)
+    let t = "{træk} MOVES"
+    if bedste[nr] == træk { t += "  ·  NEW BEST!" }
+    text(cx - text_width(t, 2) / 2, cy - 8, t, "#ffffff", 2)
+    let n = "Tap or Enter: next level"
+    if nr == BANER.len - 1 { n = "Every crate is home! Tap: levels" }
+    text(cx - text_width(n, 1) / 2, cy + 42, n, "#e0c8ff", 1)
+}
+
+# baneoversigten har fire krypter pr. side
+let baneside = 0
+fn sideknap_lille(x, y, t) {
+    let m = mouse()
+    let over = m[0] >= x and m[0] < x + 56 and m[1] >= y and m[1] < y + 40
+    let bg = "#4a2488"
+    if over { bg = "#7a3ac8" }
+    round_rect(x, y, 56, 40, 12, "#c6ff3a")
+    round_rect(x + 2, y + 2, 52, 36, 10, bg)
+    text(x + 28 - int(text_width(t, 2) / 2), y + 6, t, "#ffffff", 2)
+    return over and clicked()
+}
+fn tegn_baner() {
+    rect(SIDE_W, 0, W - SIDE_W, H, "#241046ec")
+    let t = "LEVELS"
+    logo_tekst(SIDE_W + (W - SIDE_W - text_width(t, 3)) / 2, 16, t, "#c6ff3a", 3)
+    let sider = int((HALLER.len + 3) / 4)
+    let st = "{baneside + 1}/{sider}"
+    text(W - 150 - int(text_width(st, 2) / 2), 22, st, "#e0c8ff", 2)
+    if sideknap_lille(W - 250, 14, "<") or pressed("left") { baneside = max(0, baneside - 1) }
+    if sideknap_lille(W - 106, 14, ">") or pressed("right") { baneside = min(sider - 1, baneside + 1) }
+    let m = mouse()
+    let rh = int((H - 70) / 4)
+    for hh in range(4) {
+        let h = baneside * 4 + hh
+        if h < HALLER.len {
+            let y = 66 + hh * rh
+            let hc = "#c6ff3a"
+            if h >= GARGOILHAL { hc = "#ff8af0" }
+            text(SIDE_W + 40, y, HALLER[h], hc, 2)
+            let k = 0
+            for i in range(BANER.len) {
+                if BANER[i].hal == h {
+                    let x = SIDE_W + 40 + k * 132
+                    let yy = y + 30
+                    let bh = rh - 40
+                    let over = m[0] >= x and m[0] < x + 120 and m[1] >= yy and m[1] < yy + bh
+                    let bg = "#4a2488"
+                    if bedste[i] > 0 { bg = "#3a6a2a" }
+                    if over { bg = "#7a3ac8" }
+                    round_rect(x + 3, yy + 4, 120, bh, 14, "#00000050")
+                    round_rect(x, yy, 120, bh, 14, bg)
+                    draw(B_IKON, x + 8, yy + 10, 42, 42)
+                    let bn = bane_navn(i)
+                    text(x + 52 + int((64 - text_width(bn, 2)) / 2), yy + 18, bn, "#ffffff", 2)
+                    let info = BANER[i].navn
+                    if bedste[i] > 0 { info = "BEST {bedste[i]}" }
+                    let ic = "#e0c8ff"
+                    if bedste[i] > 0 { ic = "#c6ff3a" }
+                    if text_width(info, 1) > 112 { info = "{info:.12}.." }
+                    text(x + (120 - text_width(info, 1)) / 2, yy + bh - 20, info, ic, 1)
+                    if over and clicked() { indlæs(i) }
+                    k += 1
+                }
+            }
+        }
+    }
+    if pressed("esc") { skærm = "spil" }
+}
+
+fn tegn_settings() {
+    rect(SIDE_W, 0, W - SIDE_W, H, "#14082c90")
+    let cx = SIDE_W + int((W - SIDE_W) / 2)
+    round_rect(cx - 200, 150, 400, 320, 22, "#c6ff3a")
+    round_rect(cx - 197, 153, 394, 314, 20, "#2a1450")
+    logo_tekst(cx - int(text_width("SETTINGS", 3) / 2), 170, "SETTINGS", "#ffffff", 3)
+    let m = mouse()
+    let knapper = [["UNDO  (Z)", "undo"], ["SOUND: ON", "lyd"], ["BACK", "tilbage"]]
+    if not lyd_til { knapper[1][0] = "SOUND: OFF" }
+    for i in range(3) {
+        let y = 236 + i * 70
+        let over = m[0] >= cx - 150 and m[0] < cx + 150 and m[1] >= y and m[1] < y + 52
+        let bg = "#4a2488"
+        if over { bg = "#7a3ac8" }
+        round_rect(cx - 150, y, 300, 52, 16, "#c6ff3a")
+        round_rect(cx - 147, y + 3, 294, 46, 14, bg)
+        let t = knapper[i][0]
+        text(cx - int(text_width(t, 2) / 2), y + 10, t, "#ffffff", 2)
+        if over and clicked() {
+            if knapper[i][1] == "undo" {
+                skærm = "spil"
+                fortryd()
+            } else if knapper[i][1] == "lyd" {
+                lyd_til = not lyd_til
+                gem()
+            } else {
+                skærm = "spil"
+            }
+        }
+    }
+    if pressed("esc") { skærm = "spil" }
+}
+
+# touch: tryk på den side af Zuzu, hun skal gå til
+fn touch_gå() {
+    if not clicked() { return nil }
+    let m = mouse()
+    if m[0] < SIDE_W { return nil }
+    if klaret {
+        if nr < BANER.len - 1 { indlæs(nr + 1) } else { skærm = "baner" }
+        return nil
+    }
+    let dx = m[0] - (ox + hx * RUDE + RUDE / 2)
+    let dy = m[1] - (oy + hy * RUDE + RUDE / 2)
+    if abs(dx) < RUDE / 3 and abs(dy) < RUDE / 3 { return nil }
+    if abs(dx) > abs(dy) {
+        if dx > 0 { gå(1, 0) } else { gå(-1, 0) }
+    } else {
+        if dy > 0 { gå(0, 1) } else { gå(0, -1) }
+    }
+}
+
+# ═════════════════════════════ LØKKEN ════════════════════════════════
+indlæs(0)
+let skud = env("JJ_SKUD", "")
+let scene = env("JJ_SCENE", "")
+let skud_tid = 0.0
+if scene.starts_with("nr") { indlæs(int(scene.replace("nr", ""))) }
+if scene == "baner" { skærm = "baner" }
+if scene == "settings" { skærm = "settings" }
+if scene == "klaret" {
+    indlæs(0)
+    gå(1, 0)
+    gå(1, 0)
+}
+
+while frame() {
+    let dt = min(0.1, delta())
+    tid += dt
+    if anim > 0 { anim = max(0, anim - dt) }
+    # gangen kører videre mellem skridtene og stopper, når Zuzu står stille
+    if anim > 0 {
+        gangtid += dt
+        stille = 0.0
+    } else {
+        stille += dt
+        if stille > 0.2 { gangtid = 0.0 }
+    }
+    if skærm == "spil" {
+        if klaret {
+            if pressed("enter") or pressed("space") {
+                if nr < BANER.len - 1 { indlæs(nr + 1) } else { skærm = "baner" }
+            }
+        } else {
+            # hvert tryk tæller altid; holdes tasten nede, går Zuzu videre
+            let r = [0, 0]
+            if pressed("right") or pressed("d") { r = [1, 0] }
+            else if pressed("left") or pressed("a") { r = [-1, 0] }
+            else if pressed("down") or pressed("s") { r = [0, 1] }
+            else if pressed("up") or pressed("w") { r = [0, -1] }
+            if r[0] != 0 or r[1] != 0 {
+                gå(r[0], r[1])
+                gentag = 0.22
+            } else if anim <= 0 {
+                gentag -= dt
+                if gentag <= 0 {
+                    if key("right") or key("d") { gå(1, 0) }
+                    else if key("left") or key("a") { gå(-1, 0) }
+                    else if key("down") or key("s") { gå(0, 1) }
+                    else if key("up") or key("w") { gå(0, -1) }
+                }
+            }
+        }
+        if pressed("z") { fortryd() }
+        if pressed("r") { indlæs(nr) }
+        if pressed("l") {
+            skærm = "baner"
+            baneside = int(BANER[nr].hal / 4)
+        }
+        if pressed("m") {
+            lyd_til = not lyd_til
+            gem()
+        }
+        if pressed("esc") { break }
+    }
+    krypt()
+    tegn_bane(dt)
+    tegn_gnister(dt)
+    if skærm == "spil" {
+        if klaret { tegn_sejr() }
+        touch_gå()
+    }
+    sidebjælke()
+    if skærm == "baner" { tegn_baner() }
+    if skærm == "settings" { tegn_settings() }
+
+    if skud != "" {
+        skud_tid += dt
+        if skud_tid > 0.8 {
+            screenshot(skud)
+            break
+        }
+    }
+}
