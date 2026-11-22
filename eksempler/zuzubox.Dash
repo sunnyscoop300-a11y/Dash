@@ -3,7 +3,7 @@
 # bob-navn: ZuzuBox
 # bob-kategori: spil
 # bob-farve: #a24fe0
-# bob-om: Hjælp zombiepigen Zuzu med at skubbe kasserne hen på de grønne kranier. 55 baner i ti krypter (to af dem med gargoiler), fortryd, rekorder, lyd og touch.
+# bob-om: Hjælp zombiepigen Zuzu med at skubbe kasserne hen på de grønne kranier. 75 baner i 14 krypter (med gargoiler, jule-baner og havenisse-goblins), fortryd, rekorder, lyd og touch.
 #
 #   dsh eksempler/zuzubox.Dash
 #
@@ -513,10 +513,243 @@ let BANER = [
         " #\$\$N\$*#",
         " #@    #",
         " #######"]},
+    # ── jule-krypt 1 og 2: rum formet som juletræ, gave, stjerne, snemand og slikstok ──
+    {"navn": "Juletræet", "hal": 10, "kort": [
+        "    ####",
+        "   ##  ##",
+        "  ## \$  ##",
+        "  #      N",
+        "  ## \$. ##",
+        " ## @   .##",
+        " #*   \$   #",
+        " ##      ##",
+        "##        ##",
+        "#         .#",
+        "#####  #####",
+        "    ####"]},
+    {"navn": "Pakkeleg", "hal": 10, "kort": [
+        "  ####",
+        "  # *####",
+        "  ##  . NN#",
+        "### #     ##",
+        "#          #",
+        "#\$#  #   ###",
+        "# #  # #   #",
+        "#   \$@\$    #",
+        "#.N    # . #",
+        "############"]},
+    {"navn": "Stjerneskud", "hal": 10, "kort": [
+        "     ###",
+        "     # ##",
+        "######  ####",
+        "#@\$      . #",
+        "## \$  #    #",
+        " ##.    #\$##",
+        " N  \$#     #",
+        " #   ### . #",
+        " # .## #####",
+        " ####"]},
+    {"navn": "Snemanden", "hal": 10, "kort": [
+        "   #####",
+        "  ##   ##",
+        "  N     #",
+        "  N     #",
+        " ###\$ ####",
+        "##    . .##",
+        "# \$.#    .#",
+        "#      # \$#",
+        "# \$# # #  #",
+        "## @     ##",
+        " #########"]},
+    {"navn": "Slikstokken", "hal": 10, "kort": [
+        "    ######",
+        " ##N# .  ##",
+        " #@\$      #",
+        " #\$\$ ## #.#",
+        " #..###   #",
+        " #### ## .N",
+        "     ##  \$#",
+        "     # \$  #",
+        "     #    #",
+        "     ######"]},
+    {"navn": "Det store juletræ", "hal": 11, "kort": [
+        "    ###",
+        "   ##.###",
+        "  #N    #",
+        "  #*    #",
+        "  ##N  ###",
+        " ## #    #",
+        " #       #",
+        " ###.#  ###",
+        " #     \$  ##",
+        " ##      \$@#",
+        "  ###  #####",
+        "    ####"]},
+    {"navn": "Julemandens sæk", "hal": 11, "kort": [
+        "  ########",
+        "  #  ## @#",
+        "##N# .#\$####",
+        "#  #  #    #",
+        "#          #",
+        "#   #   \$\$ #",
+        "#.         #",
+        "#        . #",
+        "#   # \$ .  #",
+        "############"]},
+    {"navn": "Betlehemsstjernen", "hal": 11, "kort": [
+        "",
+        "    #####",
+        "#####  .#####",
+        "#   #     \$@#",
+        "#N     #\$\$ ##",
+        " ## \$ #   ##",
+        " #  ..     #",
+        " #   #N#   #",
+        " ##### ##. #",
+        "        ####"]},
+    {"navn": "Frostmanden", "hal": 11, "kort": [
+        "   #####",
+        "   #   ##",
+        "  ##  . #",
+        "  #    ##",
+        "  ##   ##",
+        "###  .  ###",
+        "#@*     N #",
+        "#  ##   . #",
+        "# \$  \$# \$ #",
+        "##       ##",
+        " #########"]},
+    {"navn": "Den store slikstok", "hal": 11, "kort": [
+        "   #######",
+        " ### \$  .N#",
+        " # \$      #",
+        " # \$ ##   N",
+        " # @###  .#",
+        " #### #   #",
+        "     ##   #",
+        "     #.  ##",
+        "     #    #",
+        "     ######"]},
+    # ── goblin-krypt 1 og 2: G er en havenisse-goblin, der står i vejen ──
+    {"navn": "Kirkeklokken", "hal": 12, "kort": [
+        "    ####",
+        "   ##  #",
+        "  ##   ###",
+        "  #@\$   .G",
+        " ##\$#    ##",
+        " #    # \$ #",
+        " #G.      ##",
+        " #.     \$ *#",
+        " #    .    #",
+        " #### #G####",
+        "    ###"]},
+    {"navn": "Julestrømpen", "hal": 12, "kort": [
+        "   #######",
+        "  ##   . #",
+        "  # \$    #",
+        "  # #  # G",
+        "  #      ##",
+        " ## \$  .  ###",
+        "#G #     #. #",
+        "#    \$  \$@\$ #",
+        "## . . G   ##",
+        " ###########"]},
+    {"navn": "Honningkagehuset", "hal": 12, "kort": [
+        "     ####",
+        "    ##. G",
+        "   ##   ###",
+        "  #G *  # ##",
+        " #G        ##",
+        " #          #",
+        " ## # .  # ##",
+        "  #     ## #",
+        "  # \$\$######",
+        "  ## @#",
+        "   ####"]},
+    {"navn": "Kanen", "hal": 12, "kort": [
+        "###    ####",
+        "# ## ### .#",
+        "#  ###@\$  ###",
+        "#  #.\$\$.    #",
+        "#   \$       #",
+        "#G  ##     ##",
+        "###       ##",
+        "#       . G",
+        "##       ##",
+        " #########"]},
+    {"navn": "Kransen", "hal": 12, "kort": [
+        "   #######",
+        "  ##.  \$ ##",
+        " ## .   \$ ##",
+        " #  .###   #",
+        " #  ## ##  #",
+        " # \$## ### #",
+        " #   G##   #",
+        " ### \$   .##",
+        "   #@#   G#",
+        "   #######"]},
+    {"navn": "Goblinklokken", "hal": 13, "kort": [
+        "    ####",
+        "   #G *##",
+        "  ##    ##",
+        "  G .  # #",
+        " ##      #",
+        " #   G   ##",
+        "##        ##",
+        "#   \$ G  \$@#",
+        "# .   .  \$ #",
+        "#####  #####",
+        "    ####"]},
+    {"navn": "Den stjålne strømpe", "hal": 13, "kort": [
+        "  ########",
+        "  #  . # #",
+        "  ##     G",
+        "  # G  * #",
+        "  #   #####",
+        "  #       ###",
+        " ##         #",
+        " # \$\$#     .#",
+        " #  @#     ##",
+        " ###########"]},
+    {"navn": "Heksens honningkagehus", "hal": 13, "kort": [
+        "     ####",
+        "     # .##",
+        "   ##G   G#",
+        "  ##    \$+##",
+        "  #    . # ##",
+        "  G         #",
+        "  #   G\$ #\$##",
+        "  #        #",
+        "  # \$ ##  .#",
+        "  #   ##   #",
+        "  ##########"]},
+    {"navn": "Julemandens kane", "hal": 13, "kort": [
+        "###    ####",
+        "# ## ###  #",
+        "#  ### \$  ##",
+        "# \$     \$ .#",
+        "#@#       ##",
+        "##G #  . \$#",
+        "###   .#  #",
+        "#        .#",
+        "#G #     G#",
+        " #########"]},
+    {"navn": "Den rådne krans", "hal": 13, "kort": [
+        "    ######",
+        "  ###    ##",
+        " ##.    \$@##",
+        " # G ####\$ #",
+        " # ###  #  G",
+        " #  ## ##  #",
+        " #*  ###.  #",
+        " ###.   \$ ##",
+        "   # # \$.##",
+        "   #######"]},
 ]
 
-let HALLER = ["CRYPT A", "CRYPT B", "CRYPT C", "CRYPT D", "CRYPT E", "CRYPT F", "CRYPT G", "CRYPT H", "GARGOYLE HALL 1", "GARGOYLE HALL 2"]
+let HALLER = ["CRYPT A", "CRYPT B", "CRYPT C", "CRYPT D", "CRYPT E", "CRYPT F", "CRYPT G", "CRYPT H", "GARGOYLE HALL 1", "GARGOYLE HALL 2", "XMAS CRYPT 1", "XMAS CRYPT 2", "GOBLIN CRYPT 1", "GOBLIN CRYPT 2"]
 let GARGOILHAL = 8
+let JULHAL = 10
 let GEM = "{env("HOME", ".")}/.zuzubox"
 
 # ── rekorder: én linje pr. bane, navn=træk ──
@@ -524,6 +757,7 @@ let bedste = []
 for i in range(BANER.len) { bedste.push(0) }
 let lyd_til = true
 let tema = ""
+let valgt_tema = ""
 if exists(GEM) {
     for l in read(GEM).lines() {
         let d = l.split("=")
@@ -540,7 +774,7 @@ fn gem() {
     let l = "0"
     if lyd_til { l = "1" }
     s.push("lyd={l}")
-    s.push("tema={tema}")
+    s.push("tema={valgt_tema}")
     write(GEM, s.join("\n") + "\n")
 }
 
@@ -573,6 +807,7 @@ if tema == "" {
     if har_jul and $(try date +%m).trim() == "12" { tema = "jul" }
 }
 if not har_jul { tema = "normal" }
+valgt_tema = tema
 let MAPPE = KUNST
 let B_SIDE = -1
 let B_BUND = -1
@@ -604,6 +839,7 @@ let nr = 0
 let mure = []
 let striber = []
 let gargoiler = []
+let gobliner = []
 let felter = []
 let murinfo = []
 let mål = []
@@ -650,7 +886,7 @@ fn nr_i_hal(i) {
 fn bane_navn(i) { return "{BANER[i].hal + 1}-{nr_i_hal(i)}" }
 # skiltet på muren: A-01, B-03, …
 fn skilt_navn(i) {
-    let bogstaver = "ABCDEFGHIJ"
+    let bogstaver = "ABCDEFGHIJKLMN"
     return "{bogstaver.chars[BANER[i].hal]}-{nr_i_hal(i):02}"
 }
 
@@ -683,9 +919,14 @@ fn placer() {
 
 fn indlæs(i) {
     nr = i
+    # jule-krypterne er altid i jule-stil
+    let vis = valgt_tema
+    if har_jul and BANER[i].hal >= JULHAL { vis = "jul" }
+    if vis != tema { sæt_tema(vis) }
     mure = []
     striber = []
     gargoiler = []
+    gobliner = []
     mål = []
     kasser = []
     let kort = BANER[i].kort
@@ -696,7 +937,8 @@ fn indlæs(i) {
         søjler = max(søjler, r.len)
         for x in range(r.len) {
             let c = r[x]
-            if c == "#" or c == "H" or c == "N" { mure.push([x, y]) }
+            if c == "#" or c == "H" or c == "N" or c == "G" { mure.push([x, y]) }
+            if c == "G" { gobliner.push([x, y]) }
             if c == "N" { gargoiler.push([x, y]) }
             if c == "H" { striber.push([x, y]) }
             if c == "." or c == "*" or c == "+" { mål.push([x, y]) }
@@ -726,7 +968,7 @@ fn indlæs(i) {
     # hver mur husker sine naboer, så den kan tegnes som én sammenhængende kant
     # (gargoilerne står i vejen som en mur, men tegnes for sig)
     let rigtige = []
-    for m in mure { if not er(gargoiler, m[0], m[1]) { rigtige.push(m) } }
+    for m in mure { if not er(gargoiler, m[0], m[1]) and not er(gobliner, m[0], m[1]) { rigtige.push(m) } }
     murinfo = []
     for m in rigtige {
         let x = m[0]
@@ -991,6 +1233,28 @@ fn tegn_mure() {
     }
 }
 
+# havenisse-goblins: fire slags, der skifter mellem to billeder i hver sit tempo
+let A_GOBLIN = []
+fn hent_gobliner() {
+    if A_GOBLIN.len > 0 or not exists("{KUNST}/jul/goblin_0.png") { return nil }
+    for i in range(8) { A_GOBLIN.push(image("{KUNST}/jul/goblin_{i}.png")) }
+}
+fn tegn_goblin(gx, gy) {
+    hent_gobliner()
+    if A_GOBLIN.len == 0 { return nil }
+    let r = RUDE
+    let x = ox + gx * r
+    let y = oy + gy * r
+    let slags = (gx * 7 + gy * 3) % 4
+    let fase = (gx * 5 + gy * 11) % 7
+    let b = A_GOBLIN[slags * 2 + int(tid * 1.6 + fase * 0.37) % 2]
+    let st = image_size(b)
+    let h = int(r * 1.3)
+    let w = int(st[0] * h / st[1])
+    round_rect(x + int(r * 0.14), y + int(r * 0.8), int(r * 0.72), int(r * 0.18), int(r * 0.09), "#10082060")
+    draw(b, x + int((r - w) / 2), y + int(r * 0.95) - h, w, h)
+}
+
 # gargoilerne sidder på en sokkel og vugger lidt med vingerne
 fn tegn_gargoil(i, x, y) {
     let r = RUDE
@@ -1015,6 +1279,7 @@ fn tegn_bane(dt) {
     tegn_mure_under()
     for f in felter { draw(B_GULV, ox + f[0] * r, oy + f[1] * r) }
     for f in gargoiler { draw(B_GULV, ox + f[0] * r, oy + f[1] * r) }
+    for f in gobliner { draw(B_GULV, ox + f[0] * r, oy + f[1] * r) }
     let mf = A_MÅL[int(tid / 0.1) % A_MÅL.len]
     let ms = image_size(mf)
     let mw = int(r * 0.94)
@@ -1033,6 +1298,9 @@ fn tegn_bane(dt) {
     for række in range(rækker) {
         for i in range(gargoiler.len) {
             if gargoiler[i][1] == række { tegn_gargoil(i, ox + gargoiler[i][0] * r, oy + række * r) }
+        }
+        for g in gobliner {
+            if g[1] == række { tegn_goblin(g[0], g[1]) }
         }
         for i in range(kasser.len) {
             let k = kasser[i]
@@ -1187,6 +1455,7 @@ fn tegn_baner() {
             let y = 66 + hh * rh
             let hc = "#c6ff3a"
             if h >= GARGOILHAL { hc = "#ff8af0" }
+            if h >= JULHAL { hc = "#ff5a5a" }
             text(SIDE_W + 40, y, HALLER[h], hc, 2)
             let k = 0
             for i in range(BANER.len) {
@@ -1227,7 +1496,7 @@ fn tegn_settings() {
     let m = mouse()
     let knapper = [["UNDO  (Z)", "undo"], ["SOUND: ON", "lyd"], ["CHRISTMAS: OFF", "jul"], ["BACK", "tilbage"]]
     if not lyd_til { knapper[1][0] = "SOUND: OFF" }
-    if tema == "jul" { knapper[2][0] = "CHRISTMAS: ON" }
+    if valgt_tema == "jul" { knapper[2][0] = "CHRISTMAS: ON" }
     if not har_jul { knapper[2][0] = "CHRISTMAS: -" }
     for i in range(4) {
         let y = 210 + i * 70
@@ -1257,7 +1526,10 @@ fn tegn_settings() {
 
 fn skift_tema() {
     if not har_jul { return nil }
-    if tema == "jul" { sæt_tema("normal") } else { sæt_tema("jul") }
+    if valgt_tema == "jul" { valgt_tema = "normal" } else { valgt_tema = "jul" }
+    let vis = valgt_tema
+    if BANER[nr].hal >= JULHAL { vis = "jul" }
+    sæt_tema(vis)
     placer()
     gem()
 }
@@ -1291,8 +1563,8 @@ if scene.starts_with("nr") { indlæs(int(scene.replace("nr", ""))) }
 if scene == "baner" { skærm = "baner" }
 if scene == "settings" { skærm = "settings" }
 if env("JJ_TEMA", "") != "" {
-    sæt_tema(env("JJ_TEMA", ""))
-    placer()
+    valgt_tema = env("JJ_TEMA", "")
+    indlæs(nr)
 }
 if scene == "klaret" {
     indlæs(0)
