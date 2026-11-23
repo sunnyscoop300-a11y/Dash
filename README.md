@@ -353,7 +353,25 @@ pkg install x11-repo && pkg install termux-x11
 termux-x11 :0 &
 DISPLAY=:0 ./spil
 ```
+## Nyt i 0.14 «Kuro» 🐺
 
+Kuro er Hirakus første ven i Farming Life in Another World, den sorte ulv.
+Næste version bliver «Zabuton».
+
+- **Ingen shell inde i Dash:** `2>&1` og `&>` virker direkte på kommandoer, og
+  `dsh check` advarer, hvis et script kalder `sh -c` eller `bash -c`.
+- **Jobs i baggrunden:** `let j = &( kommando )` starter et job, og
+  `running(j)`, `wait(j)` og `kill(j)` styrer det. Jobs dør sammen med
+  scriptet, så der ikke ligger forældreløse processer tilbage.
+- **`$(try …)`** fanger output fra en kommando, der må fejle, og `status`
+  fortæller bagefter, hvordan det gik.
+- **Parr 🦸:** `parr.ln`, `parr.err`, `parr.fmt` og `parr.tabel` — formatering
+  ligesom Hares `fmt` og Nims `echo`.
+- **Format i strenge:** `"{x:spec}"` med `<`, `>`, `^`, `+`, `0`, bredde,
+  `,` (tusindtal), `.præcision` og `x X b o % s`, fx `"{pris:>8.2}"`.
+- **Nye spil og apps i Bob:** ZuzuBox (zombiepigen Zuzu og flagermuspigen
+  Harboiy, med tre temaer — normal, efterår og jul — en november-nedtælling og
+  en julekalender) og BoxDog.
 ## Nyt i 0.13 «Hiraku» 🌾
 
 Fra nu af får hver version et navn fra Farming Life in Another World
