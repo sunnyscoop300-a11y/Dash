@@ -3,6 +3,8 @@
 Et script-sprog med superfart — inspireret af Dash Parr. Filerne hedder
 `.Dash`, fortolkeren hedder `dsh`. Skrevet i Hare.
 
+🇬🇧 English: [README2.md](README2.md)
+
 ```
 #!/usr/bin/env dsh-hare
 let filer = ["en sang.flac", "to sang.flac"]
