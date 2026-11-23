@@ -1490,6 +1490,7 @@ fn sæt_tema(t) {
     # Harboiy har sit eget juletøj i harboiy/jul (falder tilbage til det normale)
     let H_MAPPE = "{KUNST}/harboiy"
     if tema == "jul" and exists("{KUNST}/harboiy/jul/harboiy_0.png") { H_MAPPE = "{KUNST}/harboiy/jul" }
+    if tema == "efteraar" and exists("{KUNST}/harboiy/efteraar/harboiy_0.png") { H_MAPPE = "{KUNST}/harboiy/efteraar" }
     let h_side = "{H_MAPPE}/side.png"
     if not exists(h_side) { h_side = "{KUNST}/harboiy/side.png" }
     if figur == "harboiy" { B_SIDE = image(h_side) } else { B_SIDE = image("{MAPPE}/side.png") }
