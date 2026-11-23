@@ -10,16 +10,17 @@ import re
 import shutil
 import subprocess
 import tempfile
-import threading
+import sys
+import traceback
 
 import gi
 gi.require_version("Gtk", "3.0")
-from gi.repository import GLib, GObject, Gdk, Gtk
+gi.require_version("Gdk", "3.0")
+from gi.repository import Gio, GLib, GObject, Gdk, Gtk
 
 try:
-    gi.require_version("Xed", "1.0")
     from gi.repository import Xed
-except (ValueError, ImportError):  # uden for xed (test)
+except ImportError:  # uden for xed (test i terminalen)
     Xed = None
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
@@ -37,22 +38,20 @@ def find_dsh():
     return None
 
 
-def tjek(dsh, tekst):
-    """Kører dsh check på teksten og giver [(linje, slags, besked)]."""
-    with tempfile.NamedTemporaryFile("w", suffix=".Dash", delete=False,
-                                     encoding="utf-8") as f:
-        f.write(tekst)
-        sti = f.name
-    try:
-        ud = subprocess.run([dsh, "check", sti], capture_output=True,
-                            text=True, timeout=10).stdout
-    except (OSError, subprocess.TimeoutExpired):
-        return []
-    finally:
-        try:
-            os.unlink(sti)
-        except OSError:
-            pass
+FORTÆL = bool(os.environ.get("MIGUEL_DEBUG"))
+
+
+def fortael(*dele):
+    if FORTÆL:
+        log(*dele)
+
+
+def log(*dele):
+    print("miguel:", *dele, file=sys.stderr, flush=True)
+
+
+def fortolk(ud):
+    """Læser outputtet fra dsh check: [(linje, slags, besked)]."""
     fund = []
     for raa in ud.splitlines():
         l = ANSI.sub("", raa)
@@ -65,6 +64,26 @@ def tjek(dsh, tekst):
         if h and fund:
             fund[-1][2] += "\n↳ " + h.group(1)
     return [tuple(x) for x in fund]
+
+
+def gem_tmp(tekst):
+    with tempfile.NamedTemporaryFile("w", suffix=".Dash", delete=False,
+                                     encoding="utf-8") as f:
+        f.write(tekst)
+        return f.name
+
+
+def tjek(dsh, tekst):
+    """Kører dsh check på teksten (blokerende — til test i terminalen)."""
+    sti = gem_tmp(tekst)
+    try:
+        ud = subprocess.run([dsh, "check", sti], capture_output=True,
+                            text=True, timeout=10).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    finally:
+        os.unlink(sti)
+    return fortolk(ud)
 
 
 class Miguel:
@@ -99,6 +118,7 @@ class Miguel:
         self.signaler.append((view, view.connect("query-tooltip", self._tooltip)))
         # sproget sættes ofte først, når filen er indlæst
         self.signaler.append((self.buf, self.buf.connect("notify::language", self._aendret)))
+        fortael("aktiv i en visning, dsh =", self.dsh)
         self._planlaeg()
 
     def slut(self):
@@ -136,19 +156,36 @@ class Miguel:
     def _start(self):
         self.vent = 0
         if self.dsh is None or not self.er_dash():
+            fortael("springer over: dsh =", self.dsh, "dash-fil =", self.er_dash())
             self._ryd()
             return False
         self.nr += 1
         nr = self.nr
         s, e = self.buf.get_bounds()
-        tekst = self.buf.get_text(s, e, True)
-        dsh = self.dsh
+        sti = gem_tmp(self.buf.get_text(s, e, True))
+        # dsh check køres uden tråde: xed får besked, når den er færdig
+        try:
+            proc = Gio.Subprocess.new([self.dsh, "check", sti],
+                                      Gio.SubprocessFlags.STDOUT_PIPE
+                                      | Gio.SubprocessFlags.STDERR_MERGE)
+        except GLib.Error as e:
+            log("kan ikke starte", self.dsh, e.message)
+            os.unlink(sti)
+            return False
 
-        def arbejd():
-            fund = tjek(dsh, tekst)
-            GLib.idle_add(self._vis, nr, fund)
+        def faerdig(p, res):
+            try:
+                ok, ud, _ = p.communicate_utf8_finish(res)
+                self._vis(nr, fortolk(ud or ""))
+            except Exception:
+                log(traceback.format_exc())
+            finally:
+                try:
+                    os.unlink(sti)
+                except OSError:
+                    pass
 
-        threading.Thread(target=arbejd, daemon=True).start()
+        proc.communicate_utf8_async(None, None, faerdig)
         return False
 
     def _ryd(self):
@@ -164,6 +201,7 @@ class Miguel:
         if nr != self.nr:  # der er kommet et nyere tjek
             return False
         self._ryd()
+        fortael(len(fund), "fund:", fund)
         antal = self.buf.get_line_count()
         for linje, slags, besked in fund:
             i = min(max(linje, 1), antal) - 1
@@ -217,18 +255,50 @@ def farve(hex_):
 
 
 if Xed is not None:
-    class MiguelPlugin(GObject.Object, Xed.ViewActivatable):
+    # Som xeds egne Python-plugins (fx joinlines): et WindowActivatable, der
+    # selv holder øje med fanerne og giver hver tekstvisning sin egen Miguel.
+    class MiguelPlugin(GObject.Object, Xed.WindowActivatable):
         __gtype_name__ = "MiguelDashPlugin"
-        view = GObject.Property(type=Xed.View)
+        window = GObject.Property(type=Xed.Window)
 
         def __init__(self):
             GObject.Object.__init__(self)
-            self.miguel = None
+            self.hjaelpere = {}
+            self.signaler = []
 
         def do_activate(self):
-            self.miguel = Miguel(self.view)
+            fortael("aktiv i et xed-vindue")
+            try:
+                for view in self.window.get_views():
+                    self._ny(view)
+                self.signaler = [
+                    self.window.connect("tab-added", lambda w, tab: self._ny(tab.get_view())),
+                    self.window.connect("tab-removed", lambda w, tab: self._vaek(tab.get_view())),
+                ]
+            except Exception:
+                log(traceback.format_exc())
 
         def do_deactivate(self):
-            if self.miguel is not None:
-                self.miguel.slut()
-                self.miguel = None
+            for sid in self.signaler:
+                self.window.disconnect(sid)
+            self.signaler = []
+            for view in list(self.hjaelpere):
+                self._vaek(view)
+
+        def do_update_state(self):
+            pass
+
+        def _ny(self, view):
+            if view is None or view in self.hjaelpere:
+                return
+            try:
+                self.hjaelpere[view] = Miguel(view)
+            except Exception:
+                log(traceback.format_exc())
+
+        def _vaek(self, view):
+            m = self.hjaelpere.pop(view, None)
+            if m is not None:
+                m.slut()
+else:
+    fortael("Xed findes ikke her (kører uden for xed)")
