@@ -3,13 +3,14 @@
 # bob-navn: ZuzuBox
 # bob-kategori: spil
 # bob-farve: #a24fe0
-# bob-om: Hjælp zombiepigen Zuzu med at skubbe kasserne hen på de grønne kranier. 75 baner i 14 krypter (med gargoiler, jule-baner og havenisse-goblins), fortryd, rekorder, lyd og touch.
+# bob-om: Hjælp zombiepigen Zuzu med at skubbe kasserne hen på de grønne kranier. 75 baner i 14 krypter (med gargoiler, jule-baner og havenisse-goblins), en november-nedtælling og en julekalender med en ny bane hver dag til jul, fortryd, rekorder, lyd og touch.
 #
 #   dsh eksempler/zuzubox.Dash
 #
 # Piletaster eller WASD flytter Zuzu, Z fortryder, R starter forfra,
 # L viser banerne, M slår lyden til og fra, H skifter mellem Zuzu og
-# flagermuspigen Harboiy, J skifter til juletema
+# flagermuspigen Harboiy, J skifter tema (normal, efterår, jul), K åbner kalenderen
+# (8 efterårslåger 23.-30. november og 24 julelåger 1.-24. december)
 # (det kommer også af sig selv i december; ellers under Settings). På telefonen: tryk på den side
 # af Zuzu, hun skal gå til. Rekorderne gemmes i ~/.zuzubox.
 #
@@ -746,11 +747,388 @@ let BANER = [
         " ###.   \$ ##",
         "   # # \$.##",
         "   #######"]},
+    # ── julekalenderen: én låge pr. dag, 1.-24. december (hal 14) ──
+    {"navn": "Låge 1", "hal": 14, "kort": [
+        "       ####",
+        "       #  #",
+        "####   #  #",
+        "#. #####  #",
+        "#    N.  *#",
+        "#\$#N   ####",
+        "#@\$    #",
+        "####  ##",
+        "   ####"]},
+    {"navn": "Låge 2", "hal": 14, "kort": [
+        "  #G#####",
+        "  #. @  #",
+        " ##\$#   #",
+        "##    ####",
+        "#  #\$#   #",
+        "G.      .#",
+        "#*#   \$ ##",
+        "# # #   #",
+        "#   #   #",
+        "#########"]},
+    {"navn": "Låge 3", "hal": 14, "kort": [
+        "#####N###",
+        "#  @ .  #",
+        "#\$\$# \$  #",
+        "#..#  \$ #",
+        "#   ## ##",
+        "#       #",
+        "# N##  .#",
+        "#  ##   #",
+        "#  ## \$.N",
+        "#########"]},
+    {"navn": "Låge 4", "hal": 14, "kort": [
+        " ##G###",
+        " #  \$.####",
+        " #       #",
+        " ##### # #",
+        "   ##    #",
+        "#### \$   #",
+        "# *#  \$@ G",
+        "#.   . ###",
+        "########"]},
+    {"navn": "Låge 5", "hal": 14, "kort": [
+        "    ######",
+        "    #    #",
+        " ####    #",
+        "##@ ### ##",
+        "# \$*N    #",
+        "#   #    N",
+        "# \$     \$N",
+        "# . ##. .#",
+        "#   ######",
+        "#####"]},
+    {"navn": "Låge 6", "hal": 14, "kort": [
+        " #######",
+        "##     #",
+        "# .   \$###",
+        "# \$##\$.. #",
+        "##  #.#  #",
+        " #  . \$\$G#",
+        " #    *@#",
+        " ####  ##",
+        "    ####"]},
+    {"navn": "Låge 7", "hal": 14, "kort": [
+        "     ####",
+        " #####@ #",
+        " #  ##\$ #",
+        "## .## ##",
+        "#   ##  #",
+        "#*     \$#",
+        "##N     #",
+        "  ##   .#",
+        "   #  ###",
+        "   ####"]},
+    {"navn": "Låge 8", "hal": 14, "kort": [
+        "    ########",
+        "####G  +   #",
+        "#  ##      #",
+        "#  .# # #  #",
+        "##    #  \$ G",
+        " # \$\$#    ##",
+        " ##   .####",
+        "  ######"]},
+    {"navn": "Låge 9", "hal": 14, "kort": [
+        "#######",
+        "#     ####",
+        "#    .N  ##",
+        "N.   #.   #",
+        "#  #\$# #  #",
+        "# \$#  \$ . #",
+        "#    #@\$  #",
+        "#######  ##",
+        "      #N##"]},
+    {"navn": "Låge 10", "hal": 14, "kort": [
+        "#####",
+        "#   ##",
+        "#. \$ ##",
+        "#.  \$+##",
+        "#  # \$ ##",
+        "G*     .#",
+        "#### #  #",
+        "  #  \$ ##",
+        "  G    #",
+        "  ######"]},
+    {"navn": "Låge 11", "hal": 14, "kort": [
+        "##########",
+        "#     #. ###",
+        "# ### #    #",
+        "#     #   .#",
+        "# @##\$  .# #",
+        "N #N   \$# \$#",
+        "#          #",
+        "############"]},
+    {"navn": "Låge 12", "hal": 14, "kort": [
+        "  #####",
+        "  #   ##",
+        " ##\$\$..#",
+        " #  #  ##",
+        " #   #\$ #",
+        " #   #  #",
+        "##      #",
+        "# * .   #",
+        "G@\$ .  ##",
+        "###G####"]},
+    {"navn": "Låge 13", "hal": 14, "kort": [
+        "#####",
+        "# . ###",
+        "#   \$ #",
+        "#     #",
+        "#   \$ #",
+        "# . # ####",
+        "#   .\$ *@#",
+        "###.   \$ #",
+        "  ######N#"]},
+    {"navn": "Låge 14", "hal": 14, "kort": [
+        "   #####G###",
+        "  ##  .#   #",
+        "  #  #     #",
+        "  # * \$.   #",
+        "##### \$  ###",
+        "#   # \$ \$. #",
+        "# #   . #  #",
+        "#  @#     ##",
+        "# \$    . ##",
+        "######G###"]},
+    {"navn": "Låge 15", "hal": 14, "kort": [
+        " ######",
+        "## \$ .##",
+        "#* #\$  #",
+        "# .#+N ###",
+        "## .\$    #",
+        "#     \$  #",
+        "N    #####",
+        "######"]},
+    {"navn": "Låge 16", "hal": 14, "kort": [
+        "   ####",
+        "  ##  #G#",
+        "###@\$ . #",
+        "#  \$#.  #",
+        "#     # #",
+        "#       #",
+        "# .  \$  #",
+        "#  .  \$ #",
+        "####G#G##"]},
+    {"navn": "Låge 17", "hal": 14, "kort": [
+        "#########",
+        "#.  #   #",
+        "#      .#",
+        "#       #",
+        "#N\$   #N#",
+        " #     #",
+        " ##\$## #",
+        "  #@\$. #",
+        "  ######"]},
+    {"navn": "Låge 18", "hal": 14, "kort": [
+        "   ########",
+        "  #G.     #",
+        " ##  #    #",
+        " #     #  #",
+        "##.    \$ .#",
+        "#@\$    #\$ G",
+        "#* #      #",
+        "###########"]},
+    {"navn": "Låge 19", "hal": 14, "kort": [
+        "  ####",
+        " ##  #####",
+        " #     \$@#",
+        " #  ##  \$#",
+        " #.     .#",
+        "##\$#  # .#",
+        "#   ###  #",
+        "#   #   ##",
+        "###     #",
+        "  #N#####"]},
+    {"navn": "Låge 20", "hal": 14, "kort": [
+        " #######",
+        "##  .  #####",
+        "#    #  #@ #",
+        "#     \$    #",
+        "##    .# . #",
+        "#  \$ \$ # # #",
+        "#   ##.  \$ #",
+        "########G###"]},
+    {"navn": "Låge 21", "hal": 14, "kort": [
+        "    ####",
+        "   ##  ##",
+        "   #.   #",
+        " ###    #",
+        "## \$ #  ###",
+        "#      .  ##",
+        "#  ###  N\$ #",
+        "# \$#     \$+#",
+        "N  #   . ###",
+        "##N#######"]},
+    {"navn": "Låge 22", "hal": 14, "kort": [
+        "########",
+        "# .  ..#",
+        "#      #",
+        "###\$  #G#",
+        "#    \$  #",
+        "#  ##   #",
+        "#   # @ G",
+        "## . \$\$ #",
+        " ##    ##",
+        "  ####G#"]},
+    {"navn": "Låge 23", "hal": 14, "kort": [
+        "      #####",
+        "     ##   #",
+        "######  N\$#",
+        "#@ ## \$   ##",
+        "#  ##    . #",
+        "# # \$    . #",
+        "# # \$ .#  ##",
+        "#   #     .#",
+        "###   ##   #",
+        "  ######N###"]},
+    {"navn": "Låge 24", "hal": 14, "kort": [
+        " ########",
+        "##      ####",
+        "# \$     .  #",
+        "# \$ #    G #",
+        "#  .#     .#",
+        "# \$ #      #",
+        "#  ### ## .#",
+        "# # \$     *#",
+        "#@         #",
+        "############"]},
+    # ── november-nedtællingen: én låge pr. dag 23.-30. november (hal 15) ──
+    {"navn": "Novemberlåge 23", "hal": 15, "kort": [
+        "#####",
+        "#@ .######",
+        "#\$\$\$ ##  #",
+        "#.       #",
+        "#N     ###",
+        "#   #  #",
+        "#   #. #",
+        "########"]},
+    {"navn": "Novemberlåge 24", "hal": 15, "kort": [
+        "     #####",
+        " ###N#  @#",
+        "##     \$ #",
+        "# \$  # . #",
+        "#      . #",
+        "#    \$ # N",
+        "### .    #",
+        "  ########"]},
+    {"navn": "Novemberlåge 25", "hal": 15, "kort": [
+        " #####",
+        " #   ###",
+        " #     #",
+        "#N #   #",
+        "#.\$ # #####",
+        "#       \$ #",
+        "# . ###*# #",
+        "###   . \$@#",
+        "  #########"]},
+    {"navn": "Novemberlåge 26", "hal": 15, "kort": [
+        "  ##N#  ####",
+        "###  # ##  #",
+        "# .  # #   #",
+        "#    ###   #",
+        "#.\$ ###  @##",
+        "#    .#   #",
+        "#\$\$   \$ ###",
+        "#.    ###",
+        "#######"]},
+    {"navn": "Novemberlåge 27", "hal": 15, "kort": [
+        "  ######",
+        "  N  @ ##",
+        "  # \$\$ .#",
+        "  #  .  #",
+        "  ##  # #",
+        "   ## \$ #",
+        "####    #",
+        "#  #   ##",
+        "# .  * #",
+        "########"]},
+    {"navn": "Novemberlåge 28", "hal": 15, "kort": [
+        " ########",
+        " #@\$. \$.#",
+        "##\$ \$   #",
+        "#  ##  .#",
+        "#   ## ##",
+        "N   #  #",
+        "#   .* #",
+        "######N#"]},
+    {"navn": "Novemberlåge 29", "hal": 15, "kort": [
+        "#########",
+        "#   .  .#",
+        "# N#    #",
+        "# @     #",
+        "#     \$ #",
+        "#   #   #",
+        "#### \$\$ #",
+        "   #.   #",
+        "   ######"]},
+    {"navn": "Novemberlåge 30", "hal": 15, "kort": [
+        "########N#",
+        "#.\$ #    #",
+        "#       .#",
+        "#     #  #",
+        "#.  \$    #",
+        "#.\$ \$    #",
+        "##@\$ #   #",
+        " ## .    #",
+        "  #  #N###",
+        "  ####"]},
 ]
 
 let HALLER = ["CRYPT A", "CRYPT B", "CRYPT C", "CRYPT D", "CRYPT E", "CRYPT F", "CRYPT G", "CRYPT H", "GARGOYLE HALL 1", "GARGOYLE HALL 2", "XMAS CRYPT 1", "XMAS CRYPT 2", "GOBLIN CRYPT 1", "GOBLIN CRYPT 2"]
 let GARGOILHAL = 8
 let JULHAL = 10
+# julekalenderen: 24 låger, én bane pr. dag i december (står ikke under LEVELS)
+let KALHAL = 14
+# november-nedtællingen: 8 låger, 23.-30. november, i efterårs-stil
+let NOVHAL = 15
+let NOV_START = 23
+let NOVEMBER = []
+for i in range(BANER.len) { if BANER[i].hal == NOVHAL { NOVEMBER.push(i) } }
+let NOVGAVER = ["A crunchy pile of leaves to jump in!", "Hot apple cider in the crypt!",
+    "Zuzu carved a pumpkin that looks like her.", "A shiny conker for good luck!",
+    "The rain sings a spooky lullaby.", "Roasted pumpkin seeds, extra crunchy!",
+    "A woolly beanie for the gargoyle.", "November is over: Christmas is coming!"]
+let NORMALE = 0
+for b in BANER { if b.hal < KALHAL { NORMALE += 1 } }
+let KALENDER = []
+for i in range(BANER.len) { if BANER[i].hal == KALHAL { KALENDER.push(i) } }
+# lågerne sidder hulter til bulter, som i en rigtig julekalender
+let ORDEN = [7, 19, 2, 13, 22, 10, 16, 4, 24, 11, 1, 20, 14, 6, 23, 9, 17, 3, 12, 21, 5, 15, 18, 8]
+let GAVER = ["A tiny bat-shaped gingerbread cookie!", "Zuzu found a glowing candy skull.",
+    "Harboiy got a pair of fang-shaped mittens.", "A snow globe with a crypt inside!",
+    "One very spooky candy cane.", "The gargoyles hum a creaky Christmas carol.",
+    "A sock full of green marshmallows.", "Free hot cocoa in the crypt cafe!",
+    "A ribbon-wrapped bone for BoxDog.", "The goblins stole a star. Again.",
+    "Zuzu's new scarf: purple and slimy.", "A lantern that glows ghost-green.",
+    "Harboiy hangs upside down from the tree.", "Twelve tiny skulls on the tree!",
+    "A crate of zombie gingerbread men.", "The snow tastes like peppermint.",
+    "A wreath made of bat wings (fake ones).", "A gift tag that says: from the ghost.",
+    "Rice pudding with one secret almond!", "Jingle bells, but they rattle like bones.",
+    "A sleigh pulled by four spooky bats.", "Two days to go: hide the presents!",
+    "Little Christmas Eve: the crypt is cosy.", "MERRY SPOOKY CHRISTMAS, ZUZU & HARBOIY!"]
+let MÅNED = int($(try date +%-m).trim())
+let DAG = int($(try date +%-d).trim())
+let kal_besked = ""
+let kal_besked_tid = 0.0
+fn er_kalender(i) { return BANER[i].hal == KALHAL or BANER[i].hal == NOVHAL }
+let kal_vis = "jul"
+if MÅNED == 11 { kal_vis = "nov" }
+# november-låge d (23-30) kan åbnes fra den d. november og hele december
+fn nov_åben(d) {
+    if env("ZUZU_KALENDER", "") == "alle" { return true }
+    if bedste[NOVEMBER[d - NOV_START]] > 0 { return true }
+    if MÅNED == 12 { return true }
+    return MÅNED == 11 and d <= DAG
+}
+# låge d kan åbnes fra den d. december (og altid, når den er klaret)
+fn låge_åben(d) {
+    if env("ZUZU_KALENDER", "") == "alle" { return true }
+    if bedste[KALENDER[d - 1]] > 0 { return true }
+    return MÅNED == 12 and d <= DAG
+}
 let GEM = "{env("HOME", ".")}/.zuzubox"
 
 # ── rekorder: én linje pr. bane, navn=træk ──
@@ -806,11 +1184,22 @@ if KUNST == "" {
 # juletemaet ligger i zuzubox/jul (lavet med zuzubox/klip_jul.py); i december
 # er det standard, indtil man selv vælger
 let har_jul = exists("{KUNST}/jul/side.png")
+let har_efteraar = exists("{KUNST}/efteraar/side.png")
+# jul og efterår har samme opbygning (hylderne højere oppe, andet panel)
+fn pyntet() { return tema == "jul" or tema == "efteraar" }
+# hvilket tema en bane skal vises i
+fn banens_tema(i) {
+    if har_efteraar and BANER[i].hal == NOVHAL { return "efteraar" }
+    if har_jul and BANER[i].hal >= JULHAL { return "jul" }
+    return valgt_tema
+}
 if tema == "" {
     tema = "normal"
     if har_jul and $(try date +%m).trim() == "12" { tema = "jul" }
+    if har_efteraar and $(try date +%m).trim() == "11" { tema = "efteraar" }
 }
-if not har_jul { tema = "normal" }
+if tema == "jul" and not har_jul { tema = "normal" }
+if tema == "efteraar" and not har_efteraar { tema = "normal" }
 valgt_tema = tema
 let MAPPE = KUNST
 let B_SIDE = -1
@@ -887,9 +1276,15 @@ fn nr_i_hal(i) {
     for j in range(i) { if BANER[j].hal == h { n += 1 } }
     return n + 1
 }
-fn bane_navn(i) { return "{BANER[i].hal + 1}-{nr_i_hal(i)}" }
+fn bane_navn(i) {
+    if BANER[i].hal == KALHAL { return "{nr_i_hal(i)}/12" }
+    if BANER[i].hal == NOVHAL { return "{nr_i_hal(i) + NOV_START - 1}/11" }
+    return "{BANER[i].hal + 1}-{nr_i_hal(i)}"
+}
 # skiltet på muren: A-01, B-03, …
 fn skilt_navn(i) {
+    if BANER[i].hal == KALHAL { return "J-{nr_i_hal(i):02}" }
+    if BANER[i].hal == NOVHAL { return "N-{nr_i_hal(i) + NOV_START - 1}" }
     let bogstaver = "ABCDEFGHIJKLMN"
     return "{bogstaver.chars[BANER[i].hal]}-{nr_i_hal(i):02}"
 }
@@ -912,7 +1307,7 @@ fn hent_brikker() {
 # banens felter placeres midt i krypten (juletemaet har hylder højere oppe)
 fn placer() {
     let by0 = BY0
-    if tema == "jul" { by0 = 170 }
+    if pyntet() { by0 = 170 }
     let bw = BX1 - BX0
     let bh = BY1 - by0
     RUDE = int(min(72, min(bw / søjler, bh / rækker)))
@@ -924,8 +1319,7 @@ fn placer() {
 fn indlæs(i) {
     nr = i
     # jule-krypterne er altid i jule-stil
-    let vis = valgt_tema
-    if har_jul and BANER[i].hal >= JULHAL { vis = "jul" }
+    let vis = banens_tema(i)
     if vis != tema { sæt_tema(vis) }
     mure = []
     striber = []
@@ -1079,6 +1473,7 @@ let C_KAPPE = "#9c7ad8"
 let C_KAPPE_LYS = "#dcc8ff"
 let C_KAPPE_MØRK = "#6c46b0"
 let C_FUGE = "#7b58c0"
+let C_KAPPE_GLANS = "#ab8ce4"
 
 # skifter al grafikken mellem det normale tema og julen
 fn sæt_tema(t) {
@@ -1089,6 +1484,7 @@ fn sæt_tema(t) {
     }
     MAPPE = KUNST
     if tema == "jul" { MAPPE = "{KUNST}/jul" }
+    if tema == "efteraar" { MAPPE = "{KUNST}/efteraar" }
     let har_h = exists("{KUNST}/harboiy/side.png")
     if figur == "harboiy" and not har_h { figur = "zuzu" }
     # Harboiy har sit eget juletøj i harboiy/jul (falder tilbage til det normale)
@@ -1119,12 +1515,20 @@ fn sæt_tema(t) {
         C_KAPPE_LYS = "#ffffff"
         C_KAPPE_MØRK = "#aab4d6"
         C_FUGE = "#c4cce6"
+    } else if tema == "efteraar" {
+        # efterårets mure har en kant af visne blade
+        C_KAPPE = "#c8783a"
+        C_KAPPE_LYS = "#f2b45e"
+        C_KAPPE_MØRK = "#7c4220"
+        C_FUGE = "#a2602e"
+        C_KAPPE_GLANS = "#e09a50"
     } else {
         C_KAPPE = "#9c7ad8"
         C_KAPPE_LYS = "#dcc8ff"
         C_KAPPE_MØRK = "#6c46b0"
         C_FUGE = "#7b58c0"
     }
+    if tema != "efteraar" { C_KAPPE_GLANS = "#ab8ce4" }
     brik_str = 0
 }
 let C_SIDE = "#4a2f7c"
@@ -1139,7 +1543,7 @@ fn krypt() {
     let s = skilt_navn(nr)
     let sx = 715 - int(text_width(s, 3) / 2)
     let sy = 18
-    if tema == "jul" {
+    if pyntet() {
         sx = 712 - int(text_width(s, 3) / 2)
         sy = 42
     }
@@ -1242,7 +1646,7 @@ fn tegn_mure() {
             striber_i(k[0], k[1], w, h)
         } else {
             rect(k[0], k[1], w, h, C_KAPPE)
-            rect(k[0] + 2, k[1] + 2, w - 4, int(h * 0.35), "#ab8ce4")
+            rect(k[0] + 2, k[1] + 2, w - 4, int(h * 0.35), C_KAPPE_GLANS)
             if not m.o { rect(k[0], k[1], w, int(r / 10) + 1, C_KAPPE_LYS) }
             if not m.n { rect(k[0], k[3] - 3, w, 3, C_KAPPE_MØRK) }
             if m.v or m.h { rect(ox + m.x * r + int(r / 2), k[1] + 4, 2, h - 8, C_FUGE) }
@@ -1362,7 +1766,7 @@ fn tegn_bane(dt) {
             let b = l[fi]
             let st = image_size(b)
             let h = int(r * 1.55)
-            if tema == "jul" or figur == "harboiy" { h = int(r * 1.8) }
+            if pyntet() or figur == "harboiy" { h = int(r * 1.8) }
             let w = int(st[0] * h / st[1])
             round_rect(cx - int(r * 0.32), dy + int(r * 0.8), int(r * 0.64), int(r * 0.18), int(r * 0.09), "#10082060")
             draw(b, cx - int(w / 2), dy + int(r * 0.96) - h - hop, w, h)
@@ -1411,9 +1815,9 @@ fn sidebjælke() {
     let bn = bane_navn(nr)
     # tallene og knapperne sidder lidt forskelligt i de to mockups
     let p = [184, 360, 167, 402, 432, 480, 531, 582]
-    if tema == "jul" { p = [176, 362, 158, 408, 436, 475, 524, 573] }
+    if pyntet() { p = [176, 362, 158, 408, 436, 475, 524, 573] }
     if figur == "harboiy" { p = [186, 369, 158, 406, 429, 476, 527, 578] }
-    if tema == "jul" or figur == "harboiy" {
+    if pyntet() or figur == "harboiy" {
         tal(p[0], p[1] + 6, bn, 2)
     } else if text_width(bn, 3) <= 76 { tal(p[0], p[1], bn, 3) } else { tal(p[0], p[1] + 6, bn, 2) }
     tal(p[2], p[3], "{træk}", 2)
@@ -1436,13 +1840,23 @@ fn tegn_sejr() {
     round_rect(cx - 206, cy - 88, 412, 172, 20, "#2a1450")
     let s = "SPOOKY GOOD!"
     if tema == "jul" { s = "SPOOKY XMAS!" }
-    logo_tekst(cx - text_width(s, 4) / 2, cy - 78, s, "#c6ff3a", 4)
+    if tema == "efteraar" { s = "SPOOKY FALL!" }
+    if er_kalender(nr) { s = "DOOR {låge_dag(nr)} OPEN!" }
+    let ss = 4
+    if text_width(s, 4) > 396 { ss = 3 }
+    logo_tekst(cx - text_width(s, ss) / 2, cy - 78 + (4 - ss) * 6, s, "#c6ff3a", ss)
     let t = "{træk} MOVES"
     if bedste[nr] == træk { t += "  ·  NEW BEST!" }
     text(cx - text_width(t, 2) / 2, cy - 8, t, "#ffffff", 2)
     let n = "Tap or Enter: next level"
-    if nr == BANER.len - 1 { n = "Every crate is home! Tap: levels" }
-    text(cx - text_width(n, 1) / 2, cy + 42, n, "#e0c8ff", 1)
+    if nr == NORMALE - 1 { n = "Every crate is home! Tap: levels" }
+    if er_kalender(nr) {
+        let g = GAVER[nr_i_hal(nr) - 1]
+        if BANER[nr].hal == NOVHAL { g = NOVGAVER[nr_i_hal(nr) - 1] }
+        text(cx - text_width(g, 1) / 2, cy + 24, g, "#ffd84a", 1)
+        n = "Tap or Enter: back to the calendar"
+    }
+    text(cx - text_width(n, 1) / 2, cy + 50, n, "#e0c8ff", 1)
 }
 
 # baneoversigten har fire krypter pr. side
@@ -1461,6 +1875,10 @@ fn tegn_baner() {
     rect(SIDE_W, 0, W - SIDE_W, H, "#241046ec")
     let t = "LEVELS"
     logo_tekst(SIDE_W + (W - SIDE_W - text_width(t, 3)) / 2, 16, t, "#c6ff3a", 3)
+    if KALENDER.len == 24 and knap(SIDE_W + 16, 14, 190, 40, "CALENDAR", 2) {
+        skærm = "kalender"
+        return nil
+    }
     let sider = int((HALLER.len + 3) / 4)
     let st = "{baneside + 1}/{sider}"
     text(W - 150 - int(text_width(st, 2) / 2), 22, st, "#e0c8ff", 2)
@@ -1513,13 +1931,13 @@ fn tegn_settings() {
     round_rect(cx - 197, 103, 394, 454, 20, "#2a1450")
     logo_tekst(cx - int(text_width("SETTINGS", 3) / 2), 120, "SETTINGS", "#ffffff", 3)
     let m = mouse()
-    let knapper = [["UNDO  (Z)", "undo"], ["SOUND: ON", "lyd"], ["CHRISTMAS: OFF", "jul"], ["PLAYER: ZUZU", "figur"], ["BACK", "tilbage"]]
+    let knapper = [["UNDO  (Z)", "undo"], ["SOUND: ON", "lyd"], ["THEME: SPOOKY", "jul"], ["PLAYER: ZUZU", "figur"], ["CALENDAR  (K)", "kalender"], ["BACK", "tilbage"]]
     if figur == "harboiy" { knapper[3][0] = "PLAYER: HARBOIY" }
     if not lyd_til { knapper[1][0] = "SOUND: OFF" }
-    if valgt_tema == "jul" { knapper[2][0] = "CHRISTMAS: ON" }
-    if not har_jul { knapper[2][0] = "CHRISTMAS: -" }
-    for i in range(5) {
-        let y = 180 + i * 70
+    if valgt_tema == "jul" { knapper[2][0] = "THEME: XMAS" }
+    if valgt_tema == "efteraar" { knapper[2][0] = "THEME: AUTUMN" }
+    for i in range(knapper.len) {
+        let y = 172 + i * 62
         let over = m[0] >= cx - 150 and m[0] < cx + 150 and m[1] >= y and m[1] < y + 52
         let bg = "#4a2488"
         if over { bg = "#7a3ac8" }
@@ -1536,6 +1954,8 @@ fn tegn_settings() {
                 gem()
             } else if knapper[i][1] == "jul" {
                 skift_tema()
+            } else if knapper[i][1] == "kalender" {
+                skærm = "kalender"
             } else if knapper[i][1] == "figur" {
                 if figur == "zuzu" { figur = "harboiy" } else { figur = "zuzu" }
                 sæt_tema(tema)
@@ -1550,13 +1970,226 @@ fn tegn_settings() {
 }
 
 fn skift_tema() {
-    if not har_jul { return nil }
-    if valgt_tema == "jul" { valgt_tema = "normal" } else { valgt_tema = "jul" }
-    let vis = valgt_tema
-    if BANER[nr].hal >= JULHAL { vis = "jul" }
-    sæt_tema(vis)
+    let rk = ["normal"]
+    if har_efteraar { rk.push("efteraar") }
+    if har_jul { rk.push("jul") }
+    let næste = 0
+    for i in range(rk.len) { if rk[i] == valgt_tema { næste = (i + 1) % rk.len } }
+    valgt_tema = rk[næste]
+    sæt_tema(banens_tema(nr))
     placer()
     gem()
+}
+
+# dagen på lågen: 1-24 i julekalenderen, 23-30 i november
+fn låge_dag(i) {
+    if BANER[i].hal == NOVHAL { return nr_i_hal(i) + NOV_START - 1 }
+    return nr_i_hal(i)
+}
+fn næste_bane() {
+    if er_kalender(nr) {
+        kal_vis = "jul"
+        if BANER[nr].hal == NOVHAL { kal_vis = "nov" }
+        skærm = "kalender"
+    }
+    else if nr < NORMALE - 1 { indlæs(nr + 1) }
+    else { skærm = "baner" }
+}
+
+# en knap med tekst (bruges i kalenderen og under LEVELS)
+fn knap(x, y, w, h, t, st) {
+    let m = mouse()
+    let over = m[0] >= x and m[0] < x + w and m[1] >= y and m[1] < y + h
+    let bg = "#8a1c2c"
+    if over { bg = "#c02a40" }
+    round_rect(x, y, w, h, 12, "#ffd84a")
+    round_rect(x + 2, y + 2, w - 4, h - 4, 10, bg)
+    text(x + int((w - text_width(t, st)) / 2), y + int((h - 8 * st) / 2) - st, t, "#ffffff", st)
+    return over and clicked()
+}
+
+# ── julekalenderen ──
+fn hængelås(x, y) {
+    round_rect(x + 3, y, 12, 14, 6, "#d8c060")
+    round_rect(x + 6, y + 3, 6, 10, 3, "#3a1020")
+    round_rect(x, y + 9, 18, 14, 3, "#d8c060")
+    rect(x + 8, y + 13, 2, 5, "#3a1020")
+}
+fn tegn_november(dt) {
+    rect(SIDE_W, 0, W - SIDE_W, H, "#26120af0")
+    # blade der falder
+    let blad = ["#e0782a", "#c0401e", "#e8b040", "#a0582a"]
+    for i in range(34) {
+        let sx = SIDE_W + (i * 97 + int(tid * (18 + i % 5 * 7)) + int(sin(tid * 1.3 + i) * 14)) % (W - SIDE_W)
+        let sy = (i * 53 + int(tid * (26 + i % 7 * 8))) % H
+        round_rect(sx, sy, 6, 4, 2, blad[i % 4])
+    }
+    let t = "NOVEMBER COUNTDOWN"
+    logo_tekst(SIDE_W + (W - SIDE_W - text_width(t, 3)) / 2, 14, t, "#f2a040", 3)
+    if knap(SIDE_W + 16, 14, 100, 40, "BACK", 2) or pressed("esc") { skærm = "spil" }
+    if KALENDER.len == 24 and (knap(W - 150, 14, 134, 40, "XMAS >", 2) or pressed("right")) {
+        kal_vis = "jul"
+        return nil
+    }
+    if NOVEMBER.len < 8 { return nil }
+    let m = mouse()
+    let x0 = SIDE_W + 40
+    let y0 = 86
+    let lw = int((W - SIDE_W - 80) / 4)
+    let lh = int((H - y0 - 60) / 2)
+    let farver = ["#c05a1e", "#8a3a1a", "#b8862a", "#6a3a7a"]
+    let rækkefølge = [27, 23, 30, 25, 24, 29, 26, 28]
+    for k in range(8) {
+        let d = rækkefølge[k]
+        let i = NOVEMBER[d - NOV_START]
+        let x = x0 + (k % 4) * lw + 8
+        let y = y0 + int(k / 4) * lh + 8
+        let w = lw - 16
+        let h = lh - 16
+        let åben = nov_åben(d)
+        let klaret_l = bedste[i] > 0
+        let idag = MÅNED == 11 and d == DAG and not klaret_l
+        let over = m[0] >= x and m[0] < x + w and m[1] >= y and m[1] < y + h
+        round_rect(x + 5, y + 6, w, h, 14, "#00000070")
+        if idag {
+            let g = "#ffb040"
+            if sin(tid * 5) > 0 { g = "#ffe090" }
+            round_rect(x - 5, y - 5, w + 10, h + 10, 18, g)
+        }
+        if klaret_l {
+            round_rect(x, y, w, h, 14, "#f2a040")
+            round_rect(x + 3, y + 3, w - 6, h - 6, 12, "#1a0c06")
+            let ik = int(min(w, h) * 0.5)
+            draw(B_IKON, x + int((w - ik) / 2), y + 22, ik, ik)
+            let b = "BEST {bedste[i]}"
+            text(x + int((w - text_width(b, 2)) / 2), y + h - 30, b, "#c6ff3a", 2)
+            text(x + 10, y + 8, "{d}", "#f2a040", 2)
+        } else {
+            let bg = farver[d % 4]
+            if not åben { bg = "#3a2a24" }
+            if over and åben { bg = "#e07a3a" }
+            round_rect(x, y, w, h, 14, "#f2a040")
+            round_rect(x + 3, y + 3, w - 6, h - 6, 12, bg)
+            # et par blade på lågen
+            round_rect(x + 12, y + 12, 14, 9, 4, "#e8b040")
+            round_rect(x + w - 30, y + h - 26, 14, 9, 4, "#c0401e")
+            round_rect(x + w - 44, y + 16, 12, 8, 4, "#e0782a")
+            let tc = "#ffffff"
+            if not åben { tc = "#8a7a70" }
+            text(x + int((w - text_width("{d}", 5)) / 2), y + int(h / 2) - 22, "{d}", tc, 5)
+            if not åben { hængelås(x + w - 30, y + h - 34) }
+            if idag { text(x + int((w - text_width("TODAY!", 2)) / 2), y + h - 30, "TODAY!", "#ffe090", 2) }
+        }
+        if over and clicked() {
+            if åben {
+                indlæs(i)
+                return nil
+            }
+            spil_lyd(LYD_BUMP)
+            kal_besked = "Door {d} opens on November {d}. No peeking!"
+            kal_besked_tid = 2.5
+        }
+    }
+    let klarede = 0
+    for i in NOVEMBER { if bedste[i] > 0 { klarede += 1 } }
+    let bund = "{klarede} of 8 doors opened - then comes Christmas!"
+    if kal_besked_tid > 0 {
+        kal_besked_tid -= dt
+        bund = kal_besked
+    }
+    text(SIDE_W + (W - SIDE_W - text_width(bund, 2)) / 2, H - 36, bund, "#ffe6cc", 2)
+}
+
+fn tegn_kalender(dt) {
+    if kal_vis == "nov" {
+        tegn_november(dt)
+        return nil
+    }
+    rect(SIDE_W, 0, W - SIDE_W, H, "#2a0c1cf0")
+    # sne der falder
+    for i in range(40) {
+        let sx = SIDE_W + (i * 97 + int(tid * (14 + i % 5 * 6))) % (W - SIDE_W)
+        let sy = (i * 53 + int(tid * (30 + i % 7 * 9))) % H
+        rect(sx, sy, 2 + i % 2, 2 + i % 2, "#ffffff90")
+    }
+    let t = "ADVENT CALENDAR"
+    logo_tekst(SIDE_W + (W - SIDE_W - text_width(t, 3)) / 2, 14, t, "#ff5a5a", 3)
+    if knap(SIDE_W + 16, 14, 100, 40, "BACK", 2) or pressed("esc") { skærm = "spil" }
+    if NOVEMBER.len == 8 and (knap(W - 150, 14, 134, 40, "< NOV", 2) or pressed("left")) {
+        kal_vis = "nov"
+        return nil
+    }
+    if KALENDER.len < 24 { return nil }
+    let m = mouse()
+    let x0 = SIDE_W + 30
+    let y0 = 72
+    let lw = int((W - SIDE_W - 60) / 6)
+    let lh = int((H - y0 - 44) / 4)
+    let farver = ["#c0283c", "#1f7a4a", "#b8862a", "#6a2a9a"]
+    for k in range(24) {
+        let d = ORDEN[k]
+        let i = KALENDER[d - 1]
+        let x = x0 + (k % 6) * lw + 5
+        let y = y0 + int(k / 6) * lh + 5
+        let w = lw - 10
+        let h = lh - 10
+        let åben = låge_åben(d)
+        let klaret_l = bedste[i] > 0
+        let idag = MÅNED == 12 and d == DAG and not klaret_l
+        let over = m[0] >= x and m[0] < x + w and m[1] >= y and m[1] < y + h
+        let c = farver[(d * 3) % 4]
+        round_rect(x + 4, y + 5, w, h, 12, "#00000070")
+        if idag {
+            let p = 0.5 + 0.5 * sin(tid * 5)
+            let g = "#ffd84a"
+            if p > 0.5 { g = "#fff2a0" }
+            round_rect(x - 4, y - 4, w + 8, h + 8, 16, g)
+        }
+        if klaret_l {
+            # åben låge: gaven ligger indenfor
+            round_rect(x, y, w, h, 12, "#ffd84a")
+            round_rect(x + 3, y + 3, w - 6, h - 6, 10, "#1a0818")
+            let ik = int(min(w, h) * 0.5)
+            draw(B_IKON, x + int((w - ik) / 2), y + 8, ik, ik)
+            let b = "BEST {bedste[i]}"
+            text(x + int((w - text_width(b, 1)) / 2), y + h - 18, b, "#c6ff3a", 1)
+            text(x + 8, y + 6, "{d}", "#ffd84a", 2)
+        } else {
+            let bg = c
+            if not åben { bg = "#3a2a40" }
+            if over and åben { bg = "#e04a5c" }
+            round_rect(x, y, w, h, 12, "#ffd84a")
+            round_rect(x + 3, y + 3, w - 6, h - 6, 10, bg)
+            # sne på toppen af lågen
+            round_rect(x + 3, y + 3, w - 6, 9, 5, "#f4f6ff")
+            for s in range(4) { round_rect(x + 10 + s * int((w - 26) / 3), y + 8, 10, 8, 4, "#f4f6ff") }
+            let tc = "#ffffff"
+            if not åben { tc = "#8a7a90" }
+            let ts = d
+            text(x + int((w - text_width("{ts}", 4)) / 2), y + int(h / 2) - 14, "{ts}", tc, 4)
+            if not åben { hængelås(x + w - 26, y + h - 30) }
+            if idag { text(x + int((w - text_width("TODAY!", 1)) / 2), y + h - 18, "TODAY!", "#ffd84a", 1) }
+        }
+        if over and clicked() {
+            if åben {
+                indlæs(i)
+                return nil
+            }
+            spil_lyd(LYD_BUMP)
+            kal_besked = "Door {d} opens on December {d}. No peeking!"
+            kal_besked_tid = 2.5
+        }
+    }
+    let bund = ""
+    let klarede = 0
+    for i in KALENDER { if bedste[i] > 0 { klarede += 1 } }
+    bund = "{klarede} of 24 doors opened"
+    if MÅNED != 12 { bund += "  -  the doors open in December" }
+    if kal_besked_tid > 0 {
+        kal_besked_tid -= dt
+        bund = kal_besked
+    }
+    text(SIDE_W + (W - SIDE_W - text_width(bund, 2)) / 2, H - 32, bund, "#ffe0e6", 2)
 }
 
 # touch: tryk på den side af Zuzu, hun skal gå til
@@ -1565,7 +2198,7 @@ fn touch_gå() {
     let m = mouse()
     if m[0] < SIDE_W { return nil }
     if klaret {
-        if nr < BANER.len - 1 { indlæs(nr + 1) } else { skærm = "baner" }
+        næste_bane()
         return nil
     }
     let dx = m[0] - (ox + hx * RUDE + RUDE / 2)
@@ -1602,6 +2235,25 @@ if scene == "klaret" {
     gå(1, 0)
 }
 
+if scene == "kalender" { skærm = "kalender" }
+# i december (til og med den 24.) åbner spillet i kalenderen, når dagens låge ikke er klaret
+if scene == "" and MÅNED == 12 and DAG >= 1 and DAG <= 24 and KALENDER.len == 24 {
+    if bedste[KALENDER[DAG - 1]] == 0 {
+        kal_vis = "jul"
+        skærm = "kalender"
+    }
+}
+if scene == "" and MÅNED == 11 and DAG >= NOV_START and NOVEMBER.len == 8 {
+    if bedste[NOVEMBER[DAG - NOV_START]] == 0 {
+        kal_vis = "nov"
+        skærm = "kalender"
+    }
+}
+if scene == "november" {
+    kal_vis = "nov"
+    skærm = "kalender"
+}
+
 while frame() {
     let dt = min(0.1, delta())
     tid += dt
@@ -1617,7 +2269,7 @@ while frame() {
     if skærm == "spil" {
         if klaret {
             if pressed("enter") or pressed("space") {
-                if nr < BANER.len - 1 { indlæs(nr + 1) } else { skærm = "baner" }
+                næste_bane()
             }
         } else {
             # hvert tryk tæller altid; holdes tasten nede, går Zuzu videre
@@ -1646,6 +2298,7 @@ while frame() {
             baneside = int(BANER[nr].hal / 4)
         }
         if pressed("j") { skift_tema() }
+        if pressed("k") and KALENDER.len == 24 { skærm = "kalender" }
         if pressed("h") {
             if figur == "zuzu" { figur = "harboiy" } else { figur = "zuzu" }
             sæt_tema(tema)
@@ -1668,6 +2321,7 @@ while frame() {
     sidebjælke()
     if skærm == "baner" { tegn_baner() }
     if skærm == "settings" { tegn_settings() }
+    if skærm == "kalender" { tegn_kalender(dt) }
 
     if skud != "" {
         skud_tid += dt
