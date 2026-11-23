@@ -1091,7 +1091,12 @@ fn sæt_tema(t) {
     if tema == "jul" { MAPPE = "{KUNST}/jul" }
     let har_h = exists("{KUNST}/harboiy/side.png")
     if figur == "harboiy" and not har_h { figur = "zuzu" }
-    if figur == "harboiy" { B_SIDE = image("{KUNST}/harboiy/side.png") } else { B_SIDE = image("{MAPPE}/side.png") }
+    # Harboiy har sit eget juletøj i harboiy/jul (falder tilbage til det normale)
+    let H_MAPPE = "{KUNST}/harboiy"
+    if tema == "jul" and exists("{KUNST}/harboiy/jul/harboiy_0.png") { H_MAPPE = "{KUNST}/harboiy/jul" }
+    let h_side = "{H_MAPPE}/side.png"
+    if not exists(h_side) { h_side = "{KUNST}/harboiy/side.png" }
+    if figur == "harboiy" { B_SIDE = image(h_side) } else { B_SIDE = image("{MAPPE}/side.png") }
     B_BUND = image("{MAPPE}/bund.png")
     B_IKON = image("{MAPPE}/kasse_lille.png")
     B_GARGOIL = image("{MAPPE}/gargoil.png")
@@ -1099,7 +1104,7 @@ fn sæt_tema(t) {
     let gm = MAPPE
     let gn = "zuzu"
     if figur == "harboiy" {
-        MAPPE = "{KUNST}/harboiy"
+        MAPPE = H_MAPPE
         gn = "harboiy"
     }
     A_N = serie(gn, [0, 1])
