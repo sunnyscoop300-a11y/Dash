@@ -356,7 +356,7 @@ DISPLAY=:0 ./spil
 ## Nyt i 0.14 «Kuro» 🐺
 
 Kuro er Hirakus første ven i Farming Life in Another World, den sorte ulv.
-Næste version bliver «Zabuton».
+Næste version bliver «Flora».
 
 - **Ingen shell inde i Dash:** `2>&1` og `&>` virker direkte på kommandoer, og
   `dsh check` advarer, hvis et script kalder `sh -c` eller `bash -c`.
