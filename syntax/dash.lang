@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Dash (.Dash) — syntaksfarver til xed, gedit, Pluma og andre GtkSourceView-editorer ⚡
+     Installér med:  make install-syntax -->
+<language id="dash" name="Dash" version="2.0" _section="Script">
+  <metadata>
+    <property name="mimetypes">text/x-dash</property>
+    <property name="globs">*.Dash;*.dash</property>
+    <property name="line-comment-start">#</property>
+  </metadata>
+
+  <styles>
+    <style id="comment"       name="Kommentar"        map-to="def:comment"/>
+    <style id="keyword"       name="Nøgleord"         map-to="def:keyword"/>
+    <style id="builtin"       name="Indbygget"        map-to="def:builtin"/>
+    <style id="value"         name="Værdi"            map-to="def:special-constant"/>
+    <style id="function"      name="Funktion"         map-to="def:function"/>
+    <style id="variable"      name="Variabel"         map-to="def:identifier"/>
+    <style id="number"        name="Tal"              map-to="def:decimal"/>
+    <style id="string"        name="Tekst"            map-to="def:string"/>
+    <style id="escape"        name="Escape"           map-to="def:special-char"/>
+    <style id="interpolation" name="Udtryk i tekst"   map-to="def:preprocessor"/>
+    <style id="operator"      name="Operator"         map-to="def:operator"/>
+    <style id="error"         name="Fejl"             map-to="def:error"/>
+  </styles>
+
+  <definitions>
+    <context id="comment" style-ref="comment" end-at-line-end="true">
+      <start>(?&lt;![^\s])#</start>
+    </context>
+
+    <context id="escape" style-ref="escape">
+      <match>\\[nter0\\"{$]</match>
+    </context>
+
+    <context id="dollar-var" style-ref="variable">
+      <match>\$[A-Za-z_][A-Za-z0-9_]*</match>
+    </context>
+
+    <context id="interpolation" style-ref="interpolation" end-at-line-end="true">
+      <start>\{</start>
+      <end>\}</end>
+    </context>
+
+    <!-- en tekst der ikke bliver lukket på linjen er en fejl -->
+    <context id="unclosed-string" style-ref="error">
+      <match>"(?:[^"\\]|\\.)*$</match>
+    </context>
+
+    <context id="string" style-ref="string">
+      <start>"</start>
+      <end>"</end>
+      <include>
+        <context ref="escape"/>
+        <context ref="interpolation"/>
+        <context ref="dollar-var"/>
+      </include>
+    </context>
+
+    <context id="raw-string" style-ref="string" end-at-line-end="true">
+      <start>'</start>
+      <end>'</end>
+    </context>
+
+    <context id="keywords" style-ref="keyword">
+      <keyword>let</keyword>
+      <keyword>if</keyword>
+      <keyword>else</keyword>
+      <keyword>for</keyword>
+      <keyword>in</keyword>
+      <keyword>while</keyword>
+      <keyword>fn</keyword>
+      <keyword>return</keyword>
+      <keyword>break</keyword>
+      <keyword>continue</keyword>
+      <keyword>parallel</keyword>
+      <keyword>and</keyword>
+      <keyword>or</keyword>
+      <keyword>not</keyword>
+    </context>
+
+    <context id="builtins" style-ref="builtin">
+      <keyword>echo</keyword>
+      <keyword>try</keyword>
+      <keyword>fail</keyword>
+      <keyword>cd</keyword>
+      <keyword>exit</keyword>
+      <keyword>parr</keyword>
+    </context>
+
+    <context id="values" style-ref="value">
+      <keyword>true</keyword>
+      <keyword>false</keyword>
+      <keyword>nil</keyword>
+      <keyword>args</keyword>
+      <keyword>script</keyword>
+      <keyword>status</keyword>
+    </context>
+
+    <context id="variable" style-ref="variable">
+      <match>\$\{[^}]*\}|\$\([^)]*\)|\$[A-Za-z_][A-Za-z0-9_]*</match>
+    </context>
+
+    <context id="number" style-ref="number">
+      <match>(?&lt;![\w.])[0-9]+(\.[0-9]+)?(?![\w.])</match>
+    </context>
+
+    <context id="call" style-ref="function">
+      <match>[A-Za-z_\x{80}-\x{10FFFF}][A-Za-z0-9_\x{80}-\x{10FFFF}]*(?=\()</match>
+    </context>
+
+    <context id="operator" style-ref="operator">
+      <match>[|&lt;&gt;&amp;]</match>
+    </context>
+
+    <context id="dash" class="no-spell-check">
+      <include>
+        <context ref="comment"/>
+        <context ref="unclosed-string"/>
+        <context ref="string"/>
+        <context ref="raw-string"/>
+        <context ref="keywords"/>
+        <context ref="builtins"/>
+        <context ref="values"/>
+        <context ref="variable"/>
+        <context ref="number"/>
+        <context ref="call"/>
+        <context ref="operator"/>
+      </include>
+    </context>
+  </definitions>
+</language>

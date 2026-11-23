@@ -6,6 +6,10 @@ use strings;
 
 export fn main() void = {
 	let args = os::args;
+	// Miguel 🎸: language server til editoren ("miguel" eller "dsh miguel")
+	if (strings::hassuffix(args[0], "miguel") || (len(args) > 1 && args[1] == "miguel")) {
+		miguel_main();
+	};
 	// startet som "violet-run" (til #!-linjen): samme som violet run
 	if (strings::hassuffix(args[0], "violet-run")) {
 		if (len(args) < 2) fail_and_exit("brug: violet-run fil.Dash [args...]");
@@ -73,7 +77,7 @@ export fn main() void = {
 	};
 	if (len(args) < 2) {
 		fmt::errorln("⚡ dsh — hurtigere end sh\n")!;
-		fmt::errorln("brug: dsh script.Dash [args...]\n      dsh check script.Dash\n      dsh types script.Dash   (Violet: typer)\n      dsh build script.Dash   (Violet: native binær)\n      dsh run script.Dash     (Violet: byg ved ændring og kør)\n      dsh -e 'kode'\n      dsh --version")!;
+		fmt::errorln("brug: dsh script.Dash [args...]\n      dsh check script.Dash\n      dsh types script.Dash   (Violet: typer)\n      dsh build script.Dash   (Violet: native binær)\n      dsh run script.Dash     (Violet: byg ved ændring og kør)\n      dsh -e 'kode'\n      dsh miguel              (Miguel: hjælp i editoren)\n      dsh --version")!;
 		os::exit(2);
 	};
 

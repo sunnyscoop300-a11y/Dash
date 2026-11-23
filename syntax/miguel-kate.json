@@ -1,0 +1,8 @@
+{
+    "servers": {
+        "dash": {
+            "command": ["miguel"],
+            "highlightingModeRegex": "^Dash$"
+        }
+    }
+}

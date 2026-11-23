@@ -230,9 +230,14 @@ fn cmp_problem(a: const *opaque, b: const *opaque) int = {
 	return x.line - y.line;
 };
 
-fn check_main(src: []u8) never = {
+// Finder alle fejl og advarsler i src og lægger dem i problems og warnings
+// (bruges af dsh check og af Miguel i editoren).
+fn check_collect(src: []u8) void = {
 	checking = true;
-	fmt::printfln("{}⚡ dsh check{} {}", orange(), reset(), script_name)!;
+	problems = [];
+	warnings = [];
+	recovered = [];
+	err_hint = "";
 	let toks: []token = [];
 	match (lex(src, 1)) {
 	case let t: []token => toks = t;
@@ -248,15 +253,19 @@ fn check_main(src: []u8) never = {
 	append(n.vars, recovered...)!;
 	collect(prog, &n);
 	walk_stmts(prog, &n);
-
 	sort::sort(problems: []opaque, size(problem), &cmp_problem)!;
+	sort::sort(warnings: []opaque, size(problem), &cmp_problem)!;
+};
+
+fn check_main(src: []u8) never = {
+	fmt::printfln("{}⚡ dsh check{} {}", orange(), reset(), script_name)!;
+	check_collect(src);
 	for (let pr .. problems) {
 		fmt::printfln("  {}✘ linje {}:{} {}", red(), pr.line, reset(), pr.msg)!;
 		const l = source_line(pr.line);
 		if (len(l) > 0) fmt::printfln("{}     {:4} │ {}{}", dim(), pr.line, l, reset())!;
 		if (len(pr.hint) > 0) fmt::printfln("{}          ↳ {}{}", orange(), pr.hint, reset())!;
 	};
-	sort::sort(warnings: []opaque, size(problem), &cmp_problem)!;
 	for (let pr .. warnings) {
 		fmt::printfln("  {}⚠ linje {}:{} {}", orange(), pr.line, reset(), pr.msg)!;
 		const l = source_line(pr.line);

@@ -31,7 +31,7 @@ make                # builds ./dsh-hare
 make test           # runs the tests
 make bench          # compares with sh
 make install-dsh    # installs as ~/.local/bin/dsh (+ violet, violet-run)
-make install-syntax # syntax colours for nano and Kate
+make install-syntax # syntax colours for nano, Kate and xed/gedit/Pluma
 ```
 
 ## Why it is fast
@@ -163,6 +163,35 @@ Finds *all* errors at once without running anything — and suggests fixes
 (*"the command 'kigger' does not exist — looks like plain text, is a # missing?"*,
 *"space in the function name — did you mean 'har_brave'?"*). The same
 "did you mean …?" hints also appear when a script fails while running.
+
+## Miguel 🎸 — help in the editor
+
+Miguel (from Coco) is Dash's language server. He plays along in your editor
+while you type:
+
+- **Errors and warnings right away** — everything `dsh check` finds, with the
+  "did you mean …?" hint underneath (messages in Danish).
+- **Completion** of keywords, functions (JJGui too), your own variables and
+  functions, methods after `.` and `parr.ln/err/fmt/tabel` after `parr.`.
+- **Hover** help for the built-in functions.
+
+```
+make install-miguel     # dsh + the "miguel" symlink + syntax colours + Kate setup
+```
+
+**Kate**: enable the LSP Client plugin. `make install-miguel` writes
+`~/.config/kate/lspclient/settings.json`; if you already have one, paste the
+contents of `syntax/miguel-kate.json` into it.
+
+**Neovim** (0.11+):
+
+```lua
+vim.filetype.add({ extension = { Dash = "dash" } })
+vim.lsp.config("miguel", { cmd = { "miguel" }, filetypes = { "dash" } })
+vim.lsp.enable("miguel")
+```
+
+Other editors: run `miguel` (or `dsh miguel`) as an LSP server over stdio.
 
 ## Violet 💜 — Dash to native code
 

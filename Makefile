@@ -32,10 +32,11 @@ install-dsh: dsh-hare
 	install -Dm755 dsh-hare $(HOME)/.local/bin/dsh
 	ln -sf dsh $(HOME)/.local/bin/violet
 	ln -sf dsh $(HOME)/.local/bin/violet-run
+	ln -sf dsh $(HOME)/.local/bin/miguel
 	@if [ -f $(HOME)/dsh/dsh.py ]; then ln -sf $(HOME)/dsh/dsh.py $(HOME)/.local/bin/dsh-py; fi
 	@echo "⚡ dsh er nu Hare-versionen ($$($(HOME)/.local/bin/dsh --version | grep -o '[0-9.]*-hare'))"
 
-# Farver til .Dash i nano og Kate/KWrite
+# Farver til .Dash i nano, Kate/KWrite og xed/gedit/Pluma (GtkSourceView)
 NANO_DIR = $(HOME)/.local/share/nano
 KATE_DIR = $(HOME)/.local/share/org.kde.syntax-highlighting/syntax
 install-syntax:
@@ -43,9 +44,23 @@ install-syntax:
 	@touch $(HOME)/.nanorc
 	@grep -qs 'dash.nanorc' $(HOME)/.nanorc || echo 'include "$(NANO_DIR)/dash.nanorc"' >> $(HOME)/.nanorc
 	install -Dm644 syntax/dash.xml $(KATE_DIR)/dash.xml
-	@echo "🎨 farver installeret — åbn en .Dash-fil i nano eller Kate"
+	install -Dm644 syntax/dash.lang $(HOME)/.local/share/gtksourceview-4/language-specs/dash.lang
+	install -Dm644 syntax/dash.lang $(HOME)/.local/share/gtksourceview-3.0/language-specs/dash.lang
+	install -Dm644 syntax/dash.lang $(HOME)/.local/share/gtksourceview-5/language-specs/dash.lang
+	@echo "🎨 farver installeret — åbn en .Dash-fil i nano, Kate eller xed"
+
+# Miguel 🎸 i Kate: LSP-klienten får at vide, at .Dash-filer har Miguel.
+# (Har du allerede egne servere i settings.json, så sæt "dash"-delen ind selv.)
+KATE_LSP = $(HOME)/.config/kate/lspclient/settings.json
+install-miguel: install-dsh install-syntax
+	@if [ -f $(KATE_LSP) ] && ! grep -qs '"dash"' $(KATE_LSP); then \
+		echo "⚠ $(KATE_LSP) findes allerede — sæt indholdet af syntax/miguel-kate.json ind i den selv"; \
+	else \
+		install -Dm644 syntax/miguel-kate.json $(KATE_LSP); \
+		echo "🎸 Miguel spiller nu med i Kate (Indstillinger → LSP-klient)"; \
+	fi
 
 clean:
 	rm -f dsh-hare
 
-.PHONY: test bench install install-dsh install-syntax clean
+.PHONY: test bench install install-dsh install-syntax install-miguel clean

@@ -155,6 +155,36 @@ Finder *alle* fejl på én gang uden at køre noget — og foreslår rettelser:
 
 De samme "mente du …?"-forslag kommer også når et script fejler undervejs.
 
+## Miguel 🎸 — hjælp i editoren
+
+Miguel (fra Coco) er Dash' language server. Han spiller med i editoren, mens du
+skriver:
+
+- **Fejl og advarsler med det samme** — alt det, `dsh check` finder, med
+  "mente du …?" under. ✘ er fejl, ⚠ er advarsler (fx `sh -c`).
+- **Autoudfyldning** af nøgleord, funktioner (også JJGui), dine egne variabler
+  og funktioner, metoder efter `.` og `parr.ln/err/fmt/tabel` efter `parr.`.
+- **Forklaringer**, når musen står over en funktion: `glob("*.flac") — filerne
+  der passer, som en liste`.
+
+```
+make install-miguel     # dsh + symlinket "miguel" + farver + Kate-opsætning
+```
+
+I **Kate**: Indstillinger → LSP-klient skal være slået til (under
+Plugins). `make install-miguel` skriver `~/.config/kate/lspclient/settings.json`;
+har du den i forvejen, så sæt indholdet af `syntax/miguel-kate.json` ind selv.
+
+I **Neovim** (0.11+):
+
+```lua
+vim.filetype.add({ extension = { Dash = "dash" } })
+vim.lsp.config("miguel", { cmd = { "miguel" }, filetypes = { "dash" } })
+vim.lsp.enable("miguel")
+```
+
+Andre editorer: start `miguel` (eller `dsh miguel`) som LSP-server over stdio.
+
 ## Violet 💜 — Dash til native kode
 
 Violet er Dash' lillesøster: hun oversætter et `.Dash`-script til en rigtig
@@ -355,6 +385,7 @@ pkg install x11-repo && pkg install termux-x11
 termux-x11 :0 &
 DISPLAY=:0 ./spil
 ```
+
 ## Nyt i 0.14 «Kuro» 🐺
 
 Kuro er Hirakus første ven i Farming Life in Another World, den sorte ulv.
@@ -374,6 +405,7 @@ Næste version bliver «Flora».
 - **Nye spil og apps i Bob:** ZuzuBox (zombiepigen Zuzu og flagermuspigen
   Harboiy, med tre temaer — normal, efterår og jul — en november-nedtælling og
   en julekalender) og BoxDog.
+
 ## Nyt i 0.13 «Hiraku» 🌾
 
 Fra nu af får hver version et navn fra Farming Life in Another World
@@ -406,13 +438,14 @@ Fra nu af får hver version et navn fra Farming Life in Another World
   genbruges af næste `image()`), og maps har fået `.remove(nøgle)`.
 - Boxman har fået 25 julebaner med snemand, og Nonbiri er kommet til.
 
-## Farver i nano og Kate
+## Farver i nano, Kate og xed
 
 ```
 make install-syntax
 ```
 
-Nøgleord, strenge, `{udtryk}`, `$variabler` og kommentarer får hver deres
+Virker i nano, Kate/KWrite og xed/gedit/Pluma (GtkSourceView — genstart
+xed bagefter). Nøgleord, strenge, `{udtryk}`, `$variabler` og kommentarer får hver deres
 farve — og en linje med en streng der ikke er lukket lyser **rødt**.
 
 ## Skift Python-dsh ud

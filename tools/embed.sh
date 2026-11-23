@@ -12,13 +12,13 @@ lit() {
 	echo "// Lavet af tools/embed.sh — rediger ikke. dsh' runtime til Violet."
 	printf 'const RT_NAMES: [_]str = ['
 	for f in *.ha *.s; do
-		case "$f" in main.ha|build.ha|rtsrc.ha|compile.ha|types.ha) continue ;; esac
+		case "$f" in main.ha|build.ha|rtsrc.ha|compile.ha|types.ha|miguel.ha) continue ;; esac
 		printf '"%s", ' "$f"
 	done
 	echo '];'
 	echo 'const RT_SRCS: [_]str = ['
 	for f in *.ha *.s; do
-		case "$f" in main.ha|build.ha|rtsrc.ha|compile.ha|types.ha) continue ;; esac
+		case "$f" in main.ha|build.ha|rtsrc.ha|compile.ha|types.ha|miguel.ha) continue ;; esac
 		lit "$f"
 	done
 	echo '];'
