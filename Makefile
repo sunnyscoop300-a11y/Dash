@@ -60,7 +60,15 @@ install-miguel: install-dsh install-syntax
 		echo "🎸 Miguel spiller nu med i Kate (Indstillinger → LSP-klient)"; \
 	fi
 
+# Miguel 🎸 i xed: et plugin, der viser fejl fra dsh check i .Dash-filer.
+# Slå det til i xed: Rediger → Indstillinger → Udvidelsesmoduler → Miguel (Dash).
+XED_PLUGINS = $(HOME)/.local/share/xed/plugins
+install-xed: install-dsh install-syntax
+	install -Dm644 syntax/xed/miguel.plugin $(XED_PLUGINS)/miguel.plugin
+	install -Dm644 syntax/xed/miguel.py $(XED_PLUGINS)/miguel.py
+	@echo "🎸 Miguel-pluginet er i xed — slå det til under Indstillinger → Udvidelsesmoduler"
+
 clean:
 	rm -f dsh-hare
 
-.PHONY: test bench install install-dsh install-syntax install-miguel clean
+.PHONY: test bench install install-dsh install-syntax install-miguel install-xed clean

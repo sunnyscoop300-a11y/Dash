@@ -1,0 +1,9 @@
+[Plugin]
+Loader=python3
+Module=miguel
+IAge=3
+Name=Miguel (Dash)
+Description=Fejl, advarsler og "mente du …?" i .Dash-filer, mens du skriver (dsh check)
+Authors=Bossun
+Copyright=Copyright © 2026 Bossun
+Website=https://github.com/sunnyscoop300-a11y/Dash

@@ -183,6 +183,14 @@ vim.lsp.config("miguel", { cmd = { "miguel" }, filetypes = { "dash" } })
 vim.lsp.enable("miguel")
 ```
 
+I **xed** (der ikke kan LSP) er der et plugin i stedet, som viser fejl og
+advarsler fra `dsh check` med bølgestreg, et ikon i kanten og "mente du …?",
+når musen står over linjen:
+
+```
+make install-xed        # slå det til: Rediger → Indstillinger → Udvidelsesmoduler → Miguel (Dash)
+```
+
 Andre editorer: start `miguel` (eller `dsh miguel`) som LSP-server over stdio.
 
 ## Violet 💜 — Dash til native kode

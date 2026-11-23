@@ -191,6 +191,14 @@ vim.lsp.config("miguel", { cmd = { "miguel" }, filetypes = { "dash" } })
 vim.lsp.enable("miguel")
 ```
 
+**xed** (no LSP support) gets a plugin instead, which shows the errors and
+warnings from `dsh check` with squiggles, a gutter icon and the "did you mean
+…?" hint on hover:
+
+```
+make install-xed        # enable it: Edit → Preferences → Plugins → Miguel (Dash)
+```
+
 Other editors: run `miguel` (or `dsh miguel`) as an LSP server over stdio.
 
 ## Violet 💜 — Dash to native code
