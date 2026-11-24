@@ -184,7 +184,45 @@ fn bob() {
     circle(x, y - 82, 7, "#fff4dc")
 }
 
-let ikoner = ["boxman", "cube-runner", "jj-demo", "nonbiri", "serietracker", "bob"]
+# ── WT Mini: et grønt WT-mærke over en stribe tegneserie-paneler ─────
+fn wt_mini() {
+    clear("#111214")
+    for k in range(4) {
+        round_rect(40 + (k % 2) * 92, 30 + int(k / 2) * 98, 84, 90, 10, ["#2a2d35", "#33363f", "#33363f", "#2a2d35"][k])
+    }
+    circle(82, 66, 16, "#ffd23a")
+    polygon([[150, 104], [196, 104], [173, 72]], "#5fc8ff")
+    round_rect(44, 150, 168, 78, 18, "#00dc64")
+    text(118 - text_width("WT", 4) / 2, 157, "WT", "#0a0a0b", 4)
+    polygon([[188, 150], [212, 150], [212, 184], [200, 174], [188, 184]], "#0a0a0b")
+}
+
+# ── FISH OUT: en fisk på krogen over bølgerne ────────────────────────
+fn fishout() {
+    clear("#1f8ee0")
+    rect(0, 0, S, 92, "#5ec4ff")
+    for bx in range(0, S, 32) { rect(bx, 88, 20, 8, "#ffffff") }
+    rect(0, 200, S, 56, "#124c94")
+    line(128, 0, 128, 112, "#ffffff")
+    line(129, 0, 129, 112, "#ffffff")
+    let f = ["....ddd.....", "d..bbbbbbb..", "dd.bbdbdbbbb", "ddbbbdbdbbob", "dd.lllllllll", "d...lllllll."]
+    let farver = {"b": "#ffd23a", "d": "#d08a10", "l": "#fff2a0", "o": "#101010"}
+    let ry = 0
+    for r in f {
+        let cx = 0
+        for c in r {
+            if c != "." { rect(56 + cx * 12, 120 + ry * 12, 12, 12, farver[c]) }
+            cx += 1
+        }
+        ry += 1
+    }
+    rect(124, 108, 8, 22, "#c8d0dc")
+    for k in range(3) { circle(60 + k * 70, 230 - k * 6, 5 + k, "#bfe6ff90") }
+}
+
+let ikoner = ["boxman", "cube-runner", "jj-demo", "nonbiri", "serietracker", "bob", "wt-mini", "fishout"]
+# kun nogle af dem:  IKONER=wt-mini,fishout dsh eksempler/ikoner/tegn-ikoner.Dash
+if env("IKONER", "") != "" { ikoner = env("IKONER", "").split(",") }
 let i = 0
 while frame() {
     if i >= ikoner.len { break }
@@ -195,6 +233,8 @@ while frame() {
     else if n == "nonbiri" { nonbiri() }
     else if n == "serietracker" { serietracker() }
     else if n == "bob" { bob() }
+    else if n == "wt-mini" { wt_mini() }
+    else if n == "fishout" { fishout() }
     screenshot("{ud}/{n}.png")
     # afrundede, gennemsigtige hjørner (kræver python3 + pillow; ellers firkantet)
     try python3 "{ud}/rund.py" "{ud}/{n}.png" 2> /dev/null
