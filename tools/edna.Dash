@@ -68,7 +68,7 @@ for a in args {
     if a == "--skriv" { skriv = true } else { mål.push(a) }
 }
 if mål.len == 0 {
-    print("brug: dsh tools/edna.Dash fil.Dash|mappe … [--skriv]")
+    print("👓 Edna: hvad skal jeg sy til, darling?  dsh tools/edna.Dash fil.Dash|mappe … [--skriv]")
     exit 1
 }
 
@@ -123,9 +123,9 @@ fn antal(n, en, flere) {
 let ll = antal(i_alt, "linje", "linjer")
 let ff = antal(ændrede, "fil", "filer")
 if i_alt == 0 {
-    print("👓 Edna: alt har allerede den nyeste dragt ({antal(filer.len, "fil", "filer")})")
+    print("👓 Edna: alt har allerede den nyeste dragt, darling ({antal(filer.len, "fil", "filer")})")
 } else if skriv {
-    print("👓 Edna: {ll} i {ff} har fået ny dragt (de gamle ligger som .Dash.før)")
+    print("👓 Edna: {ll} i {ff} har fået ny dragt, darling. No capes! (de gamle ligger som .Dash.før)")
 } else {
-    print("👓 Edna: {ll} i {ff} kan få ny dragt — kør igen med --skriv")
+    print("👓 Edna: {ll} i {ff} kan få ny dragt, darling — kør igen med --skriv")
 }
