@@ -7,6 +7,19 @@ A script language with super speed — inspired by Dash Parr. Files are called
 > error messages, comments and the example programs are mostly in Danish.
 > The original README is [README.md](README.md) (Danish).
 
+
+## New in 0.15 «Flora» 🦇
+
+Flora is Lulu's cousin in Farming Life in Another World — the vampire with all
+the experiments. The next version will be «Zabuton».
+
+- **match** — pick a branch by value; Violet turns int/str matches into a Hare `switch`.
+- **import** — bring in functions and variables from another `.Dash` file.
+- **Bits and bytes** — `& | ^ << >> ~ //`, `0x`/`0b` numbers and `bytes()` buffers.
+- **JJGui** — `blit()`, `stream_pcm()` and gamepads (`pad_name/button/axis`).
+- **Miguel 🎸** — language server for Kate, VS Code and Neovim, plus a xed plugin.
+- **KATCHA** — a PlayStation 1 emulator written in pure Dash.
+
 ```
 #!/usr/bin/env dsh
 let files = ["one song.flac", "two song.flac"]
@@ -19,7 +32,7 @@ if status != 0 { echo "try caught it" }
 ```
 
 Every version gets a code name from *Farming Life in Another World*. The
-current one is **0.14 «Kuro»** 🐺 (`dsh --version`); the next will be «Flora».
+current one is **0.15 «Flora»** 🦇 (`dsh --version`); the next will be «Zabuton».
 
 ## Build
 

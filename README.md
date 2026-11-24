@@ -474,6 +474,24 @@ I JJGui tegner `blit(buf, adr, række_bytes, bredde, højde, format, x, y [, w, 
 pixels direkte fra en buffer — format 15 (PS1-VRAM), 24 (RGB) eller 32 — og
 skalerer dem til `w`×`h`. Det er sådan **KATCHA** (`eksempler/katcha.Dash`),
 PS1-emulatoren i ren Dash, viser skærmen.
+## Nyt i 0.15 «Flora» 🦇
+
+Flora er Lulus kusine i Farming Life in Another World — vampyren med alle
+eksperimenterne. Næste version bliver «Zabuton».
+
+- **match**: vælg en gren efter en værdi (`1, 2 => …`, `"a" => { … }`, `_ => …`).
+  Violet laver match på heltal og tekst om til en rigtig Hare-`switch`.
+- **import**: tag fn'er og variabler med fra en anden `.Dash`-fil. Fejl peger
+  på den rigtige fil og linje.
+- **Bits og bytes**: `& | ^ << >> ~ //`, `0x`/`0b`-tal og `bytes()`-buffere
+  med `rd8/16/32` og `wr8/16/32`, som Violet gør til direkte maskinkode.
+- **JJGui**: `blit()` tegner pixels direkte fra en buffer, `stream_pcm()`
+  spiller lyd fra en buffer, og gamepads (PS5 DualSense, PS4, Xbox) virker
+  via `pad_name`, `pad_button` og `pad_axis`.
+- **Miguel 🎸**: hjælp i editoren — language server til Kate, VS Code og
+  Neovim, og et plugin til xed.
+- **KATCHA** (`eksempler/katcha.Dash`): en PlayStation 1-emulator skrevet i
+  ren Dash.
 
 ## Nyt i 0.14 «Kuro» 🐺
 
