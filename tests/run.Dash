@@ -214,6 +214,20 @@ write("{tmpd}/fejl.Dash", kode(['import "lib/mat"', 'print(del(1, 0))', '']))
 har($(try $D "{tmpd}/fejl.Dash" 2>&1), "lib/mat.Dash:6: division med nul", "import: fejl i den importerede fil")
 write("{tmpd}/mangler.Dash", 'import "lib/findes-ikke"' + "\n")
 har($(try $D check "{tmpd}/mangler.Dash" 2>&1), "kan ikke finde 'lib/findes-ikke'", "import: mangler")
+# sprint — Dash Parrs import 💨 (også navne uden anførselstegn)
+write("{tmpd}/hurtig.Dash", kode(['let FART = "💨"', 'fn løb(n) { return n * 2 }', '']))
+write("{tmpd}/sprint.Dash", kode(['sprint hurtig', 'sprint "lib/mat"', 'echo "{FART} {løb(4)} {dobbelt(5)}"', '']))
+tjek($(try $D "{tmpd}/sprint.Dash"), "💨 8 10", "sprint: navn og sti")
+write("{tmpd}/sprint2.Dash", kode(['fn f() {', '    sprint hurtig', '}', '']))
+har($(try $D check "{tmpd}/sprint2.Dash" 2>&1), "sprint skal stå i yderste niveau", "sprint: kun øverst i filen")
+# tools/opgrader.Dash skriver import om til sprint (og kun når modulet findes)
+write("{tmpd}/gammel.Dash", kode(['import "hurtig"', 'import "lib/mat"', 'import "skærm.png"', 'echo "{FART} {løb(4)} {dobbelt(5)}"', '']))
+try $D tools/opgrader.Dash "{tmpd}/gammel.Dash" --skriv > /dev/null
+let gl = read("{tmpd}/gammel.Dash").lines()
+tjek([gl[0], gl[1], gl[2]].join(" | "), 'sprint hurtig | sprint "lib/mat" | import "skærm.png"', "opgrader: import → sprint")
+if HARE {
+    tjek($(try $D run "{tmpd}/sprint.Dash" 2> /dev/null), "💨 8 10", "sprint: også med Violet")
+}
 if HARE {
     # kan Violet ikke oversætte, skal dsh stadig indlæse de importerede filer
     write("{tmpd}/lib/halv.Dash", kode(['let fast_boot = false', 'fn g() { return findes_ikke }', '']))

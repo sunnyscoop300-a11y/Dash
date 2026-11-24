@@ -159,6 +159,28 @@ import "~/dash-lib/text"
 - Errors inside an imported file point to the right file and line — in `dsh`,
   `dsh check`, Miguel and Violet-built programs.
 
+**sprint** 💨 is Dash Parr's way of fetching things and does the same as
+`import` (coming in 0.17 «Lulu»). With `sprint` the name can go without quotes:
+
+```
+sprint colours               # = colours.Dash next to the script
+                             #   or in ~/.local/share/dash/lib/
+sprint "lib/colours"         # a path still needs "…"
+```
+
+`import` still works. Bare names are only for `sprint`, because
+`import picture` may also be ImageMagick's command.
+
+**Upgrade old scripts:** `tools/opgrader.Dash` rewrites old syntax into new.
+Every time the language gets something new, it gets a rule (right now:
+`import "x"` → `sprint x`). It only changes what it is sure about, so e.g.
+`import "screen.png"` is left alone.
+
+```
+dsh tools/opgrader.Dash examples/            # show what would change
+dsh tools/opgrader.Dash examples/ --skriv    # do it (old file → file.Dash.før)
+```
+
 ## Parr 🦸 — formatting and printing
 
 Hare has `fmt`, Nim has `echo` — Dash has the **Parr** family:

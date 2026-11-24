@@ -127,6 +127,28 @@ print(farve(3))
 - Fejl i en importeret fil peger på den rigtige fil og linje, både i `dsh`,
   `dsh check`, Miguel og programmer bygget med Violet.
 
+**sprint** 💨 er Dash Parrs måde at hente noget på, og gør det samme som
+`import` (kommer i 0.17 «Lulu»). Med `sprint` kan navnet stå uden anførselstegn:
+
+```
+sprint farver                # = farver.Dash ved siden af scriptet
+                             #   eller i ~/.local/share/dash/lib/
+sprint "lib/farver"          # en sti skal stadig i "…"
+```
+
+`import` virker stadig. Navne uden anførselstegn er kun til `sprint`, fordi
+`import billede` også kan være ImageMagicks kommando.
+
+**Opgradér gamle scripts:** `tools/opgrader.Dash` skriver gammel syntaks om til
+ny. Hver gang sproget får noget nyt, kommer der en regel i den (lige nu:
+`import "x"` → `sprint x`). Den ændrer kun det, den er sikker på, så fx
+`import "skærm.png"` bliver stående.
+
+```
+dsh tools/opgrader.Dash eksempler/            # vis hvad der ville blive ændret
+dsh tools/opgrader.Dash eksempler/ --skriv    # gør det (gammel fil → fil.Dash.før)
+```
+
 ## Parr 🦸 — formatering og udskrift
 
 Hare har `fmt`, Nim har `echo` — Dash har familien **Parr**:

@@ -1,0 +1,123 @@
+#!/usr/bin/env dsh
+# opgrader.Dash — skriver gamle .Dash-scripts om til nyt Dash 💨
+#
+#   dsh tools/opgrader.Dash fil.Dash           vis hvad der ville blive ændret
+#   dsh tools/opgrader.Dash mappe/             … for alle .Dash-filer i mappen
+#   dsh tools/opgrader.Dash mappe/ --skriv     skriv ændringerne (gammel fil → fil.Dash.før)
+#
+# Hver gang sproget får noget nyt, kommer der en regel her. Reglerne ændrer
+# kun det, de er helt sikre på — resten bliver stående, og det gamle virker stadig.
+#
+# Regler:
+#   0.17 «Lulu»   import "x"  →  sprint x    (eller sprint "sti/x" med en sti)
+
+let home = env("HOME", "")
+
+fn mappe_af(fil) {
+    if fil.contains("/") { return fil.dir }
+    return "."
+}
+
+# findes den .Dash-fil, som import peger på? (samme sted som dsh leder)
+fn findes_modul(navn, fil) {
+    let n = navn
+    if not n.ends_with(".Dash") and not n.ends_with(".dash") { n = n + ".Dash" }
+    if n.starts_with("/") { return exists(n) }
+    if n.starts_with("~/") { return exists(home + n.replace("~", "")) }
+    return exists(mappe_af(fil) + "/" + n) or exists("{home}/.local/share/dash/lib/{n}")
+}
+
+fn rent_navn(n) {
+    if n == "" { return false }
+    for c in n {
+        if not "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_æøåÆØÅ".contains(c) { return false }
+    }
+    return true
+}
+
+# ── 0.17 «Lulu»: import "x" → sprint x ──
+# kun i yderste niveau (ingen indrykning), og kun når .Dash-filen findes
+# (så ImageMagicks  import "skærm.png"  bliver stående)
+fn regel_sprint(l, fil) {
+    if not l.starts_with("import ") { return l }
+    let rest = l.replace("import ", "").trim()
+    if not rest.starts_with("\"") { return l }
+    let dele = rest.split("\"")
+    if dele.len < 3 { return l }
+    let navn = dele[1]
+    let efter = rest.replace("\"" + navn + "\"", "")
+    if not findes_modul(navn, fil) { return l }
+    let kort = navn
+    if kort.ends_with(".Dash") { kort = kort.replace(".Dash", "") }
+    if rent_navn(kort) { return "sprint {kort}{efter}" }
+    return "sprint \"{navn}\"{efter}"
+}
+
+fn opgrader(l, fil) {
+    let ny = l
+    ny = regel_sprint(ny, fil)
+    return ny
+}
+
+# ───────────────────────── kør ─────────────────────────
+
+let skriv = false
+let mål = []
+for a in args {
+    if a == "--skriv" { skriv = true } else { mål.push(a) }
+}
+if mål.len == 0 {
+    print("brug: dsh tools/opgrader.Dash fil.Dash|mappe … [--skriv]")
+    exit 1
+}
+
+let filer = []
+for m in mål {
+    if is_dir(m) {
+        for f in $(find $m -name "*.Dash" -type f).lines() {
+            if f != "" { filer.push(f) }
+        }
+    } else if exists(m) {
+        filer.push(m)
+    } else {
+        parr.err("💀 kan ikke finde", m)
+        exit 1
+    }
+}
+
+let i_alt = 0
+let ændrede = 0
+for fil in filer.sort() {
+    let ud = []
+    let n = 0
+    let nr = 0
+    for l in read(fil).lines() {
+        nr += 1
+        let ny = opgrader(l, fil)
+        if ny != l {
+            n += 1
+            print("{fil}:{nr}")
+            print("  - {l}")
+            print("  + {ny}")
+        }
+        ud.push(ny)
+    }
+    if n > 0 {
+        i_alt += n
+        ændrede += 1
+        if skriv {
+            write(fil + ".før", read(fil))
+            let tekst = ud.join("\n")
+            if read(fil).ends_with("\n") { tekst = tekst + "\n" }
+            write(fil, tekst)
+        }
+    }
+}
+
+if i_alt == 0 {
+    print("💜 alt er allerede nyt Dash ({filer.len} filer)")
+} else if skriv {
+    print("💨 {i_alt} linjer i {ændrede} filer er opgraderet (de gamle ligger som .Dash.før)")
+} else {
+    print("💨 {i_alt} linjer i {ændrede} filer kan opgraderes — kør igen med --skriv")
+}
