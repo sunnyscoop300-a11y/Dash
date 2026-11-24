@@ -54,6 +54,7 @@ let støvle_x = 600
 let ny_rekord = false
 let t = 0.0
 let pause = false
+let fangster = {}       # hvor mange af hver fisk (til Parr-statistikken)
 
 fn nyt_spil() {
     score = 0
@@ -63,6 +64,7 @@ fn nyt_spil() {
     fangst = nil
     fisk = []
     pops = []
+    fangster = {}
     let k = 0
     while k < 9 {
         let f = ny_fisk()
@@ -77,6 +79,17 @@ fn nyt_spil() {
 
 fn pop(x, y, tekst, farve) {
     pops.push({"x": x, "y": y, "t": 1.0, "tekst": tekst, "farve": farve})
+}
+
+# fangst-statistik i terminalen med Parr 🦸
+fn statistik() {
+    let rækker = [["Fisk", "Antal", "Point"]]
+    for ty in ["rød", "blå", "grøn", "lilla", "guld", "støvle"] {
+        let n = fangster.get(ty, 0)
+        if n > 0 { rækker.push([ty, n, n * point(ty)]) }
+    }
+    parr.ln("🎣 FISH OUT — score {score:,}")
+    parr.tabel(rækker)
 }
 
 fn rammer(f, x, y) {
@@ -94,6 +107,7 @@ fn opdater(dt) {
             write(GEM, "{rekord}\n")
         }
         spil(slutlyd)
+        statistik()
         return
     }
     # båden sejler, mens krogen er oppe
@@ -135,6 +149,8 @@ fn opdater(dt) {
             if fangst != nil {
                 let p = point(fangst["type"])
                 score = max(0, score + p)
+                let ty = fangst["type"]
+                fangster[ty] = fangster.get(ty, 0) + 1
                 match fangst["type"] {
                     "guld" => {
                         pop(kx - 40, VAND - 70, "+{p} GULD!", "#ffd84a")
