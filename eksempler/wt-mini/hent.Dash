@@ -1,0 +1,185 @@
+#!/usr/bin/env dsh
+# wt-mini/hent.Dash — WT Minis hjælper: henter fra WEBTOON i baggrunden 🟢
+# Del af WT Mini (eksempler/wt-mini.Dash). Ren Dash: curl henter, magick
+# laver billederne om til PNG, og svarene skrives som .tsv i DATA-mappen.
+#
+#   dsh hent.Dash dag monday                      ugedagens serier
+#   dsh hent.Dash serie ID LISTE-URL [side]       en series kapitler
+#   dsh hent.Dash kapitel ID NR VIEWER-URL        et kapitels sider
+#
+# Hver .tsv skrives først som .tmp og flyttes på plads til sidst, så
+# WT Mini aldrig læser en halv fil. Første linje er OK eller ERR.
+
+let HJEM = env("HOME", ".")
+let DATA = env("WT_DATA", "{HJEM}/.local/share/wt-mini")
+let UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36"
+let REF = "https://www.webtoons.com/"
+let MAGICK = "magick"
+if which("magick") == nil { MAGICK = "convert" }
+
+# ── små hjælpere ─────────────────────────────────────────────────────
+# teksten mellem a og b (første gang a står der), ellers ""
+fn mellem(s, a, b) {
+    let d = s.split(a)
+    if d.len < 2 { return "" }
+    return d[1].split(b)[0]
+}
+
+fn ren(s) {
+    let t = s.replace("&amp;", "&").replace("&#039;", "'").replace("&quot;", "\"")
+    t = t.replace("&lt;", "<").replace("&gt;", ">").replace("\t", " ").replace("\n", " ")
+    return t.trim()
+}
+
+fn hent(url, fil) {
+    try curl -sL --max-time 40 -A $UA -e $REF $url -o $fil
+    return status == 0 and exists(fil)
+}
+
+# hent et billede og lav det om til PNG (størrelse som "160x208" eller "720x")
+fn billede(url, png, str) {
+    if exists(png) { return true }
+    let tmp = png + ".hent"
+    if not hent(url, tmp) { return false }
+    # skriv til en midlertidig fil og flyt den på plads, når den er færdig,
+    # så WT Mini aldrig åbner en halv PNG
+    let ny = png + ".ny"
+    if str.ends_with("!") {
+        let s = str.replace("!", "")
+        try $MAGICK $tmp -resize "{s}^" -gravity center -extent $s "png:{ny}"
+    } else {
+        try $MAGICK $tmp -resize $str "png:{ny}"
+    }
+    rm -f $tmp
+    if exists(ny) { mv -f $ny $png }
+    return exists(png)
+}
+
+fn færdig(fil, linjer) {
+    write(fil + ".tmp", linjer.join("\n") + "\n")
+    mv -f "{fil}.tmp" $fil
+}
+
+fn fejl(fil, besked) {
+    færdig(fil, ["ERR\t" + besked])
+    exit 1
+}
+
+# ── ugedagens serier ────────────────────────────────────────────────
+fn dag(d) {
+    let fil = "{DATA}/dag-{d}.tsv"
+    let html = "{DATA}/tmp-dag-{d}.html"
+    if not hent("https://www.webtoons.com/en/originals/{d}", html) {
+        fejl(fil, "Kunne ikke hente WEBTOON - er der net?")
+    }
+    let s = read(html)
+    rm -f $html
+    let ud = ["OK\t{d}"]
+    let covers = []
+    let dele = s.split("<a href=\"https://www.webtoons.com/en/")
+    for b in dele {
+        if b.contains("_originals_title_a") {
+            let id = mellem(b, "data-title-no=\"", "\"")
+            let liste = "https://www.webtoons.com/en/" + b.split("\"")[0]
+            let img = mellem(b, "src=\"", "\"")
+            let genre = ren(mellem(b, "<div class=\"genre\">", "<"))
+            let navn = ren(mellem(b, "<strong class=\"title\">", "<"))
+            let ny = b.contains("badge_new2")
+            let op = b.contains("badge_up2")
+            let mærke = ""
+            if ny { mærke = "NY" } else if op { mærke = "UP" }
+            if id != "" and navn != "" {
+                let png = "{DATA}/covers/{id}.png"
+                ud.push([id, navn, genre, liste, png, mærke].join("\t"))
+                covers.push([img, png])
+            }
+        }
+    }
+    if ud.len == 1 { fejl(fil, "Fandt ingen serier på siden.") }
+    færdig(fil, ud)
+    # coverne bagefter: WT Mini viser dem, efterhånden som de bliver klar
+    for c in covers { billede(c[0], c[1], "160x208!") }
+}
+
+# ── en series kapitler ───────────────────────────────────────────────
+fn serie(id, liste, side) {
+    let fil = "{DATA}/serie-{id}-{side}.tsv"
+    let html = "{DATA}/tmp-serie-{id}-{side}.html"
+    let url = liste
+    if side != "1" { url = liste + "&page=" + side }
+    if not hent(url, html) { fejl(fil, "Kunne ikke hente serien.") }
+    let s = read(html)
+    rm -f $html
+    let navn = ren(mellem(s, "<h1 class=\"subj\">", "<"))
+    let om = ren(mellem(s, "<p class=\"summary\">", "<"))
+    let antal = int("0" + ren(mellem(s, "<span class=\"episode_count\">", " ")).replace(",", ""))
+    let cover = mellem(s, "<meta name=\"twitter:image\" content=\"", "\"")
+    let dag = ren(mellem(s, "<p class=\"day_info\"><span class=\"txt_ico_up\">UP</span>", "<"))
+    let ud = ["OK\t{navn}\t{om}\t{antal}\t{dag}"]
+    let thumbs = []
+    for b in s.split("<li class=\"_episodeItem") {
+        let nr = mellem(b, "data-episode-no=\"", "\"")
+        if nr != "" {
+            let viewer = ren(mellem(b, "<a href=\"", "\""))
+            let thumb = mellem(b, "<img src=\"", "\"")
+            let titel = ren(mellem(b, "<span class=\"subj\"><span>", "<"))
+            let dato = ren(mellem(b, "<span class=\"date\">", "<"))
+            let png = "{DATA}/thumbs/{id}-{nr}.png"
+            ud.push([nr, titel, dato, viewer, png].join("\t"))
+            thumbs.push([thumb, png])
+        }
+    }
+    if ud.len == 1 { fejl(fil, "Fandt ingen kapitler.") }
+    færdig(fil, ud)
+    if cover != "" { billede(cover, "{DATA}/covers/{id}.png", "160x208!") }
+    for t in thumbs { billede(t[0], t[1], "96x90!") }
+}
+
+# ── et kapitels sider ────────────────────────────────────────────────
+fn kapitel(id, nr, viewer) {
+    let mappe = "{DATA}/kap/{id}-{nr}"
+    mkdir -p $mappe
+    let fil = "{mappe}/info.tsv"
+    let html = "{mappe}/side.html"
+    if not hent(viewer, html) { fejl(fil, "Kunne ikke hente kapitlet.") }
+    let s = read(html)
+    rm -f $html
+    let titel = ren(mellem(s, "<h1 class=\"subj_episode\" title=\"", "\""))
+    let forrige = ""
+    let d = s.split("class=\"pg_prev _prevEpisode\"")
+    if d.len > 1 { forrige = ren(d[0].split("<a href=\"").last.split("\"")[0]) }
+    let næste = ""
+    d = s.split("class=\"pg_next _nextEpisode\"")
+    if d.len > 1 { næste = ren(d[0].split("<a href=\"").last.split("\"")[0]) }
+    let sider = []
+    let dele = s.split("class=\"_images\" data-url=\"")
+    let k = 1
+    while k < dele.len {
+        sider.push(dele[k].split("\"")[0])
+        k += 1
+    }
+    if sider.len == 0 { fejl(fil, "Kapitlet har ingen sider (låst eller kun i appen?).") }
+    færdig(fil, ["OK\t{sider.len}\t{titel}\t{forrige}\t{næste}"])
+    let i = 0
+    for u in sider {
+        billede(u, "{mappe}/{i:03}.png", "720x")
+        i += 1
+    }
+}
+
+# ── kør ──────────────────────────────────────────────────────────────
+mkdir -p "{DATA}/covers" "{DATA}/thumbs" "{DATA}/kap"
+let cmd = ""
+if args.len > 0 { cmd = args[0] }
+if cmd == "dag" and args.len > 1 {
+    dag(args[1])
+} else if cmd == "serie" and args.len > 2 {
+    let side = "1"
+    if args.len > 3 { side = args[3] }
+    serie(args[1], args[2], side)
+} else if cmd == "kapitel" and args.len > 3 {
+    kapitel(args[1], args[2], args[3])
+} else {
+    print("brug: dsh hent.Dash dag monday | serie ID LISTE-URL [side] | kapitel ID NR VIEWER-URL")
+    exit 1
+}

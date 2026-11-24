@@ -450,6 +450,11 @@ skubber kasser hen på de grønne kranier i en lilla krypt. 55 baner i ti krypte
 to af dem med gargoiler der står i vejen. Grafikken er klippet ud af mockuppen
 med `eksempler/zuzubox/klip.py`.
 
+**Eksempel:** `eksempler/wt-mini.Dash` — *WT Mini* 🟢, læs WEBTOON i Dash: ugedagens
+serier som covers, klik for kapitlerne og læs dem som én lang stribe. Følg dine serier
+under *Min liste*. Hjælperen `eksempler/wt-mini/hent.Dash` er også ren Dash: den henter
+med `curl` og laver billederne om til PNG med ImageMagick i baggrunden.
+
 **Eksempel:** `eksempler/sj-mini.Dash` — *SJ Mini*, de nyeste kapitler fra
 MANGA Plus: klik på et cover for kapitlerne og læs dem som én lang stribe.
 Hjælperen `eksempler/sj.py` (python3 + pillow) henter listen, kapitlerne og
