@@ -1,0 +1,277 @@
+#!/usr/bin/env violet-run
+# fishout.Dash — FISH OUT 🎣: fang så mange fisk du kan på 60 sekunder (JJGui)
+# bob-navn: FISH OUT
+# bob-kategori: spil
+# bob-farve: #ffc93c
+# bob-om: Et lille pixel-fiskespil: sejl båden, sænk krogen og fang fisk på 60 sekunder. Guldfisk giver 100, støvler trækker fra.
+#
+#   dsh eksempler/fishout.Dash          (eller violet run eksempler/fishout.Dash)
+#
+# Piletaster (eller A/D) sejler båden, mellemrum sænker og hiver krogen,
+# P pause, M lyd til/fra, Enter starter, Esc lukker. Rekorden gemmes i ~/.fishout.
+#
+# FISH OUT er også en test af det nye i Dash: modulerne hentes med sprint 💨,
+# fiskene vælges med match-intervaller og -vagter, og violet prof kan måle det.
+
+sprint "fishout/tegn"
+sprint "fishout/fisk"
+sprint "fishout/krog"
+
+window("FISH OUT", W, H)
+
+let GEM = env("HOME", "") + "/.fishout"
+let SPILLETID = 60.0
+
+let pling = sound("sine", 880, 1320, 0.12, 0.5)
+let guldlyd = sound("triangle", 660, 1760, 0.35, 0.5)
+let plask = sound("noise", 400, 200, 0.12, 0.25)
+let buh = sound("square", 220, 110, 0.3, 0.35)
+let slutlyd = sound("triangle", 880, 220, 0.6, 0.5)
+let lyd = true
+
+fn spil(nr) {
+    if lyd { play(nr) }
+}
+
+let rekord = 0
+if exists(GEM) {
+    let r = read(GEM).trim()
+    if r != "" { rekord = int(r) }
+}
+
+# ── spillets tilstand ──
+let tilstand = "start"      # start · spil · slut
+let score = 0
+let tid = SPILLETID
+let båd_x = W / 2 - BÅD_B / 2
+let krog_y = VAND - 40
+let krog = "oppe"            # oppe · synker · hiver
+let fangst = nil
+let fisk = []
+let pops = []
+let bobler = []
+let støvle_x = 600
+let ny_rekord = false
+let t = 0.0
+let pause = false
+
+fn nyt_spil() {
+    score = 0
+    tid = SPILLETID
+    krog = "oppe"
+    krog_y = VAND - 40
+    fangst = nil
+    fisk = []
+    pops = []
+    let k = 0
+    while k < 9 {
+        let f = ny_fisk()
+        f["x"] = 40 + random(W - 120)
+        fisk.push(f)
+        k += 1
+    }
+    støvle_x = 120 + random(W - 300)
+    ny_rekord = false
+    tilstand = "spil"
+}
+
+fn pop(x, y, tekst, farve) {
+    pops.push({"x": x, "y": y, "t": 1.0, "tekst": tekst, "farve": farve})
+}
+
+fn rammer(f, x, y) {
+    return x >= f["x"] and x <= f["x"] + f["b"] and y >= f["y"] - 6 and y <= f["y"] + f["h"] + 6
+}
+
+fn opdater(dt) {
+    tid -= dt
+    if tid <= 0 {
+        tid = 0
+        tilstand = "slut"
+        if score > rekord {
+            rekord = score
+            ny_rekord = true
+            write(GEM, "{rekord}\n")
+        }
+        spil(slutlyd)
+        return
+    }
+    # båden sejler, mens krogen er oppe
+    if krog == "oppe" {
+        if key("left") or key("a") { båd_x -= 260 * dt }
+        if key("right") or key("d") { båd_x += 260 * dt }
+        båd_x = max(0, min(W - BÅD_B - 10, båd_x))
+    }
+    if pressed("space") {
+        if krog == "oppe" {
+            krog = "synker"
+            spil(plask)
+        } else if krog == "synker" {
+            krog = "hiver"
+        }
+    }
+    let kx = båd_x + 145
+    if krog == "synker" {
+        krog_y += 280 * dt
+        for f in fisk {
+            if fangst == nil and rammer(f, kx, krog_y + 12) {
+                fangst = f
+                krog = "hiver"
+            }
+        }
+        if fangst == nil and krog_y + 16 >= BUND - 40 and kx >= støvle_x and kx <= støvle_x + 60 {
+            fangst = {"type": "støvle", "x": støvle_x, "y": BUND - 45, "b": 60, "h": 45, "højre": true}
+            støvle_x = -100
+            krog = "hiver"
+        }
+        if krog_y >= BUND - 20 { krog = "hiver" }
+    } else if krog == "hiver" {
+        let fart = 360
+        if fangst != nil and fangst["type"] == "støvle" { fart = 200 }
+        krog_y -= fart * dt
+        if krog_y <= VAND - 40 {
+            krog_y = VAND - 40
+            krog = "oppe"
+            if fangst != nil {
+                let p = point(fangst["type"])
+                score = max(0, score + p)
+                match fangst["type"] {
+                    "guld" => {
+                        pop(kx - 40, VAND - 70, "+{p} GULD!", "#ffd84a")
+                        spil(guldlyd)
+                    }
+                    "støvle" => {
+                        pop(kx - 50, VAND - 70, "{p} STØVLE!", "#ff6a5a")
+                        spil(buh)
+                        støvle_x = 120 + random(W - 300)
+                    }
+                    _ => {
+                        pop(kx - 20, VAND - 70, "+{p}", "#ffffff")
+                        spil(pling)
+                    }
+                }
+                if fangst["type"] != "støvle" {
+                    let rest = []
+                    for f in fisk {
+                        if f != fangst { rest.push(f) }
+                    }
+                    fisk = rest
+                    fisk.push(ny_fisk())
+                }
+                fangst = nil
+            }
+        }
+    }
+    # fiskene svømmer
+    for f in fisk {
+        if f != fangst {
+            if f["højre"] { f["x"] += f["v"] * dt } else { f["x"] -= f["v"] * dt }
+        }
+    }
+    let ude = []
+    for f in fisk {
+        if f["x"] > W + 220 or f["x"] < -f["b"] - 220 { ude.push(f) }
+    }
+    for f in ude {
+        let rest = []
+        for g in fisk {
+            if g != f { rest.push(g) }
+        }
+        fisk = rest
+        fisk.push(ny_fisk())
+    }
+    if fangst != nil {
+        fangst["x"] = kx - fangst["b"] / 2
+        fangst["y"] = krog_y + 14
+    }
+}
+
+fn tegn_alt() {
+    clear("#0d2a5c")
+    baggrund(t)
+    # bobler
+    for b in bobler {
+        circle(b[0], b[1], b[2], "#bfe6ff90")
+    }
+    havbund(t)
+    if støvle_x > 0 { tegn_støvle(støvle_x, BUND - 45) }
+    for f in fisk { tegn_fisk(f, t) }
+    if fangst != nil and fangst["type"] == "støvle" { tegn_støvle(fangst["x"], fangst["y"]) }
+    tegn_båd(båd_x, t)
+    tegn_krog(båd_x, krog_y, fangst)
+    for p in pops {
+        text(p["x"], p["y"], p["tekst"], p["farve"], 2)
+    }
+    hud(score, int(tid + 0.99), rekord)
+    fod()
+}
+
+fn midt(y, tekst, farve, s) {
+    text((W - text_width(tekst, s)) / 2, y, tekst, farve, s)
+}
+
+fn boks(y, h) {
+    round_rect(W / 2 - 300, y, 600, h, 18, "#0d2a5c")
+    outline(W / 2 - 300, y, 600, h, "#5fc8ff")
+}
+
+# skærmbillede til test:  FISHOUT_SKUD=billede.png FISHOUT_TILSTAND=spil dsh fishout.Dash
+let skud = env("FISHOUT_SKUD", "")
+let skud_n = 0
+if env("FISHOUT_TILSTAND", "") == "spil" { nyt_spil() }
+
+while frame() {
+    let dt = min(delta(), 0.05)
+    if key("esc") { break }
+    if pressed("m") { lyd = not lyd }
+    if tilstand == "spil" and pressed("p") { pause = not pause }
+    if tilstand != "spil" and (pressed("enter") or pressed("space") or clicked()) {
+        nyt_spil()
+    } else if tilstand == "spil" and not pause {
+        t += dt
+        opdater(dt)
+    } else {
+        t += dt
+    }
+    # bobler og point-tekster lever videre i alle tilstande
+    if random(6) == 0 { bobler.push([random(W), BUND - 10, 2 + random(4)]) }
+    let nb = []
+    for b in bobler {
+        b[1] -= 50 * dt
+        if b[1] > VAND + 4 { nb.push(b) }
+    }
+    bobler = nb
+    let np = []
+    for p in pops {
+        p["y"] -= 40 * dt
+        p["t"] -= dt
+        if p["t"] > 0 { np.push(p) }
+    }
+    pops = np
+
+    tegn_alt()
+    if tilstand == "start" {
+        boks(210, 250)
+        midt(240, "FISH OUT", "#ffc93c", 5)
+        midt(320, "Fang så mange fisk du kan på 60 sekunder!", "#ffffff", 1)
+        midt(346, "Piletaster sejler · mellemrum sænker og hiver krogen", "#bfe6ff", 1)
+        midt(372, "Guldfisk +100 · støvle -50", "#ffd84a", 1)
+        midt(412, "Tryk ENTER", "#7dff7a", 2)
+    } else if tilstand == "slut" {
+        boks(220, 220)
+        midt(244, "TIDEN ER GÅET!", "#ffc93c", 3)
+        midt(300, "Score: {score}", "#ffffff", 3)
+        if ny_rekord { midt(350, "NY REKORD!", "#7dff7a", 2) } else { midt(350, "Rekord: {rekord}", "#ffd84a", 2) }
+        midt(400, "ENTER for at fiske igen", "#bfe6ff", 1)
+    } else if pause {
+        boks(260, 100)
+        midt(296, "PAUSE", "#ffffff", 3)
+    }
+    if skud != "" {
+        skud_n += 1
+        if skud_n == 90 {
+            screenshot(skud)
+            break
+        }
+    }
+}

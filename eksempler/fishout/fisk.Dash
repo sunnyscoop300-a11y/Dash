@@ -1,0 +1,110 @@
+# fishout/fisk.Dash — fiskene, guldfisken og støvlen i FISH OUT 🐟
+# Del af FISH OUT (eksempler/fishout.Dash).
+
+let LILLE = [
+    "....ddd.....",
+    "d..bbbbbbb..",
+    "dd.bbdbdbbbb",
+    "ddbbbdbdbbob",
+    "dd.lllllllll",
+    "d...lllllll.",
+]
+let STOR = [
+    ".......dddd.......",
+    "d....bbbbbbbbbb...",
+    "dd..bbbdbbdbbbbbb.",
+    "ddbbbbbdbbdbbbbobb",
+    "ddbbbbbdbbdbbbbbbb",
+    "dd..lllllllllllll.",
+    "d....llllllllllll.",
+    ".......dd...dd....",
+]
+let STØVLE = [
+    "..dddddd..",
+    "..bbbbbb..",
+    "..bdbdbb..",
+    "..bbbbbb..",
+    "..bdbdbb..",
+    "..bbbbbb..",
+    "..bbbbbbbb",
+    "dbbbbbbbbbb",
+    "dddddddddddd",
+]
+
+# farver: krop (b), mørk (d), bug (l), øje (o)
+let FARVER = {
+    "rød": {"b": "#f0603a", "d": "#b8331f", "l": "#ffb08a", "o": "#101010"},
+    "blå": {"b": "#4aa8f0", "d": "#2463b8", "l": "#bfe4ff", "o": "#101010"},
+    "grøn": {"b": "#8cc48a", "d": "#4a8a52", "l": "#d4ecc4", "o": "#101010"},
+    "lilla": {"b": "#a07ae6", "d": "#6a44b0", "l": "#d8c4ff", "o": "#101010"},
+    "guld": {"b": "#ffd23a", "d": "#d08a10", "l": "#fff2a0", "o": "#101010"},
+    "støvle": {"b": "#8a5a32", "d": "#5a3518", "l": "#8a5a32", "o": "#101010"},
+}
+
+# hvilken fisk der svømmer i hvilken dybde (match med intervaller og en vagt)
+fn fisk_type(dybde) {
+    match dybde {
+        _ if random(18) == 0 => { return "guld" }
+        0..80 => { return "rød" }
+        81..150 => { return "blå" }
+        151..220 => { return "grøn" }
+        _ => { return "lilla" }
+    }
+}
+
+fn point(type) {
+    match type {
+        "rød" => { return 10 }
+        "blå" => { return 20 }
+        "grøn" => { return 30 }
+        "lilla" => { return 50 }
+        "guld" => { return 100 }
+        "støvle" => { return -50 }
+        _ => { return 0 }
+    }
+}
+
+fn fart(type) {
+    match type {
+        "guld" => { return 190 }
+        "rød", "blå" => { return 110 }
+        _ => { return 70 }
+    }
+}
+
+fn form(type) {
+    match type {
+        "grøn", "lilla" => { return STOR }
+        "støvle" => { return STØVLE }
+        _ => { return LILLE }
+    }
+}
+
+fn ny_fisk() {
+    let y = VAND + 50 + random(BUND - VAND - 110)
+    let type = fisk_type(y - VAND - 50)
+    let højre = random(2) == 0
+    let f = {"type": type, "y": y, "v": fart(type) + random(40), "højre": højre, "x": 0, "b": form(type)[0].len * S, "h": form(type).len * S}
+    if højre { f["x"] = -f["b"] - random(200) } else { f["x"] = W + random(200) }
+    return f
+}
+
+fn tegn_fisk(f, t) {
+    let bob = int(sin(t * 4 + f["y"]) * 3)
+    sprite(form(f["type"]), f["x"], f["y"] + bob, S, FARVER[f["type"]], not f["højre"])
+    if f["type"] == "guld" {
+        # glimmer
+        let k = 0
+        while k < 3 {
+            let gx = f["x"] + 6 + ((int(t * 7) + k * 13) % 5) * 9
+            let gy = f["y"] - 10 + ((int(t * 5) + k * 7) % 3) * 12
+            rect(gx, gy, 4, 12, "#fff6a0")
+            rect(gx - 4, gy + 4, 12, 4, "#fff6a0")
+            k += 1
+        }
+    }
+}
+
+fn tegn_støvle(x, y) {
+    sprite(STØVLE, x, y, S + 1, FARVER["støvle"], false)
+}

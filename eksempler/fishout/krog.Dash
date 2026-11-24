@@ -1,0 +1,39 @@
+# fishout/krog.Dash — båden, fiskeren og krogen i FISH OUT 🛶
+# Del af FISH OUT (eksempler/fishout.Dash).
+
+let BÅD_B = 150
+
+fn tegn_båd(x, t) {
+    let y = VAND - 30 + int(sin(t * 2) * 2)
+    # fiskeren
+    rect(x + 66, y - 40, 24, 24, "#f2c08a")          # hoved
+    rect(x + 58, y - 48, 40, 10, "#c8964a")          # hat
+    rect(x + 66, y - 56, 24, 10, "#c8964a")
+    rect(x + 72, y - 32, 4, 4, "#101010")            # øje
+    rect(x + 62, y - 16, 32, 20, "#d83a3a")          # trøje
+    # stangen
+    line(x + 92, y - 10, x + 148, y - 64, "#5a3518")
+    line(x + 93, y - 10, x + 149, y - 64, "#5a3518")
+    # båden
+    polygon([[x, y], [x + BÅD_B, y], [x + BÅD_B - 16, y + 30], [x + 16, y + 30]], "#9a5a2a")
+    rect(x, y, BÅD_B, 6, "#c07a3a")
+    rect(x + 20, y + 14, BÅD_B - 40, 3, "#7a4420")
+    # redningskrans
+    circle(x + 40, y + 16, 11, "#ffffff")
+    circle(x + 40, y + 16, 5, "#9a5a2a")
+    rect(x + 29, y + 14, 6, 5, "#e03030")
+    rect(x + 45, y + 14, 6, 5, "#e03030")
+}
+
+fn stang_spids(x) {
+    return [x + 149, VAND - 94]
+}
+
+fn tegn_krog(x, y, fangst) {
+    let sp = stang_spids(x)
+    line(sp[0], sp[1], x + 149, y, "#ffffff")
+    # selve krogen
+    rect(x + 147, y, 4, 16, "#c8d0dc")
+    rect(x + 139, y + 12, 12, 4, "#c8d0dc")
+    rect(x + 139, y + 4, 4, 10, "#c8d0dc")
+}

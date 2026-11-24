@@ -1,0 +1,128 @@
+# fishout/tegn.Dash — himmel, vand, havbund og pixel-tegning til FISH OUT 🎣
+# Del af FISH OUT (eksempler/fishout.Dash).
+
+let W = 960
+let H = 640
+let HUD = 60          # højden på bjælken øverst
+let VAND = 180        # vandoverfladen
+let BUND = 560        # havbunden (sandet starter her)
+let FOD = 600         # bjælken nederst
+let S = 4             # én pixel i pixel-tegningerne = 4×4 skærmpixels
+
+# tegn en pixel-figur: rækker af tegn, hvert tegn slås op i farverne
+# (vendt = spejlvendt, så fisken svømmer mod venstre)
+fn sprite(rækker, x, y, s, farver, vendt) {
+    let ry = 0
+    for r in rækker {
+        let n = r.len
+        let cx = 0
+        for c in r {
+            if c != "." {
+                let kx = cx
+                if vendt { kx = n - 1 - cx }
+                rect(x + kx * s, y + ry * s, s, s, farver[c])
+            }
+            cx += 1
+        }
+        ry += 1
+    }
+}
+
+fn sky(x, y, s) {
+    rect(x + 2 * s, y, 6 * s, s, "#ffffff")
+    rect(x, y + s, 12 * s, 2 * s, "#ffffff")
+    rect(x - s, y + 3 * s, 15 * s, s, "#dfefff")
+}
+
+fn ø(x, b, h) {
+    # en grøn ø i horisonten: lag af firkanter, smallere opad
+    let lag = 0
+    while lag * S < h {
+        let ind = lag * 2 * S
+        let farve = "#2f8a3c"
+        if lag % 2 == 1 { farve = "#3fa04a" }
+        rect(x + ind, VAND - (lag + 1) * S, b - 2 * ind, S, farve)
+        lag += 1
+    }
+}
+
+fn baggrund(t) {
+    # himmel
+    rect(0, HUD, W, VAND - HUD, "#5ec4ff")
+    rect(0, HUD, W, 30, "#4ab6f8")
+    sky(170 + int(t * 6) % 40, 92, S)
+    sky(520 - int(t * 4) % 30, 80, S)
+    sky(780 + int(t * 5) % 35, 104, S)
+    ø(0, 200, 40)
+    ø(W - 220, 220, 44)
+    # vand: lysere oppe, mørkere nede
+    let y = VAND
+    let trin = 0
+    let farver = ["#1f8ee0", "#1a7fd4", "#1871c4", "#1664b4", "#1458a4", "#124c94", "#104286"]
+    while y < BUND {
+        rect(0, y, W, 60, farver[min(trin, farver.len - 1)])
+        y += 60
+        trin += 1
+    }
+    # lysstråler
+    for sx in [140, 420, 700] {
+        let dx = int(sin(t * 0.7 + sx) * 12)
+        polygon([[sx + dx, VAND], [sx + 60 + dx, VAND], [sx + 140 + dx, BUND - 120], [sx + 90 + dx, BUND - 120]], "#ffffff10")
+    }
+    # bølger på overfladen
+    let bx = 0
+    while bx < W {
+        let by = VAND - 4 + int(sin(t * 3 + bx * 0.05) * 3)
+        rect(bx, by, 16, 4, "#ffffff")
+        rect(bx + 4, by + 4, 12, 4, "#bfe6ff")
+        bx += 24
+    }
+}
+
+fn havbund(t) {
+    # tang, sten og sand
+    for tx in [30, 70, 230, 540, 590, 880, 920] {
+        let k = 0
+        while k < 7 {
+            let sv = int(sin(t * 2 + tx + k * 0.8) * 5)
+            rect(tx + sv, BUND - 16 - k * 14, 8, 16, "#3cb04a")
+            rect(tx + sv + 8, BUND - 10 - k * 14, 4, 8, "#62d06a")
+            k += 1
+        }
+    }
+    for st in [[80, 70], [330, 50], [640, 60], [820, 80]] {
+        round_rect(st[0], BUND - 26, st[1], 34, 14, "#5b6272")
+        round_rect(st[0] + 8, BUND - 22, st[1] - 24, 10, 5, "#7c8494")
+    }
+    rect(0, BUND, W, FOD - BUND, "#e9cf8f")
+    let sx = 8
+    while sx < W {
+        rect(sx, BUND + 10 + (sx * 7) % 20, 4, 4, "#cfae66")
+        sx += 37
+    }
+}
+
+fn hud(score, tid, rekord) {
+    rect(0, 0, W, HUD, "#0d2a5c")
+    rect(0, HUD - 4, W, 4, "#1a4fa0")
+    text(18, 12, "FISH", "#ffc93c", 3)
+    text(18 + text_width("FISH ", 3), 12, "OUT", "#ffffff", 3)
+    let felter = [["SCORE", "{score}", "#ffd84a"], ["TID", "{tid}", "#7dff7a"], ["REKORD", "{rekord}", "#ffd84a"]]
+    let x = 270
+    for f in felter {
+        round_rect(x, 10, 210, 40, 10, "#14396f")
+        outline(x, 10, 210, 40, "#5fc8ff")
+        text(x + 14, 22, f[0] + ":", "#ffffff", 2)
+        text(x + 200 - text_width(f[1], 2), 22, f[1], f[2], 2)
+        x += 228
+    }
+}
+
+fn fod() {
+    rect(0, FOD, W, H - FOD, "#0d2a5c")
+    let t = "Powered by Dash 0.16 — Zabuton"
+    let b = text_width(t, 2)
+    rect(40, FOD + 18, (W - b) / 2 - 60, 3, "#2a7fe0")
+    rect((W + b) / 2 + 20, FOD + 18, (W - b) / 2 - 60, 3, "#2a7fe0")
+    text((W - b) / 2, FOD + 6, t, "#ffffff", 2)
+}

@@ -439,6 +439,12 @@ dsh eksempler/nonbiri.Dash ~/Musik
 halstørklæde skubber kasser hen på pote-felterne på lageret. 16 baner i tre
 lagerhaller (alle tjekket løsbare), fortryd, rekorder, lyd og touch.
 
+**Eksempel:** `eksempler/fishout.Dash` — *FISH OUT* 🎣, et lille pixel-fiskespil:
+sejl båden, sænk krogen og fang så mange fisk du kan på 60 sekunder. Guldfisk giver
+100, støvler trækker fra. Det er også en test af det nye i Dash: modulerne i
+`eksempler/fishout/` hentes med `sprint`, og fiskene vælges med `match`-intervaller
+og en vagt for den sjældne guldfisk.
+
 **Eksempel:** `eksempler/zuzubox.Dash` — *ZuzuBox* 💀📦, zombiepigen Zuzu
 skubber kasser hen på de grønne kranier i en lilla krypt. 55 baner i ti krypter,
 to af dem med gargoiler der står i vejen. Grafikken er klippet ud af mockuppen
