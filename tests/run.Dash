@@ -214,6 +214,12 @@ write("{tmpd}/fejl.Dash", kode(['import "lib/mat"', 'print(del(1, 0))', '']))
 har($(try $D "{tmpd}/fejl.Dash" 2>&1), "lib/mat.Dash:6: division med nul", "import: fejl i den importerede fil")
 write("{tmpd}/mangler.Dash", 'import "lib/findes-ikke"' + "\n")
 har($(try $D check "{tmpd}/mangler.Dash" 2>&1), "kan ikke finde 'lib/findes-ikke'", "import: mangler")
+if HARE {
+    # kan Violet ikke oversætte, skal dsh stadig indlæse de importerede filer
+    write("{tmpd}/lib/halv.Dash", kode(['let fast_boot = false', 'fn g() { return findes_ikke }', '']))
+    write("{tmpd}/halv.Dash", kode(['import "lib/halv"', 'fast_boot = true', 'print(fast_boot)', '']))
+    tjek($(try $D run "{tmpd}/halv.Dash" 2> /dev/null), "true", "violet run: import virker også når dsh tager over")
+}
 rm -rf $tmpd
 
 # ── dsh check: den ødelagte fil skal give præcis disse fejl og forslag ──

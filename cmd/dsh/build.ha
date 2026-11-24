@@ -46,6 +46,9 @@ fn try_compile(path: str) (str | void) = {
 	script_src = read_script(path);
 	const prog = parse_script(script_src);
 	const code = compile_program(prog, path, script_src);
+	// glem de importerede filer igen: går vi videre til fortolkeren, skal
+	// den indlæse dem selv (ellers springer den dem over som "kendte")
+	delete(kilder[..]);
 	if (len(cerrs) > 0) return;
 	return code;
 };
