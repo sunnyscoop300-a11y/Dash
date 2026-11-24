@@ -221,6 +221,21 @@ export fn present(win: *window) void = {
 	};
 };
 
+// Full screen on or off. The canvas keeps its size and is scaled up to fill
+// the screen (with black bars if the shape differs). Returns false when the
+// backend can't do it yet (only SDL2 can for now).
+export fn set_fullscreen(win: *window, on: bool) bool = match (win.be) {
+case let be: *sdl_backend => yield sdl_fullscreen(be, on);
+case => yield false;
+};
+
+// Makes the window w×h on screen (the canvas is scaled to fit). Returns
+// false when the backend can't do it yet (only SDL2 can for now).
+export fn set_window_size(win: *window, w: int, h: int) bool = match (win.be) {
+case let be: *sdl_backend => yield sdl_size(be, w, h);
+case => yield false;
+};
+
 // Adds UTF-8 text to what [[typed]] returns next frame (used by backends).
 fn add_typed(win: *window, s: []u8) void = {
 	for (let b .. s) {

@@ -52,8 +52,7 @@ tjek(kør(kode(['let f = "/tmp/dsh test fil"', 'echo med mellemrum > $f', 'cat $
     "med mellemrum", "mellemrum i filnavne")
 tjek(kør(kode(['try false', 'echo $status'])), "1", "try + status")
 tjek(kør(kode(['let l = ["a", "b"]', 'echo $l'])), "a b", "liste bliver til argumenter")
-tjek(kør(kode(['for i in range(4) parallel 4 { true }', 'echo ok'])), "ok", "parallel")
-
+tjek($(try $D -e "for i in range(4) parallel 4 \{ true }\necho ok" 2> /dev/null), "ok", "parallel")
 # ── 0.14: 2>&1, &> og jobs med &( ) / wait() / running() ──
 tjek(kør(kode(['try ls /findesikke > /tmp/dsh-2.txt 2>&1',
     'print(read("/tmp/dsh-2.txt").contains("findesikke"))'])), "true", "2>&1")

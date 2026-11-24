@@ -11,6 +11,8 @@ type sdl_surface = opaque;
 def SDL_INIT_VIDEO: u32 = 0x00000020;
 def SDL_WINDOWPOS_CENTERED: int = 0x2FFF0000;
 def SDL_WINDOW_SHOWN: u32 = 0x00000004;
+def SDL_WINDOW_RESIZABLE: u32 = 0x00000020;
+def SDL_WINDOW_FULLSCREEN_DESKTOP: u32 = 0x00001001;
 def SDL_RENDERER_ACCELERATED: u32 = 0x00000002;
 def SDL_RENDERER_PRESENTVSYNC: u32 = 0x00000004;
 def SDL_PIXELFORMAT_ARGB8888: u32 = 0x16362004;
@@ -70,6 +72,15 @@ type sdl_event = [7]u64;
 @symbol("SDL_FreeSurface") fn sdl_freesurface(s: *sdl_surface) void;
 @symbol("SDL_SetWindowIcon") fn sdl_setwindowicon(w: *sdl_window, icon: *sdl_surface) void;
 @symbol("SDL_StartTextInput") fn sdl_starttextinput() void;
+@symbol("SDL_SetWindowFullscreen") fn sdl_setwindowfullscreen(w: *sdl_window, flags: u32) int;
+@symbol("SDL_SetWindowSize") fn sdl_setwindowsize(w: *sdl_window, width: int, height: int) void;
+@symbol("SDL_SetWindowPosition") fn sdl_setwindowposition(w: *sdl_window, x: int, y: int) void;
+@symbol("SDL_RenderSetLogicalSize") fn sdl_rendersetlogicalsize(r: *sdl_renderer, w: int, h: int) int;
+@symbol("SDL_RenderWindowToLogical") fn sdl_renderwindowtological(r: *sdl_renderer,
+	wx: int, wy: int, lx: *f32, ly: *f32) void;
+@symbol("SDL_SetRenderDrawColor") fn sdl_setrenderdrawcolor(r: *sdl_renderer,
+	red: u8, green: u8, blue: u8, alpha: u8) int;
+@symbol("SDL_RenderClear") fn sdl_renderclear(r: *sdl_renderer) int;
 
 fn sdl_err() str = c::tostr_unsafe(sdl_geterror());
 
@@ -89,7 +100,7 @@ fn sdl_open(title: str, width: int, height: int) (*sdl_backend | error | nomem) 
 
 	const sdlwin = match (sdl_createwindow(ctitle,
 		SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-		width, height, SDL_WINDOW_SHOWN)) {
+		width, height, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE)) {
 	case null =>
 		return sdl_err(): error;
 	case let w: *sdl_window =>
@@ -115,6 +126,9 @@ fn sdl_open(title: str, width: int, height: int) (*sdl_backend | error | nomem) 
 	case let t: *sdl_texture =>
 		yield t;
 	};
+	// the canvas keeps its size; a bigger window (or full screen) scales it
+	// up with black bars, and the mouse is mapped back (see sdl_poll)
+	sdl_rendersetlogicalsize(ren, width, height);
 	sdl_starttextinput();
 	return alloc(sdl_backend { win = sdlwin, ren = ren, tex = tex })?;
 };
@@ -203,13 +217,17 @@ fn sdl_poll(win: *window, be: *sdl_backend) bool = {
 	win.buttons = (if (buttons & 1 != 0) LEFT_BUTTON else 0u8) |
 		(if (buttons & 4 != 0) RIGHT_BUTTON else 0u8) |
 		(if (buttons & 2 != 0) MIDDLE_BUTTON else 0u8);
-	win.mouse_x = mx;
-	win.mouse_y = my;
+	let lx = 0.0f32, ly = 0.0f32;
+	sdl_renderwindowtological(be.ren, mx, my, &lx, &ly);
+	win.mouse_x = lx: int;
+	win.mouse_y = ly: int;
 	return true;
 };
 
 fn sdl_present(win: *window, be: *sdl_backend) void = {
 	sdl_updatetexture(be.tex, null, &win.pixels[0]: *opaque, win.width * 4);
+	sdl_setrenderdrawcolor(be.ren, 0, 0, 0, 255);
+	sdl_renderclear(be.ren);
 	sdl_rendercopy(be.ren, be.tex, null, null);
 	sdl_renderpresent(be.ren);
 };
@@ -226,4 +244,14 @@ fn sdl_icon(be: *sdl_backend, img: *image) void = {
 
 fn sdl_cursor(be: *sdl_backend, on: bool) void = {
 	sdl_showcursor(if (on) 1 else 0);
+};
+
+fn sdl_fullscreen(be: *sdl_backend, on: bool) bool =
+	sdl_setwindowfullscreen(be.win, if (on) SDL_WINDOW_FULLSCREEN_DESKTOP else 0) == 0;
+
+fn sdl_size(be: *sdl_backend, w: int, h: int) bool = {
+	sdl_setwindowfullscreen(be.win, 0);
+	sdl_setwindowsize(be.win, w, h);
+	sdl_setwindowposition(be.win, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+	return true;
 };

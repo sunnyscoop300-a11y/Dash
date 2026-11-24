@@ -13,3 +13,5 @@ fn sdl_poll(win: *window, be: *sdl_backend) bool = false;
 fn sdl_present(win: *window, be: *sdl_backend) void = void;
 fn sdl_icon(be: *sdl_backend, img: *image) void = void;
 fn sdl_cursor(be: *sdl_backend, on: bool) void = void;
+fn sdl_fullscreen(be: *sdl_backend, on: bool) bool = false;
+fn sdl_size(be: *sdl_backend, w: int, h: int) bool = false;
