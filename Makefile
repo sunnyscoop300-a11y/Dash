@@ -11,15 +11,16 @@ else
 JJFLAGS = -lSDL2
 endif
 
-dsh-hare: cmd/dsh/*.ha cmd/dsh/*.s viper/*.ha tools/embed.sh
-	@sh tools/embed.sh
+# tools/embed (Hare) lægger runtime'en ind i cmd/dsh/rtsrc.ha til Violet
+dsh-hare: cmd/dsh/*.ha cmd/dsh/*.s viper/*.ha tools/embed/main.ha
+	@$(HARE) run tools/embed/
 	$(HARE) build -lc $(JJFLAGS) -o $@ cmd/dsh/
 
 test: dsh-hare
-	./tests/run.sh
+	./dsh-hare tests/run.Dash
 
 bench: dsh-hare
-	./bench.sh
+	./dsh-hare bench.Dash
 
 install: dsh-hare
 	install -Dm755 dsh-hare $(HOME)/.local/bin/dsh-hare

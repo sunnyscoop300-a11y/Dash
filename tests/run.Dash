@@ -1,0 +1,290 @@
+#!/usr/bin/env dsh
+# Kører testene mod ./dsh-hare. Brug: make test   (fra repoets rod)
+#
+# Før var det et sh-script — nu tester Dash sig selv. Testkode skrives som
+# lister af rå strenge ('…'), så {…} og $ ikke bliver læst af testen selv.
+
+let ok = 0
+let bad = 0
+let D = "./dsh-hare"
+let HARE = which("hare") != nil
+
+fn bestået() { ok += 1 }
+fn dumpet(navn) {
+    bad += 1
+    print("✘ {navn}")
+}
+
+# fik == forventet?
+fn tjek(fik, vil, navn) {
+    if fik == vil {
+        ok += 1
+        return nil
+    }
+    bad += 1
+    print("✘ {navn}")
+    print("   forventede: {vil}")
+    print("   fik:        {fik}")
+}
+
+# indeholder teksten det, vi leder efter?
+fn har(tekst, del, navn) {
+    if tekst.contains(del) { bestået() } else { dumpet(navn) }
+}
+
+fn kode(linjer) { return linjer.join("\n") }
+
+# kør et stykke Dash med -e: kun stdout, eller stdout + stderr
+fn kør(k) { return $(try $D -e $k) }
+fn kør2(k) { return $(try $D -e $k 2>&1) }
+
+fn linjer_med(tekst, del) {
+    let n = 0
+    for l in tekst.lines() { if l.contains(del) { n += 1 } }
+    return n
+}
+
+# ── grundlæggende ──
+tjek(kør('echo "hej {1 + 2}"'), "hej 3", "interpolation")
+tjek(kør(kode(['let s = 0', 'for i in range(1, 11) { s += i }', 'echo $s'])), "55", "for + range")
+tjek(kør(kode(['let x = $(echo hej | tr a-z A-Z)', 'echo $x'])), "HEJ", "capture + pipe")
+tjek(kør(kode(['let f = "/tmp/dsh test fil"', 'echo med mellemrum > $f', 'cat $f', 'rm $f'])),
+    "med mellemrum", "mellemrum i filnavne")
+tjek(kør(kode(['try false', 'echo $status'])), "1", "try + status")
+tjek(kør(kode(['let l = ["a", "b"]', 'echo $l'])), "a b", "liste bliver til argumenter")
+tjek(kør(kode(['for i in range(4) parallel 4 { true }', 'echo ok'])), "ok", "parallel")
+
+# ── 0.14: 2>&1, &> og jobs med &( ) / wait() / running() ──
+tjek(kør(kode(['try ls /findesikke > /tmp/dsh-2.txt 2>&1',
+    'print(read("/tmp/dsh-2.txt").contains("findesikke"))'])), "true", "2>&1")
+tjek(kør(kode(['try ls /findesikke &> /tmp/dsh-2.txt', 'try ls /heller_ikke &>> /tmp/dsh-2.txt',
+    'print(read("/tmp/dsh-2.txt").lines().len)'])), "2", "&> og &>>")
+rm -f /tmp/dsh-2.txt
+tjek(kør(kode(['let j = &(sleep 0.3)', 'let n = 0', 'while running(j) {', '  n += 1', '  sleep(0.05)', '}',
+    'print(wait(j), n > 2)'])), "0 true", "job: running() og wait()")
+tjek(kør(kode(['let j = &(ls /findesikke)', 'print(wait(j), status)'])), "2 2", "job: exitkode")
+tjek(kør(kode(['let j = &(sleep 5)', 'kill(j)', 'print(wait(j))'])), "143", "job: kill()")
+tjek(kør(kode(['let u = $(try ls /findesikke 2>&1)', 'print(status, u.contains("findesikke"))'])),
+    "2 true", '$(try …)')
+write("/tmp/dsh-w.Dash", kode(['sh -c "echo hej"', 'sh -c "echo ok"  # sh-ok', '']))
+tjek(linjer_med($(try $D check /tmp/dsh-w.Dash), "⚠"), 1, "check: advarsel ved sh -c")
+rm -f /tmp/dsh-w.Dash
+
+# ── det her skal fejle ──
+for c in ['false', 'findesikke', 'echo $nope', 'x = 1', 'fail "stop"', 'let a = 1 / 0'] {
+    try $D -e $c > /dev/null 2>&1
+    if status != 0 { bestået() } else { dumpet("skulle fejle: {c}") }
+}
+try $D tests/basis.Dash > /dev/null 2>&1
+if status == 0 { bestået() } else { dumpet("tests/basis.Dash") }
+rm -f /tmp/ap.txt
+tjek($(try $D tests/features.Dash 2>&1), read("tests/features.forventet").trim(),
+    "tests/features.Dash (se diff med tests/features.forventet)")
+
+# ── 0.9.3: is_dir/is_file følger symlinks ──
+rm -rf /tmp/dsh-st
+mkdir -p /tmp/dsh-st/rigtig
+ln -s rigtig /tmp/dsh-st/link
+touch /tmp/dsh-st/fil
+ln -s fil /tmp/dsh-st/fillink
+tjek(kør('print(is_dir("/tmp/dsh-st/link"), is_file("/tmp/dsh-st/fillink"), is_dir("/tmp/dsh-st/fillink"))'),
+    "true true false", "is_dir/is_file følger symlinks")
+rm -rf /tmp/dsh-st
+
+# ── 0.6: Violet trin 1 — type-inferens ──
+write("/tmp/violet-test.Dash", kode(['let n = 0', 'let navn = "x"', 'let l = []', 'l.push(1.5)',
+    'fn dobbelt(x) { return x * 2 }', 'let d = dobbelt(n)', 'let h = 7 / 2', '']))
+let vt = $(try $D types /tmp/violet-test.Dash)
+fn type_linje(navn, typ) {
+    for l in vt.lines() {
+        let ord = l.split()
+        if ord.len >= 3 and ord[1] == navn and ord[ord.len - 1] == typ { return true }
+    }
+    return false
+}
+tjek(type_linje("n", "int") and vt.contains("✔ n"), true, "violet: int")
+tjek(type_linje("navn", "str"), true, "violet: str")
+tjek(type_linje("l", "list[float]"), true, "violet: list fra push")
+tjek(vt.contains("fn dobbelt(x: int) → int"), true, "violet: fn-typer fra kald")
+tjek(vt.contains("~ h") and type_linje("h", "num"), true, "violet: 7 / 2 er int eller float")
+ln -sf "{cwd()}/dsh-hare" /tmp/violet
+tjek(linjer_med($(try /tmp/violet types tests/basis.Dash), "variabler har"), 1, "violet-navnet")
+rm -f /tmp/violet-test.Dash /tmp/violet
+
+# ── 0.7: Violet trin 2 — native binærer (kun hvis hare findes) ──
+if HARE {
+    write("/tmp/violet-b.Dash", kode(['let s = 0', 'for i in range(1, 11) { s += i }', 'echo "sum: $s"',
+        'fn fib(n) {', '  if n < 2 { return n }', '  return fib(n - 1) + fib(n - 2)', '}',
+        'print(fib(15), 7 / 2, 6 / 3)', 'let l = []', 'for x in ["a", "b"] { l.push(x.upper()) }',
+        'echo "{l.join("-")} $(echo hej | tr a-z A-Z)"', 'try false', 'echo "status {status}"',
+        'let m = {"a": 1}', 'm.b = 2', 'print(m, m.len, args)', '']))
+    try $D build /tmp/violet-b.Dash -o /tmp/violet-b > /dev/null 2>&1
+    tjek($(try /tmp/violet-b x y 2>&1), $(try $D /tmp/violet-b.Dash x y 2>&1), "violet build: samme output som dsh")
+    try $D build tests/basis.Dash -o /tmp/violet-basis > /dev/null 2>&1
+    tjek($(try env DSH_QUIET=1 /tmp/violet-basis 2>&1).lines().sort(),
+        $(try env DSH_QUIET=1 $D tests/basis.Dash 2>&1).lines().sort(), "violet build: basis.Dash")
+    write("/tmp/violet-f.Dash", "let x = 1 / 0\n")
+    try $D build /tmp/violet-f.Dash -o /tmp/violet-f > /dev/null 2>&1
+    har($(try /tmp/violet-f 2>&1), "division med nul", "violet build: fejlbesked")
+    try $D build /tmp/violet-f.Dash -o /tmp/violet-s --strip > /dev/null 2>&1
+    har($(try /tmp/violet-s 2>&1), "division med nul", "violet build --strip")
+    rm -f /tmp/violet-b /tmp/violet-b.Dash /tmp/violet-basis /tmp/violet-f /tmp/violet-f.Dash /tmp/violet-s
+}
+
+# ── 0.8: violet run (cache) og --arch ──
+if HARE {
+    let cache = "/tmp/violet-cache-test"
+    rm -rf $cache
+    write("/tmp/violet-r.Dash", kode(['let s = 0', 'for i in range(100) { s += i }', 'print(s, args)', '']))
+    ln -sf "{cwd()}/dsh-hare" /tmp/violet
+    tjek($(try env XDG_CACHE_HOME=$cache /tmp/violet run /tmp/violet-r.Dash a 2> /dev/null), '4950 ["a"]',
+        "violet run: første gang (bygger)")
+    tjek(glob("{cache}/violet/violet-r.Dash-*").len, 1, "violet run: binær i cachen")
+    tjek($(try env XDG_CACHE_HOME=$cache /tmp/violet run /tmp/violet-r.Dash b), '4950 ["b"]', "violet run: fra cachen")
+    rm -f /tmp/ap.txt
+    let a = $(try env XDG_CACHE_HOME=$cache /tmp/violet run tests/features.Dash 2> /dev/null)
+    rm -f /tmp/ap.txt
+    let b = $(try $D tests/features.Dash 2> /dev/null)
+    rm -f /tmp/ap.txt
+    tjek(a, b, "violet run: falder tilbage til dsh")
+    rm -rf $cache /tmp/violet-r.Dash /tmp/violet
+    if which("aarch64-linux-gnu-gcc") != nil and which("qemu-aarch64-static") != nil {
+        write("/tmp/violet-a.Dash", kode(['let s = 0', 'for i in range(100) { s += i }', 'echo "arm: $s"', '']))
+        try $D build /tmp/violet-a.Dash --arch aarch64 -o /tmp/violet-a > /dev/null 2>&1
+        tjek($(try qemu-aarch64-static /tmp/violet-a), "arm: 4950", "violet --arch aarch64 (qemu)")
+        # android: uden libc; i qemu bruges glibc's loader i stedet for linker64
+        try env VIOLET_INTERP=/lib/ld-linux-aarch64.so.1 $D build /tmp/violet-a.Dash --arch android -o /tmp/violet-a > /dev/null 2>&1
+        tjek($(try qemu-aarch64-static -L /usr/aarch64-linux-gnu /tmp/violet-a), "arm: 4950", "violet --arch android (qemu)")
+        rm -f /tmp/violet-a /tmp/violet-a.Dash
+    }
+}
+
+# ── v0.5: & (baggrund), ask, menu, progress ──
+let t0 = now()
+tjek(kør(kode(['sleep 2 &', 'echo straks'])), "straks", "& kører i baggrunden")
+if now() - t0 < 1 { bestået() } else { dumpet("& ventede på sleep") }
+tjek(kør2(kode(['sh -c "echo støj; echo fejl >&2" &', 'sleep 0.2', 'echo stille'])), "stille", "& skjuler output")
+tjek($(try printf "j\n" | $D -e 'print(ask("ok?"))').ends_with("true"), true, "ask ja")
+tjek($(try printf "\n" | $D -e 'print(ask("ok?", true))').ends_with("true"), true, "ask standard ja")
+tjek($(try printf "7\n2\n" | $D -e 'print(menu(["a", "b"]))').ends_with("b"), true, "menu")
+tjek(kør('progress(50, "x")'), "  ██████████░░░░░░░░░░  50%  x", "progress")
+tjek(kør(kode(['try findesikke', 'echo $status'])), "127", "try fanger manglende kommando")
+
+# ── Parr: formatering og udskrift ──
+tjek(kør('parr.ln("a", 1, 2.5, true, [1, 2])'), "a 1 2.5 true [1, 2]", "parr.ln")
+tjek($(try $D -e 'parr.err("ups", 7)' 2> /dev/null), "", "parr.err skriver ikke til stdout")
+tjek(kør2('parr.err("ups", 7)'), "ups 7", "parr.err til stderr")
+tjek(kør(kode(['let n = "Bo"', 'let p = 12.5', 'echo "[{n:<6}|{p:>8.2}|{n:^6}]"'])),
+    "[Bo    |   12.50|  Bo  ]", '{x:spec} justering og decimaler')
+tjek(kør('echo "{255:x} {255:X} {5:03} {7:b} {8:o} {-5:05} {3:+}"'),
+    "ff FF 005 111 10 -0005 +3", '{x:spec} hex/bin/oct/nuller/fortegn')
+tjek(kør('echo "{1234567:,} {1234.5:,.2} {0.38:%} {0.3851:.1%} {"Katcha":.3}"'),
+    "1,234,567 1,234.50 38% 38.5% Kat", '{x:spec} tusinder/procent/tekst')
+tjek(kør(kode(['let m = {"a": 1}', 'echo "{m.a}: { {"b": 2}.b }"'])), "1: 2", "kolon uden spec er bare tekst")
+tjek(kør('print(parr.fmt(3.14159, ".3"))'), "3.142", "parr.fmt")
+tjek(kør('parr.tabel([["Navn", "Pris"], ["Hirdi", 12.5], ["Ællingen", 1000]])'),
+    kode(["Navn      Pris", "Hirdi     12.5", "Ællingen  1000"]), "parr.tabel")
+tjek(kør('parr.tabel([["a", "b"], ["ccc", ""]])').lines()[0], "a    b", "parr.tabel uden mellemrum for enden")
+har(kør2('print(parr.fmt(1, "q"))'), "ugyldig format-spec", "parr.fmt ugyldig spec")
+
+# ── match og import (0.15 «Flora») ──
+tjek(kør(kode(['for i in range(5) {', '    match i {', '        0 => continue', '        1, 2 => echo "lille {i}"',
+    '        3 => { let x = i * 10', '            echo "tre {x}" }', '        _ => echo "stor {i}"', '    }', '}'])),
+    kode(["lille 1", "lille 2", "tre 30", "stor 4"]), "match med tal, flere mønstre, blok og _")
+tjek(kør(kode(['let n = "zuzu"', 'match n {', '    "harboiy" => echo "flagermus"', '    "zuzu" => echo "zombie"', '}',
+    'match 9 { 1 => echo "nej" }', 'echo "slut"'])), kode(["zombie", "slut"]), "match med tekst og uden _")
+har(kør2(kode(['match 1 {', '    _ => echo a', '    1 => echo b', '}'])), "'_' skal være den sidste", "match: _ midt i")
+let tmpd = $(mktemp -d)
+mkdir -p "{tmpd}/lib"
+write("{tmpd}/lib/mat.Dash", kode(['let HILSEN = "hej"', 'fn dobbelt(x) {', '    return x * 2', '}',
+    'fn del(a, b) {', '    return a / b', '}', '']))
+write("{tmpd}/hoved.Dash", kode(['import "lib/mat"', 'import "lib/mat.Dash"', 'echo "{HILSEN} {dobbelt(21)}"', '']))
+tjek($(try $D "{tmpd}/hoved.Dash"), "hej 42", "import (og kun én gang)")
+write("{tmpd}/fejl.Dash", kode(['import "lib/mat"', 'print(del(1, 0))', '']))
+har($(try $D "{tmpd}/fejl.Dash" 2>&1), "lib/mat.Dash:6: division med nul", "import: fejl i den importerede fil")
+write("{tmpd}/mangler.Dash", 'import "lib/findes-ikke"' + "\n")
+har($(try $D check "{tmpd}/mangler.Dash" 2>&1), "kan ikke finde 'lib/findes-ikke'", "import: mangler")
+rm -rf $tmpd
+
+# ── dsh check: den ødelagte fil skal give præcis disse fejl og forslag ──
+let ud = $(try $D check tests/ødelagt.Dash 2>&1)
+for vil in ["linje 3: kommandoen '⚡'", "mangler der et # foran", "mangler der et komma i slutningen af linje 11",
+        "mente du 'har_brave'", "er linjen blevet delt", "mente du 'echo'", "mente du 'urls'", "mente du 'len'"] {
+    har(ud, vil, "check mangler: {vil}")
+}
+try $D check tests/basis.Dash > /dev/null 2>&1
+if status == 0 { bestået() } else { dumpet("check fandt fejl i basis.Dash") }
+
+# ── 0.15: bits og bytes ──
+tjek(kør('print(0xff, 0b1010, 0xffff_ffff, 0xf0 & 0x3c, 5 ^ 3, 1 << 31, -16 >> 2, ~0, 7 // 2, -7 // 2)'),
+    "255 10 4294967295 48 6 2147483648 -4 -1 3 -3", "hex, bin og bit-operatorer")
+tjek(kør('print(0x3f & 0x20 == 0x20, 1 + 2 << 3)'), "true 24", "bit-præcedens")
+tjek(kør(kode(['let x = 0x0f', 'x |= 0x30', 'x &= 0x3c', 'x ^= 0xff',
+    'print(x, u32(-1), s32(0xffffffff), s16(0x8000), s8(0xff))'])),
+    "195 4294967295 -1 -32768 -1", "&= |= ^= og u32/s32/s16/s8")
+tjek(kør(kode(['let m = bytes(16)', 'wr32(m, 4, 0xdeadbeef)', 'let n = bytes(8)', 'copy_bytes(n, 0, m, 4, 4)',
+    'fill_bytes(n, 4, 4, 0xaa)', 'write_bytes("/tmp/dsh-b.bin", n)',
+    'print(rd8(m, 4), rd16(m, 4), rd32(m, 4), rd32(read_bytes("/tmp/dsh-b.bin"), 4), read_into(m, 0, "/tmp/dsh-b.bin", 2, 6), rd32(m, 0))'])),
+    "239 48879 3735928559 2863311530 6 2863324845", "byte-buffere")
+rm -f /tmp/dsh-b.bin
+har(kør2('print(rd32(bytes(4), 2))'), "udenfor bufferen", "rd32 udenfor bufferen")
+
+# ── KATCHA: PS1-emulatoren ──
+let K = "eksempler/katcha.Dash"
+let T = "eksempler/katcha/test"
+fn regs(tekst, navne) {
+    # "r3=00000055 r4=…" → kun de registre, vi spørger om, i rækkefølge
+    let ud = []
+    for ord in tekst.split() {
+        for n in navne { if ord.starts_with("{n}=") { ud.push(ord) } }
+    }
+    return ud.join(" ")
+}
+if exists(K) {
+    # CPU-testen (load/branch delay, mult/div, lwl/lwr, syscall) kører som rå BIOS
+    let cpu = $(try $D $K --test "{T}/cpu.bin" 2>&1)
+    for vil in ["r3=00000055", "r12=00000007", "r14=00000003", "r15=0000000b", "r20=fffffffe", "r23=fffffffd",
+            "r26=ffffff80", "r31=55443322", "epc=bfc000ec"] {
+        har(cpu, vil, "katcha CPU: mangler {vil}")
+    }
+    # GTE — RTPT (perspektiv med Sonys division), NCLIP, AVSZ3, FLAG og ORGB
+    let gte = $(try $D $K --test "{T}/gte.bin" 2>&1)
+    for vil in ["r4=008100b3", "r5=0081008c", "r6=006e00a0", "r7=000003e8", "r8=000002e5", "r9=000003e7",
+            "r10=00000000", "r12=000007ff"] {
+        har(gte, vil, "katcha GTE: mangler {vil}")
+    }
+    # timer 2 giver afbrydelse ved målet, også uden nulstilling dér
+    tjek(regs($(try $D $K --test "{T}/timer.bin" 2000000), ["r3"]), "r3=00000003", "katcha: timer-afbrydelse ved mål")
+    # MDEC melder klar/optaget/klar (så spil ikke venter forgæves)
+    tjek(regs($(try $D $K --test "{T}/mdec.bin"), ["r4", "r5", "r6"]), "r4=9000ffff r5=b000000f r6=9000ffff",
+        "katcha: MDEC-status")
+    # hurtig boot finder \KATCHA\TEST.EXE via SYSTEM.CNF på test-skiven (.cue/.bin og .iso)
+    for d in ["cue", "iso"] {
+        tjek(regs($(try $D $K --test "{T}/boot.bin" 1000 "{T}/test.{d}" --hurtig), ["r2", "r3"]),
+            "r2=ca7c4a00 r3=12345678", "katcha: hurtig boot fra test.{d}")
+    }
+    # KATCHA bygget med Violet: VBlank-afbrydelser (i dsh tager det et halvt minut)
+    if HARE {
+        ln -sf "{cwd()}/dsh-hare" /tmp/dsh-test-violet
+        try /tmp/dsh-test-violet $K -o /tmp/dsh-test-katcha > /dev/null 2>&1
+        if status == 0 {
+            let KV = "/tmp/dsh-test-katcha"
+            tjek(regs($(try $KV --test "{T}/irq.bin" 5000000), ["r3"]), "r3=00000005", "katcha: 5 VBlank-afbrydelser (Violet)")
+            for d in ["cue", "iso"] {
+                tjek(regs($(try $KV --test "{T}/cdread.bin" 3000000 "{T}/test.{d}"), ["r4", "r5", "r6"]),
+                    "r4=30304443 r5=80000000 r6=00000001", "katcha: CD-drev Setloc/ReadN/DMA3 ({d})")
+            }
+            tjek(regs($(try $KV --test "{T}/cdplay.bin" 20000000 "{T}/lyd.cue"), ["r4", "r6"]),
+                "r4=00010282 r6=00000002", "katcha: CD-lyd Play + rapport (Violet)")
+            tjek(regs($(try $KV --test "{T}/spu.bin" 3000000), ["r4", "r5"]), "r4=00000001 r5=00000000",
+                "katcha: SPU spiller ADPCM til ende (ENDX)")
+            tjek($(try $KV --test "{T}/cpu.bin"), $(try $D $K --test "{T}/cpu.bin"), "katcha: Violet = dsh")
+        } else {
+            dumpet("violet kunne ikke bygge katcha.Dash")
+        }
+        rm -f /tmp/dsh-test-violet /tmp/dsh-test-katcha
+    }
+}
+
+print("{ok} ok, {bad} fejl")
+if bad > 0 { exit 1 }

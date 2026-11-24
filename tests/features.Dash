@@ -1,4 +1,4 @@
-# (run.sh sletter /tmp/ap.txt før kørslen)
+# (tests/run.Dash sletter /tmp/ap.txt før kørslen)
 fn fib(n) {
     if n < 2 { return n }
     return fib(n - 1) + fib(n - 2)

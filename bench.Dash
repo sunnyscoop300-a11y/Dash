@@ -1,0 +1,83 @@
+#!/usr/bin/env dsh
+# Måler dsh-hare mod sh (og Violet, hvis hare findes). Median af flere kørsler.
+# Brug: make bench   (fra repoets rod)
+#
+# Før var det sh + Python — nu er det Dash. sh er stadig med, men kun som
+# den, der bliver målt imod.
+
+let D = "./dsh-hare"
+let SH = which("dash")
+if SH == nil { SH = "/bin/sh" }
+let HARE = which("hare") != nil
+
+write("/tmp/loop.Dash", "let s = 0\nfor i in range(0, 100000) \{ s += i }\n")
+write("/tmp/loop.sh", 's=0; i=0' + "\n" + 'while [ $i -lt 100000 ]; do s=$((s+i)); i=$((i+1)); done' + "\n")
+write("/tmp/k.Dash", "for i in range(0, 1000) \{ /bin/true }\n")
+write("/tmp/k.sh", 'i=0; while [ $i -lt 1000 ]; do /bin/true; i=$((i+1)); done' + "\n")
+write("/tmp/par.Dash", "for i in range(0, 8) parallel 8 \{ sleep 0.5 }\n")
+write("/tmp/par.sh", "for i in 1 2 3 4 5 6 7 8; do sleep 0.5; done\n")
+write("/tmp/fib.Dash", "fn fib(n) \{\n  if n < 2 \{ return n }\n  return fib(n - 1) + fib(n - 2)\n}\nlet x = fib(24)\n")
+write("/tmp/start.Dash", "let x = 1\n")
+
+# Violet: de samme scripts som native binærer
+if HARE {
+    for f in ["start", "loop", "k", "par", "fib"] {
+        $D build "/tmp/{f}.Dash" -o "/tmp/{f}.violet" > /dev/null
+    }
+}
+
+# hvor lang tid tager én kørsel af kommandoen (i sekunder)?
+fn tid(kald) {
+    let t = now()
+    try $kald > /dev/null 2>&1
+    return now() - t
+}
+
+fn median(l) {
+    let s = l.sort()
+    return s[int(s.len / 2)]
+}
+
+# [navn, sh-kommando (eller nil), dsh-argumenter, violet-navn]
+let tests = [
+    ["opstart", [SH, "-c", ":"], ["-e", "let x = 1"], "start"],
+    ["100.000 regnestykker", [SH, "/tmp/loop.sh"], ["/tmp/loop.Dash"], "loop"],
+    ["fib(24) (rekursion)", nil, ["/tmp/fib.Dash"], "fib"],
+    ["1000 kommandoer", [SH, "/tmp/k.sh"], ["/tmp/k.Dash"], "k"],
+    ["8 × sleep 0.5", [SH, "/tmp/par.sh"], ["/tmp/par.Dash"], "par"],
+]
+
+let kolonner = ["sh", "dsh-hare"]
+if HARE { kolonner.push("violet") }
+let tabel = [[""] + kolonner]
+
+for t in tests {
+    let n = 11
+    if t[0].contains("sleep") { n = 3 }
+    let tider = {"sh": [], "dsh-hare": [], "violet": []}
+    for i in range(n) {
+        if t[1] != nil { tider["sh"].push(tid(t[1])) }
+        tider["dsh-hare"].push(tid([D] + t[2]))
+        if HARE { tider["violet"].push(tid(["/tmp/{t[3]}.violet"])) }
+    }
+    let række = [t[0]]
+    let sh_tid = nil
+    if tider["sh"].len > 0 { sh_tid = median(tider["sh"]) }
+    for k in kolonner {
+        if tider[k].len == 0 {
+            række.push("–")
+            continue
+        }
+        let m = median(tider[k])
+        let lyn = ""
+        if k != "sh" and sh_tid != nil and m < sh_tid { lyn = " ⚡" }
+        række.push("{m * 1000:.1}ms{lyn}")
+    }
+    tabel.push(række)
+}
+
+parr.tabel(tabel)
+print("")
+print("⚡ = hurtigere end sh   violet = samme script som native binær (dsh build)")
+rm -f /tmp/loop.Dash /tmp/loop.sh /tmp/k.Dash /tmp/k.sh /tmp/par.Dash /tmp/par.sh /tmp/fib.Dash /tmp/start.Dash
+rm -f /tmp/start.violet /tmp/loop.violet /tmp/k.violet /tmp/par.violet /tmp/fib.violet
