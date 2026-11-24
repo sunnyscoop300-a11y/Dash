@@ -7,7 +7,7 @@
 #   dsh hent.Dash alle                            alle Originals (til søgning)
 #   dsh hent.Dash covers ønsker.tsv               covers til søgeresultater
 #   dsh hent.Dash serie ID LISTE-URL [side]       en series kapitler
-#   dsh hent.Dash kapitel ID NR VIEWER-URL        et kapitels sider
+#   dsh hent.Dash kapitel ID NR VIEWER-URL [side] et kapitels sider (fra side, 6 ad gangen)
 #
 # Hver .tsv skrives først som .tmp og flyttes på plads til sidst, så
 # WT Mini aldrig læser en halv fil. Første linje er OK eller ERR.
@@ -44,13 +44,13 @@ fn billede(url, png, str) {
     let tmp = png + ".hent"
     if not hent(url, tmp) { return false }
     # skriv til en midlertidig fil og flyt den på plads, når den er færdig,
-    # så WT Mini aldrig åbner en halv PNG
+    # så WT Mini aldrig åbner en halv PNG. PNG24 = altid 8 bit RGB, som JJGui kan læse
     let ny = png + ".ny"
     if str.ends_with("!") {
         let s = str.replace("!", "")
-        try $MAGICK $tmp -resize "{s}^" -gravity center -extent $s "PNG24:{ny}"
+        try $MAGICK $tmp -resize "{s}^" -gravity center -extent $s -define png:compression-level=1 "PNG24:{ny}"
     } else {
-        try $MAGICK $tmp -resize $str "PNG24:{ny}"
+        try $MAGICK $tmp -resize $str -define png:compression-level=1 "PNG24:{ny}"
     }
     rm -f $tmp
     if exists(ny) { mv -f $ny $png }
@@ -172,7 +172,7 @@ fn serie(id, liste, side) {
 }
 
 # ── et kapitels sider ────────────────────────────────────────────────
-fn kapitel(id, nr, viewer) {
+fn kapitel(id, nr, viewer, fra) {
     let mappe = "{DATA}/kap/{id}-{nr}"
     mkdir -p $mappe
     let fil = "{mappe}/info.tsv"
@@ -196,11 +196,20 @@ fn kapitel(id, nr, viewer) {
     }
     if sider.len == 0 { fejl(fil, "Kapitlet har ingen sider (låst eller kun i appen?).") }
     færdig(fil, ["OK\t{sider.len}\t{titel}\t{forrige}\t{næste}"])
-    let i = 0
-    for u in sider {
-        billede(u, "{mappe}/{i:03}.png", "720x")
-        i += 1
+    # start ved den side, du læser (bogmærket), og tag resten bagefter;
+    # seks sider hentes ad gangen
+    let start = max(0, min(sider.len - 1, int("0" + fra)))
+    let rækkefølge = []
+    for i in range(start, sider.len) { rækkefølge.push(i) }
+    for i in range(0, start) { rækkefølge.push(i) }
+    # de første par sider for sig, så læseren hurtigt har noget at vise
+    let først = []
+    let resten = []
+    for i in rækkefølge {
+        if først.len < 3 { først.push(i) } else { resten.push(i) }
     }
+    for i in først { billede(sider[i], "{mappe}/{i:03}.png", "720x") }
+    for i in resten parallel 6 { billede(sider[i], "{mappe}/{i:03}.png", "720x") }
 }
 
 # ── kør ──────────────────────────────────────────────────────────────
@@ -218,7 +227,9 @@ if cmd == "dag" and args.len > 1 {
     if args.len > 3 { side = args[3] }
     serie(args[1], args[2], side)
 } else if cmd == "kapitel" and args.len > 3 {
-    kapitel(args[1], args[2], args[3])
+    let fra = "0"
+    if args.len > 4 { fra = args[4] }
+    kapitel(args[1], args[2], args[3], fra)
 } else {
     print("brug: dsh hent.Dash dag monday | serie ID LISTE-URL [side] | kapitel ID NR VIEWER-URL")
     exit 1
