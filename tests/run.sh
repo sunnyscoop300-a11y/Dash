@@ -176,5 +176,58 @@ for want in "linje 3: kommandoen '⚡'" "mangler der et # foran" "mangler der et
 	case "$out" in *"$want"*) ok=$((ok+1));; *) bad=$((bad+1)); echo "✘ check mangler: $want";; esac
 done
 if ./dsh-hare check tests/basis.Dash >/dev/null 2>&1; then ok=$((ok+1)); else bad=$((bad+1)); echo "✘ check fandt fejl i basis.Dash"; fi
+# 0.15: bits og bytes
+check "$(./dsh-hare -e 'print(0xff, 0b1010, 0xffff_ffff, 0xf0 & 0x3c, 5 ^ 3, 1 << 31, -16 >> 2, ~0, 7 // 2, -7 // 2)')" \
+	"255 10 4294967295 48 6 2147483648 -4 -1 3 -3" "hex, bin og bit-operatorer"
+check "$(./dsh-hare -e 'print(0x3f & 0x20 == 0x20, 1 + 2 << 3)')" "true 24" "bit-præcedens"
+check "$(./dsh-hare -e 'let x = 0x0f
+x |= 0x30
+x &= 0x3c
+x ^= 0xff
+print(x, u32(-1), s32(0xffffffff), s16(0x8000), s8(0xff))')" "195 4294967295 -1 -32768 -1" "&= |= ^= og u32/s32/s16/s8"
+check "$(./dsh-hare -e 'let m = bytes(16)
+wr32(m, 4, 0xdeadbeef)
+let n = bytes(8)
+copy_bytes(n, 0, m, 4, 4)
+fill_bytes(n, 4, 4, 0xaa)
+write_bytes("/tmp/dsh-b.bin", n)
+print(rd8(m, 4), rd16(m, 4), rd32(m, 4), rd32(read_bytes("/tmp/dsh-b.bin"), 4), read_into(m, 0, "/tmp/dsh-b.bin", 2, 6), rd32(m, 0))')" \
+	"239 48879 3735928559 2863311530 6 2863324845" "byte-buffere"
+rm -f /tmp/dsh-b.bin
+check "$(./dsh-hare -e 'print(rd32(bytes(4), 2))' 2>&1 | head -1 | grep -o 'udenfor bufferen')" "udenfor bufferen" "rd32 udenfor bufferen"
+# KATCHA: CPU-testen (load/branch delay, mult/div, lwl/lwr, syscall) kører som rå BIOS
+out=$(./dsh-hare eksempler/katcha.Dash --test eksempler/katcha/test/cpu.bin 2>&1)
+for want in r3=00000055 r12=00000007 r14=00000003 r15=0000000b r20=fffffffe r23=fffffffd r26=ffffff80 r31=55443322 epc=bfc000ec; do
+	case "$out" in *"$want"*) ok=$((ok+1));; *) bad=$((bad+1)); echo "✘ katcha CPU: mangler $want";; esac
+done
+# KATCHA: GTE — RTPT (perspektiv med Sonys division), NCLIP, AVSZ3, FLAG og ORGB
+out=$(./dsh-hare eksempler/katcha.Dash --test eksempler/katcha/test/gte.bin 2>&1)
+for want in r4=008100b3 r5=0081008c r6=006e00a0 r7=000003e8 r8=000002e5 r9=000003e7 r10=00000000 r12=000007ff; do
+	case "$out" in *"$want"*) ok=$((ok+1));; *) bad=$((bad+1)); echo "✘ katcha GTE: mangler $want";; esac
+done
+# KATCHA: timer 2 giver afbrydelse ved målet, også uden nulstilling dér
+check "$(./dsh-hare eksempler/katcha.Dash --test eksempler/katcha/test/timer.bin 2000000 | grep -oE 'r3=[0-9a-f]+')" "r3=00000003" "katcha: timer-afbrydelse ved mål"
+# KATCHA: MDEC melder klar/optaget/klar (så spil ikke venter forgæves)
+check "$(./dsh-hare eksempler/katcha.Dash --test eksempler/katcha/test/mdec.bin | grep -oE 'r[456]=[0-9a-f]+' | tr '\n' ' ')" "r4=9000ffff r5=b000000f r6=9000ffff " "katcha: MDEC-status"
+# KATCHA: hurtig boot finder \KATCHA\TEST.EXE via SYSTEM.CNF på test-skiven (.cue/.bin og .iso)
+for d in cue iso; do
+	check "$(./dsh-hare eksempler/katcha.Dash --test eksempler/katcha/test/boot.bin 1000 eksempler/katcha/test/test.$d --hurtig | grep -oE 'r2=[0-9a-f]+ r3=[0-9a-f]+')" "r2=ca7c4a00 r3=12345678" "katcha: hurtig boot fra test.$d"
+done
+# KATCHA bygget med Violet: VBlank-afbrydelser (i dsh tager det et halvt minut)
+if command -v hare >/dev/null 2>&1; then
+	ln -sf "$PWD/dsh-hare" /tmp/dsh-test-violet
+	if /tmp/dsh-test-violet eksempler/katcha.Dash -o /tmp/dsh-test-katcha >/dev/null 2>&1; then
+		check "$(/tmp/dsh-test-katcha --test eksempler/katcha/test/irq.bin 5000000 | grep -o 'r3=[0-9a-f]*')" "r3=00000005" "katcha: 5 VBlank-afbrydelser (Violet)"
+		for d in cue iso; do
+			check "$(/tmp/dsh-test-katcha --test eksempler/katcha/test/cdread.bin 3000000 eksempler/katcha/test/test.$d | grep -oE 'r4=[0-9a-f]+ r5=[0-9a-f]+ r6=[0-9a-f]+')" "r4=30304443 r5=80000000 r6=00000001" "katcha: CD-drev Setloc/ReadN/DMA3 ($d)"
+		done
+		check "$(/tmp/dsh-test-katcha --test eksempler/katcha/test/cdplay.bin 20000000 eksempler/katcha/test/lyd.cue | grep -oE 'r4=[0-9a-f]+|r6=[0-9a-f]+' | tr '\n' ' ')" "r4=00010282 r6=00000002 " "katcha: CD-lyd Play + rapport (Violet)"
+		check "$(/tmp/dsh-test-katcha --test eksempler/katcha/test/spu.bin 3000000 | grep -oE 'r4=[0-9a-f]+|r5=[0-9a-f]+' | tr '\n' ' ')" "r4=00000001 r5=00000000 " "katcha: SPU spiller ADPCM til ende (ENDX)"
+		check "$(/tmp/dsh-test-katcha --test eksempler/katcha/test/cpu.bin)" "$(./dsh-hare eksempler/katcha.Dash --test eksempler/katcha/test/cpu.bin)" "katcha: Violet = dsh"
+	else
+		bad=$((bad+1)); echo "✘ violet kunne ikke bygge katcha.Dash"
+	fi
+	rm -f /tmp/dsh-test-violet /tmp/dsh-test-katcha
+fi
 echo "$ok ok, $bad fejl"
 [ "$bad" -eq 0 ]

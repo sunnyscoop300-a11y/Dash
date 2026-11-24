@@ -281,6 +281,7 @@ fn eval(x: *expr, e: *env) (value | failed) = {
 	case let u: e_un =>
 		const a = eval(u.a, e)?;
 		if (u.op == "not") return !truthy(a);
+		if (u.op == "~") return bnot_v(a, u.line);
 		match (a) {
 		case let i: i64 => return -i;
 		case let f: f64 => return -f;
@@ -428,6 +429,13 @@ fn binop(op: str, a: value, b: value, line: int) (value | failed) = {
 	case => void;
 	};
 	if (!(a is i64 || a is f64) || !(b is i64 || b is f64)) return badop(op, a, b, line);
+	if (is_bitop(op)) {
+		if (!(a is i64) || !(b is i64)) {
+			return dieh(line, fmt::asprintf("'{}' virker kun på heltal, fik {} og {}",
+				op, typename(a), typename(b))!, "brug int(x) for at gøre et kommatal til et heltal");
+		};
+		return bitop(op, a as i64, b as i64, line);
+	};
 
 	// whole numbers stay whole
 	if (a is i64 && b is i64) {

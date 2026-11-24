@@ -282,6 +282,12 @@ fn gbin(op: str, a: gx, b: gx, line: int) gx = {
 			if (both_int) return gx { c = fmt::asprintf("imod({}, {}, {})?", a.c, b.c, line)!, k = kind::I };
 		case "/" =>
 			if (!both_int) return gx { c = fmt::asprintf("fdiv({}, {}, {})?", fl(a), fl(b), line)!, k = kind::F };
+		case "&", "|", "^" =>
+			if (both_int) return gx { c = fmt::asprintf("({} {} {})", a.c, op, b.c)!, k = kind::I };
+		case "<<", ">>" =>
+			if (both_int) return gx { c = fmt::asprintf("({} {} ({} & 63))", a.c, op, b.c)!, k = kind::I };
+		case "//" =>
+			if (both_int) return gx { c = fmt::asprintf("idiv({}, {}, {})?", a.c, b.c, line)!, k = kind::I };
 		case => void;
 		};
 	};
@@ -342,6 +348,10 @@ fn gex(e: *expr) gx = {
 	case let u: e_un =>
 		const x = gex(u.a);
 		if (u.op == "not") return gx { c = fmt::asprintf("!{}", cond(x))!, k = kind::B };
+		if (u.op == "~") {
+			if (x.k == kind::I) return gx { c = fmt::asprintf("(~{})", x.c)!, k = kind::I };
+			return typed(fmt::asprintf("bnot_v({}, {})?", cv(x, u.line), u.line)!, e, u.line);
+		};
 		if (is_num(x.k)) return gx { c = fmt::asprintf("(-{})", x.c)!, k = x.k };
 		return gx { c = fmt::asprintf("neg_v({}, {})?", cv(x, u.line), u.line)!, k = kind::V };
 	case let c: e_call => return gcall(&c, e);
@@ -358,6 +368,10 @@ fn gex(e: *expr) gx = {
 	};
 };
 
+// En fn, der aldrig giver andet end nil, bliver en void-fn i Hare: så skal
+// der ikke pakkes en hel dynamisk værdi ud og ind ved hvert kald.
+fn void_fn(f: size) bool = fns[f].ret.b == T_NIL || fns[f].ret.b == 0;
+
 // Kald af en af scriptets egne fn'er.
 fn gfncall(f: size, args: []gx, line: int) gx = {
 	const fi = &fns[f];
@@ -367,6 +381,10 @@ fn gfncall(f: size, args: []gx, line: int) gx = {
 	let cs: []str = [];
 	for (let i = 0z; i < len(args) && i < len(fi.params); i += 1) {
 		append(cs, conv(args[i], kind_of(binds[fi.params[i]].t), line))!;
+	};
+	if (void_fn(f)) {
+		return gx { c = fmt::asprintf("{{ {}({})?; yield nilv; }}", fn_name(f),
+			strings::join(", ", cs...)!)!, k = kind::V };
 	};
 	return gx { c = fmt::asprintf("{}({})?", fn_name(f), strings::join(", ", cs...)!)!,
 		k = kind_of(fi.ret) };
@@ -385,10 +403,44 @@ fn gcall(c: *e_call, e: *expr) gx = {
 	if (c.name == "len" && len(args) == 1 && args[0].k == kind::S) {
 		return gx { c = fmt::asprintf("(len({}): i64)", args[0].c)!, k = kind::I };
 	};
+	match (gmemcall(c.name, args, c.line)) {
+	case let x: gx => return x;
+	case void => void;
+	};
 	let vs: []str = [];
 	for (let a .. args) append(vs, cv(a, c.line))!;
 	return typed(fmt::asprintf("call({}, [{}], {})?", hlit(c.name),
 		strings::join(", ", vs...)!, c.line)!, e, c.line);
+};
+
+// rd32/wr32 osv. med heltal: direkte kald i stedet for call(), så en
+// emulator ikke laver en liste af værdier for hver eneste hukommelsestilgang.
+fn gmemcall(name: str, args: []gx, line: int) (gx | void) = {
+	let n = 0z;
+	let fname = "";
+	let k = kind::I;
+	switch (name) {
+	case "rd8", "rd16", "rd32" => n = 2; fname = strings::concat("mem_", name)!;
+	case "wr8", "wr16", "wr32" => n = 3; fname = strings::concat("mem_", name)!; k = kind::V;
+	case "bytes" => n = 1; fname = "mem_bytes";
+	case "bytes_len" => n = 1; fname = "mem_len";
+	case "copy_bytes" => n = 5; fname = "mem_copy"; k = kind::V;
+	case "fill_bytes" => n = 4; fname = "mem_fill"; k = kind::V;
+	case "u32", "s32", "s16", "s8" =>
+		if (len(args) != 1 || args[0].k != kind::I) return;
+		return gx { c = fmt::asprintf("as_{}({})", name, args[0].c)!, k = kind::I };
+	case => return;
+	};
+	if (len(args) != n) return;
+	let cs: []str = [];
+	for (let a .. args) {
+		if (a.k != kind::I) return;
+		append(cs, a.c)!;
+	};
+	const call = fmt::asprintf("{}({}, {})?", fname, strings::join(", ", cs...)!, line)!;
+	// wr32() osv. giver nil, ligesom i dsh
+	if (k == kind::V) return gx { c = fmt::asprintf("{{ {}; yield nilv; }}", call)!, k = kind::V };
+	return gx { c = call, k = kind::I };
 };
 
 fn gmethod(m: *e_method, e: *expr) gx = {
@@ -625,6 +677,14 @@ fn gstmt(s: *stmt) void = {
 			emit("return;");
 			return;
 		};
+		if (void_fn(cfn: size)) {
+			match (r.val) {
+			case let e: *expr => emit(fmt::asprintf("drop({});", cv(gex(e), r.line))!);
+			case null => void;
+			};
+			emit("return;");
+			return;
+		};
 		const rk = kind_of(fns[cfn].ret);
 		match (r.val) {
 		case let e: *expr =>
@@ -831,13 +891,14 @@ fn gfn(f: *s_fn) void = {
 		cdeclared[p] = true;
 	};
 	const rk = kind_of(fi.ret);
+	const tom = void_fn(idx);
 	gstmts(f.body);
-	if (!ends_in_return(f.body)) {
+	if (!tom && !ends_in_return(f.body)) {
 		emit(if (rk == kind::V) "return nilv;" else "abort(\"Violet: fn uden return\");");
 	};
 	pop_scope();
 	let head = fmt::asprintf("fn {}({}) ({} | failed) = {{\n", fn_name(idx),
-		strings::join(", ", ps...)!, hare_type(rk))!;
+		strings::join(", ", ps...)!, if (tom) "void" else hare_type(rk))!;
 	append(cfns, strings::toutf8(head)...)!;
 	append(cfns, cbuf...)!;
 	append(cfns, strings::toutf8("};\n\n")...)!;

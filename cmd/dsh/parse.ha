@@ -279,7 +279,8 @@ fn match_rest(p: *parser, line: int) (s_match | failed) = {
 };
 
 fn is_assign(t: token) bool = t.kind == tkind::OP && (t.val == "=" || t.val == "+="
-	|| t.val == "-=" || t.val == "*=" || t.val == "/=");
+	|| t.val == "-=" || t.val == "*=" || t.val == "/="
+	|| t.val == "&=" || t.val == "|=" || t.val == "^=");
 
 fn if_rest(p: *parser, line: int) (s_if | failed) = {
 	const cond = pexpr(p)?;
@@ -623,8 +624,46 @@ fn isop(p: *parser, ops: str...) bool = {
 };
 
 fn cmp(p: *parser) (*expr | failed) = {
-	let a = add(p)?;
+	let a = bor(p)?;
 	for (isop(p, "==", "!=", "<", ">", "<=", ">=")) {
+		const t = next(p);
+		a = mk(e_bin { op = t.val, a = a, b = bor(p)?, line = t.line });
+	};
+	return a;
+};
+
+// Bits: | binder svagest, så ^, så &, så << >>. Alle binder stærkere end
+// == og <, så `if op & 0x3f == 0x20` betyder `(op & 0x3f) == 0x20`.
+fn bor(p: *parser) (*expr | failed) = {
+	let a = bxor(p)?;
+	for (isop(p, "|")) {
+		const t = next(p);
+		a = mk(e_bin { op = t.val, a = a, b = bxor(p)?, line = t.line });
+	};
+	return a;
+};
+
+fn bxor(p: *parser) (*expr | failed) = {
+	let a = band(p)?;
+	for (isop(p, "^")) {
+		const t = next(p);
+		a = mk(e_bin { op = t.val, a = a, b = band(p)?, line = t.line });
+	};
+	return a;
+};
+
+fn band(p: *parser) (*expr | failed) = {
+	let a = shift(p)?;
+	for (isop(p, "&")) {
+		const t = next(p);
+		a = mk(e_bin { op = t.val, a = a, b = shift(p)?, line = t.line });
+	};
+	return a;
+};
+
+fn shift(p: *parser) (*expr | failed) = {
+	let a = add(p)?;
+	for (isop(p, "<<", ">>")) {
 		const t = next(p);
 		a = mk(e_bin { op = t.val, a = a, b = add(p)?, line = t.line });
 	};
@@ -642,7 +681,7 @@ fn add(p: *parser) (*expr | failed) = {
 
 fn mul(p: *parser) (*expr | failed) = {
 	let a = unary(p)?;
-	for (isop(p, "*", "/", "%")) {
+	for (isop(p, "*", "/", "//", "%")) {
 		const t = next(p);
 		a = mk(e_bin { op = t.val, a = a, b = unary(p)?, line = t.line });
 	};
@@ -650,9 +689,9 @@ fn mul(p: *parser) (*expr | failed) = {
 };
 
 fn unary(p: *parser) (*expr | failed) = {
-	if (at(p, "-")) {
-		const l = next(p).line;
-		return mk(e_un { op = "-", a = unary(p)?, line = l });
+	if (at(p, "-") || at(p, "~")) {
+		const t = next(p);
+		return mk(e_un { op = t.val, a = unary(p)?, line = t.line });
 	};
 	return postfix(p);
 };

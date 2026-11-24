@@ -155,6 +155,8 @@ fn tvalue(v: value) ty = {
 // Typen af a <op> b for regnearterne.
 fn tarith(op: str, a: ty, b: ty) ty = {
 	let r = NONE;
+	// & | ^ << >> // giver altid et heltal (eller en fejl)
+	if (is_bitop(op)) return t(T_INT);
 	if (op == "+") {
 		if ((a.b | b.b) & T_STR != 0) r.b |= T_STR;
 		if (a.b & T_LIST != 0 && b.b & T_LIST != 0) {
@@ -203,6 +205,7 @@ fn texpr(e: *expr) ty = {
 	case let u: e_un =>
 		const x = texpr(u.a);
 		if (u.op == "not") return t(T_BOOL);
+		if (u.op == "~") return t(T_INT);
 		return t(x.b & T_NUM);
 	case let c: e_call => return tcall(&c);
 	case let m: e_method => return tmethod(&m);
@@ -342,6 +345,9 @@ fn tcall(c: *e_call) ty = {
 	case "str", "type", "read", "cwd", "parr.fmt" => return t(T_STR);
 	case "exists", "is_dir", "is_file", "ask", "running" => return t(T_BOOL);
 	case "wait" => return t(T_INT);
+	case "bytes", "rd8", "rd16", "rd32", "bytes_len", "read_bytes", "read_into",
+		"u32", "s32", "s16", "s8" => return t(T_INT);
+	case "wr8", "wr16", "wr32", "copy_bytes", "fill_bytes", "free_bytes", "write_bytes" => return t(T_NIL);
 	case "print", "write", "append", "sleep", "progress", "parr.ln", "parr.err", "parr.tabel" => return t(T_NIL);
 	case "range" => return tlist(T_INT);
 	case "glob" => return tlist(T_STR);
@@ -359,7 +365,10 @@ fn tcall(c: *e_call) ty = {
 	case "menu" =>
 		return t((if (len(at) > 0) at[0].le else T_ANY) | T_NIL);
 	// JJGui
-	case "window", "frame", "button", "clicked", "right_clicked", "mouse_down", "key", "pressed" =>
+	case "pad_name" => return t(T_STR);
+	case "pad_axis" => return t(T_INT);
+	case "window", "frame", "button", "clicked", "right_clicked", "mouse_down", "key", "pressed",
+		"fullscreen", "window_size", "pad_button" =>
 		return t(T_BOOL);
 	case "text_width", "wheel", "width", "height", "image", "sound", "sound_file" => return t(T_INT);
 	case "delta" => return t(T_FLOAT);
@@ -367,7 +376,7 @@ fn tcall(c: *e_call) ty = {
 	case "mouse", "image_size" => return tlist(T_INT);
 	case "project" => return t(T_LIST | T_NIL);
 	case "close_window", "clear", "rect", "outline", "round_rect", "circle", "line", "pixel",
-		"polygon", "text", "draw", "play", "screenshot",
+		"polygon", "text", "draw", "play", "screenshot", "blit", "stream_pcm",
 		"camera", "fog", "box3d", "floor3d", "circle3d", "render3d" => return t(T_NIL);
 	case => return ANY;
 	};

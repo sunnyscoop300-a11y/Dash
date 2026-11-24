@@ -59,6 +59,8 @@ make install-syntax # syntax colours for nano, Kate and xed/gedit/Pluma
   which read write append glob input now sleep round min max abs cwd ask menu
   progress wait running kill sin cos sqrt floor random`
 - Parr: `parr.ln parr.err parr.fmt parr.tabel` and `"{expression:spec}"` (see below)
+- bits and bytes: `0xff`, `0b1010`, `& | ^ << >> ~ //`, `bytes rd8..rd32 wr8..wr32 read_bytes`
+  … (see below)
 
 Note: functions are not hoisted — define a `fn` before you call it.
 
@@ -343,13 +345,17 @@ while frame() {
 | `button(text, x, y)` | button; `true` when clicked |
 | `textbox(name, x, y, width, {options})` | real text field with selection, Ctrl+A/C/X/V and a right-click menu |
 | `mouse()` → `[x, y]`, `clicked()`, `right_clicked()`, `mouse_down()`, `wheel()` | mouse |
-| `key(name)` (held), `pressed(name)` (just pressed), `typed()` | keyboard: `"left"`, `"space"`, `"enter"`, `"esc"`, `"ctrl"`, `"a"` … |
+| `key(name)` (held), `pressed(name)` (just pressed), `typed()` | keyboard: `"left"`, `"space"`, `"enter"`, `"esc"`, `"ctrl"`, `"a"`, `"1"`, `"f11"` … |
 | `delta()` | seconds since the last frame |
 | `width()`, `height()` | window size |
 | `image(path [, w, h])` → nr, `draw(nr, x, y [, w, h])`, `image_size(nr)`, `free_image(nr)` | PNG images (scaled smoothly) |
 | `sound(wave, from-Hz, to-Hz, sec [, volume])` → nr, `sound_file(path.wav)`, `play(nr [, volume, pitch])` | sound: `sine`, `square`, `triangle`, `saw`, `noise` |
 | `clipboard()`, `set_clipboard(text)` | the system clipboard |
 | `window_icon(path.png)`, `screenshot(path.png)` | window icon, save a screenshot |
+| `blit(buf, addr, row_bytes, w, h, format, x, y [, w, h])` | pixels from a `bytes()` buffer (format 15, 24 or 32) |
+| `stream_pcm(buf, addr, frames)` | sound from a `bytes()` buffer: 16-bit stereo, 44100 Hz (like CD audio) |
+| `fullscreen(true/false)`, `window_size(w, h)` | full screen and the window's size; the canvas is scaled along (SDL2) |
+| `pad_name()`, `pad_button(n)`, `pad_axis(n)` | gamepad (PS5 DualSense, PS4, Xbox) over Bluetooth/USB via `/dev/input/js*` |
 
 Colours: `"#ff8800"`, `"#f80"`, `"#00000060"` (with alpha), `0xff8800` or a name (`"gold"`, `"red"` …).
 
@@ -384,12 +390,50 @@ termux-x11 :0 &
 DISPLAY=:0 ./game
 ```
 
+## Bits and bytes 🧮 — for emulators and file formats
+
+Integers can be written in hex and binary, and Dash has the bit operators:
+
+```
+let op = 0x8c42_0004
+let rt = (op >> 16) & 0x1f              # & | ^ << >> ~
+if op & 0x3f == 0x20 { echo "ADD" }     # & binds tighter than ==
+let flag = 0b1010
+flag |= 0b0001                          # &= |= ^=
+echo "{7 // 2} {-7 // 2}"               # 3 -3: // cuts the decimals off
+echo "{u32(-1):x} {s16(0x8000)}"        # ffffffff -32768
+```
+
+Precedence is `|` < `^` < `&` < `<<` `>>` < `+` `-`, and all of them bind tighter
+than `==` and `<` (like Python). Shift counts are taken modulo 64.
+
+**Byte buffers** are numbers, like images and sounds, so Violet can turn
+`rd32`/`wr32` into direct machine code:
+
+| Function | What it does |
+|---|---|
+| `bytes(n)` → nr | a buffer of n zero bytes |
+| `rd8/rd16/rd32(buf, addr)` | read 1, 2 or 4 bytes (little-endian) |
+| `wr8/wr16/wr32(buf, addr, v)` | write |
+| `read_bytes(path [, addr, n])` → nr | a file (or a piece of it) |
+| `read_into(buf, buf_addr, path, file_addr, n)` | read into a buffer, e.g. one CD sector; returns bytes read |
+| `write_bytes(path, buf [, addr, n])` | save a buffer |
+| `copy_bytes(dst, dst_addr, src, src_addr, n)`, `fill_bytes(buf, addr, n, v)` | copy and fill |
+| `bytes_len(buf)`, `free_bytes(buf)` | size, give the memory back |
+| `u32(x)`, `s32(x)`, `s16(x)`, `s8(x)` | clip a number to 32/16/8 bits |
+
+In JJGui, `blit(buf, addr, row_bytes, width, height, format, x, y [, w, h])`
+draws pixels straight from a buffer — format 15 (PS1 VRAM), 24 (RGB) or 32 —
+scaled to `w`×`h`. That is how **KATCHA** (`eksempler/katcha.Dash`), the PS1
+emulator in pure Dash, shows its screen.
+
 ## Examples
 
 All in `eksempler/` ("examples"):
 
 | Program | What it is |
 |---|---|
+| `katcha.Dash` | **KATCHA** 💜💀 — "Herkules, ich brauche Cheatcodes!!": a PlayStation 1 emulator in pure Dash (build it with Violet). R3000A CPU, GPU with gouraud/textured polygons, DMA, timers, joypad, a CD-ROM drive for `.cue`/`.bin`/`.iso` images (with fast boot via `SYSTEM.CNF`), a game list from `~/.katcha/spil/`, PS-EXE side-loading and Katcha's GameShark codebook. Bring your own BIOS dump. |
 | `bob.Dash` | **Bob's shop** — an app store for your own Dash programs and games: builds them with Violet into `~/.local/bin`, adds menu shortcuts, updates and removes them. The **System** tab updates Linux itself (pacman, AUR, apt, dnf, zypper, xbps, flatpak, snap). |
 | `zuzubox.Dash` | **ZuzuBox** 💀📦 — the zombie girl Zuzu (or the bat girl Harboiy) pushes crates onto glowing skulls in a purple crypt. 75 levels in 14 crypts, three themes (spooky, autumn, Christmas), a November countdown and an advent calendar with a new level every day. |
 | `boxdog.Dash` | **BoxDog** 🐶📦 — a puppy pushes crates onto paw tiles in a warehouse. |

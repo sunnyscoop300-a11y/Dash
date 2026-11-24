@@ -339,12 +339,16 @@ while frame() {
 | `text(x, y, tekst, farve, størrelse)`, `text_width(tekst, størrelse)` | 8×16-skrift, størrelse 1, 2, 3 … |
 | `button(tekst, x, y)` | knap; `true` når den bliver klikket |
 | `mouse()` → `[x, y]`, `clicked()`, `right_clicked()`, `mouse_down()`, `wheel()` | mus |
-| `key(navn)` (holdes nede), `pressed(navn)` (lige trykket), `typed()` | tastatur: `"left"`, `"space"`, `"enter"`, `"esc"`, `"a"` … |
+| `key(navn)` (holdes nede), `pressed(navn)` (lige trykket), `typed()` | tastatur: `"left"`, `"space"`, `"enter"`, `"esc"`, `"a"`, `"1"`, `"f11"` … |
 | `delta()` | sekunder siden sidste billede |
 | `width()`, `height()` | vinduets størrelse |
 | `image(sti [, b, h])` → nr., `draw(nr, x, y)`, `image_size(nr)` | PNG-billeder |
 | `sound(bølge, fra-Hz, til-Hz, sek [, styrke])` → nr., `sound_file(sti.wav)`, `play(nr [, styrke, tonehøjde])` | lyd: `sine`, `square`, `triangle`, `saw`, `noise` |
 | `screenshot(sti.png)` | gem billedet |
+| `blit(buf, adr, række_bytes, b, h, format, x, y [, w, h])` | pixels fra en `bytes()`-buffer (format 15, 24 eller 32) |
+| `stream_pcm(buf, adr, frames)` | lyd fra en `bytes()`-buffer: 16-bit stereo, 44100 Hz (som CD-lyd) |
+| `fullscreen(true/false)`, `window_size(b, h)` | fuld skærm og vinduets størrelse; tegnefladen skaleres med (SDL2) |
+| `pad_name()`, `pad_button(n)`, `pad_axis(n)` | controller (PS5 DualSense, PS4, Xbox) over Bluetooth/USB via `/dev/input/js*` |
 
 Farver: `"#ff8800"`, `"#f80"`, `0xff8800` eller et navn (`"gold"`, `"red"`, `"lilla"` …).
 
@@ -433,6 +437,43 @@ pkg install x11-repo && pkg install termux-x11
 termux-x11 :0 &
 DISPLAY=:0 ./spil
 ```
+
+## Bits og bytes 🧮 — til emulatorer og filformater
+
+Heltal kan skrives i hex og binært, og Dash har bit-operatorerne:
+
+```
+let op = 0x8c42_0004
+let rt = (op >> 16) & 0x1f              # & | ^ << >> ~
+if op & 0x3f == 0x20 { echo "ADD" }     # & binder stærkere end ==
+let flag = 0b1010
+flag |= 0b0001                          # &= |= ^=
+echo "{7 // 2} {-7 // 2}"               # 3 -3: // skærer decimalerne væk
+echo "{u32(-1):x} {s16(0x8000)}"        # ffffffff -32768
+```
+
+Rækkefølgen er `|` < `^` < `&` < `<<` `>>` < `+` `-`, og alle binder stærkere
+end `==` og `<` (som i Python). Skiftet tager antallet modulo 64.
+
+**Byte-buffere** er numre, ligesom billeder og lyde, så Violet kan gøre
+`rd32`/`wr32` til direkte maskinkode:
+
+| Funktion | Hvad den gør |
+|---|---|
+| `bytes(n)` → nr. | en buffer med n nul-bytes |
+| `rd8/rd16/rd32(buf, adr)` | læs 1, 2 eller 4 bytes (little-endian) |
+| `wr8/wr16/wr32(buf, adr, v)` | skriv |
+| `read_bytes(sti [, adr, n])` → nr. | en fil (eller en bid af den) |
+| `read_into(buf, buf_adr, sti, fil_adr, n)` | læs ind i en buffer, fx én CD-sektor; giver antal bytes |
+| `write_bytes(sti, buf [, adr, n])` | gem en buffer |
+| `copy_bytes(til, til_adr, fra, fra_adr, n)`, `fill_bytes(buf, adr, n, v)` | kopiér og fyld |
+| `bytes_len(buf)`, `free_bytes(buf)` | størrelse, giv hukommelsen tilbage |
+| `u32(x)`, `s32(x)`, `s16(x)`, `s8(x)` | klip et tal til 32/16/8 bit |
+
+I JJGui tegner `blit(buf, adr, række_bytes, bredde, højde, format, x, y [, w, h])`
+pixels direkte fra en buffer — format 15 (PS1-VRAM), 24 (RGB) eller 32 — og
+skalerer dem til `w`×`h`. Det er sådan **KATCHA** (`eksempler/katcha.Dash`),
+PS1-emulatoren i ren Dash, viser skærmen.
 
 ## Nyt i 0.14 «Kuro» 🐺
 

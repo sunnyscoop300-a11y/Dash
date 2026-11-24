@@ -81,7 +81,19 @@ fn scan_balanced(src: []u8, i: size, open: u8, close: u8, line: int) (size | fai
 	return dief(line, "mangler '{}'", close: rune);
 };
 
-const TWO: [_]str = ["=>", "==", "!=", "<=", ">=", "+=", "-=", "*=", "/=", "&&", "||", ">>"];
+const TWO: [_]str = ["=>", "==", "!=", "<=", ">=", "+=", "-=", "*=", "/=", "&&", "||", ">>",
+	"<<", "//", "&=", "|=", "^="];
+
+// Et ciffer i et 0x- eller 0b-tal, eller void.
+fn radix_digit(c: u8, mark: u8) (u8 | void) = {
+	if (mark == 'b' || mark == 'B') {
+		if (c == '0' || c == '1') return c - '0';
+		return;
+	};
+	if (c >= '0' && c <= '9') return c - '0';
+	if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+	if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+};
 
 fn lex(src: []u8, line: int) ([]token | failed) = {
 	let toks: []token = [];
@@ -105,7 +117,34 @@ fn lex(src: []u8, line: int) ([]token | failed) = {
 		};
 		const start = i;
 		let t = token { line = line, pos = start, space = space, ... };
-		if (ascii::isdigit(c: rune)) {
+		if (c == '0' && i + 2 < len(src) && (src[i + 1] == 'x' || src[i + 1] == 'X'
+				|| src[i + 1] == 'b' || src[i + 1] == 'B')
+				&& radix_digit(src[i + 2], src[i + 1]) is u8) {
+			// 0xff, 0b1010 og 0xffff_ffff — til bits og bytes
+			const mark = src[i + 1];
+			const hex = mark == 'x' || mark == 'X';
+			i += 2;
+			let n = 0u64;
+			for (i < len(src)) {
+				if (src[i] == '_') { i += 1; continue; };
+				const d = match (radix_digit(src[i], mark)) {
+				case let d: u8 => yield d;
+				case void => break;
+				};
+				const shift: u64 = if (hex) 4 else 1;
+				if (n >> (64 - shift) != 0) return die(line, "tallet er for stort");
+				n = n << shift | d;
+				i += 1;
+			};
+			if (i < len(src) && ident_char(src[i])) {
+				return dief(line, "'{}' er ikke et gyldigt {}-tal", sub(src, start, i + 1),
+					if (hex) "hex" else "binært");
+			};
+			if (n > 0x7fff_ffff_ffff_ffff) return die(line, "tallet er for stort");
+			t.kind = tkind::NUM;
+			t.val = sub(src, start, i);
+			t.num = n: i64;
+		} else if (ascii::isdigit(c: rune)) {
 			for (i < len(src) && ascii::isdigit(src[i]: rune)) i += 1;
 			t.kind = tkind::NUM;
 			if (i + 1 < len(src) && src[i] == '.' && ascii::isdigit(src[i + 1]: rune)) {
