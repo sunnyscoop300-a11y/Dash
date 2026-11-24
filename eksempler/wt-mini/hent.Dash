@@ -48,9 +48,9 @@ fn billede(url, png, str) {
     let ny = png + ".ny"
     if str.ends_with("!") {
         let s = str.replace("!", "")
-        try $MAGICK $tmp -resize "{s}^" -gravity center -extent $s "png:{ny}"
+        try $MAGICK $tmp -resize "{s}^" -gravity center -extent $s "PNG24:{ny}"
     } else {
-        try $MAGICK $tmp -resize $str "png:{ny}"
+        try $MAGICK $tmp -resize $str "PNG24:{ny}"
     }
     rm -f $tmp
     if exists(ny) { mv -f $ny $png }
