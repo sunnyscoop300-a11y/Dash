@@ -87,21 +87,29 @@ fn program(p: *parser) ([]stmt | failed) = {
 	};
 };
 
-// import "sti" — en anden .Dash-fil, hvis fn'er og variabler kommer med
+// import "sti" / sprint "sti" / sprint navn — en anden .Dash-fil, hvis fn'er
+// og variabler kommer med. sprint er Dash Parrs måde at hente noget på 💨
+// (navn uden anførselstegn kun med sprint: `import x` kan være ImageMagick)
 fn er_import(p: *parser) bool = {
 	const t = peek(p), n = peek(p, 1);
-	return t.kind == tkind::IDENT && t.val == "import"
-		&& (n.kind == tkind::STR || n.kind == tkind::RSTR) && n.line == t.line;
+	if (t.kind != tkind::IDENT || n.line != t.line) return false;
+	if (t.val != "import" && t.val != "sprint") return false;
+	if (n.kind == tkind::STR || n.kind == tkind::RSTR) return true;
+	if (t.val != "sprint" || n.kind != tkind::IDENT) return false;
+	const e = peek(p, 2);
+	return e.kind == tkind::NL || e.kind == tkind::EOF || e.line != t.line
+		|| (e.kind == tkind::OP && e.val == ";");
 };
 
 fn import_fil(p: *parser) ([]stmt | failed) = {
-	const line = next(p).line;
+	const ord = next(p);
+	const line = ord.line;
 	const navn = next(p).val;
 	const base = if (p.fil != "") p.fil else import_base();
 	const sti = match (find_import(navn, base)) {
 	case let s: str => yield s;
 	case void =>
-		return dieh(line, fmt::asprintf("kan ikke finde '{}' til import", navn)!,
+		return dieh(line, fmt::asprintf("kan ikke finde '{}' til {}", navn, ord.val)!,
 			"stien regnes fra scriptets egen mappe (eller ~/.local/share/dash/lib)");
 	};
 	// hver fil kommer kun med én gang (også hvis to filer importerer den)
@@ -131,8 +139,8 @@ fn block(p: *parser) ([]stmt | failed) = {
 		if (at(p, "}")) { next(p); return out; };
 		if (peek(p).kind == tkind::EOF) return die(peek(p).line, "blok mangler '}'");
 		if (er_import(p)) {
-			return dieh(peek(p).line, "import skal stå i yderste niveau af filen",
-				"flyt import op øverst i filen — ikke inde i en fn, if eller løkke");
+			return dieh(peek(p).line, fmt::asprintf("{} skal stå i yderste niveau af filen", peek(p).val)!,
+				"flyt den op øverst i filen — ikke inde i en fn, if eller løkke");
 		};
 		append(out, statement(p)?)!;
 		end_stmt(p)?;

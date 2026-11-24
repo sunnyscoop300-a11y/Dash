@@ -489,6 +489,7 @@ fn complete(id: str, uri: str, line: int, ch: int) void = {
 		for (let k .. KEYWORDS) append(items, item(k, 14, ""))!;
 		append(items, item("match", 14, "match x { 1, 2 => … \n _ => … }"))!;
 		append(items, item("import", 14, "import \"fil.Dash\" — fn'er fra en anden fil"))!;
+		append(items, item("sprint", 14, "sprint navn — hent en .Dash-fil (som import) 💨"))!;
 		for (let f .. BUILTIN_FNS) {
 			if (strings::hasprefix(f, "parr.")) continue;
 			append(items, item(f, 3, hover_tekst(f)))!;
@@ -627,6 +628,7 @@ const HJAELP: [_](str, str) = [
 	("parallel", "for … in … parallel N — N løbere ad gangen"),
 	("match", "match x { 1, 2 => … \n \"a\" => { … } \n _ => … } — vælg en gren efter værdien"),
 	("import", "import \"fil.Dash\" — tag fn'er og variabler med fra en anden .Dash-fil"),
+	("sprint", "sprint navn / sprint \"sti\" — Dash Parrs import 💨: henter navn.Dash ved siden af scriptet eller i ~/.local/share/dash/lib"),
 ];
 
 fn hover_tekst(navn: str) str = {

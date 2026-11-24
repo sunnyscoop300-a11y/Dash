@@ -309,7 +309,7 @@ fn cache_key(path: str, src: []u8) (str, str) = {
 	return (name, strings::concat(name, "-", hex)!);
 };
 
-// Følger `import "…"`-linjerne (rekursivt, hver fil én gang) og lægger de
+// Følger `import "…"`- og `sprint`-linjerne (rekursivt, hver fil én gang) og lægger de
 // importerede filers sti og indhold i fingeraftrykket.
 fn hash_imports(h: *sha256::state, src: []u8, fil: str, set: *[]str) void = {
 	const tekst = strings::fromutf8_unsafe(src);
@@ -319,9 +319,26 @@ fn hash_imports(h: *sha256::state, src: []u8, fil: str, set: *[]str) void = {
 		case let l: str => yield strings::ltrim(l);
 		case done => break;
 		};
-		if (!strings::hasprefix(linje, "import \"")) continue;
-		const rest = strings::sub(linje, len("import \""), strings::end);
-		const (navn, _) = strings::cut(rest, "\"");
+		// import "…", sprint "…" og sprint navn
+		let rest = "";
+		if (strings::hasprefix(linje, "import ")) {
+			rest = strings::ltrim(strings::sub(linje, len("import "), strings::end));
+			if (!strings::hasprefix(rest, "\"")) continue;
+		} else if (strings::hasprefix(linje, "sprint ")) {
+			rest = strings::ltrim(strings::sub(linje, len("sprint "), strings::end));
+		} else continue;
+		let navn = "";
+		if (strings::hasprefix(rest, "\"") || strings::hasprefix(rest, "'")) {
+			const q = if (strings::hasprefix(rest, "'")) "'" else "\"";
+			const (n, _) = strings::cut(strings::sub(rest, 1, strings::end), q);
+			navn = n;
+		} else {
+			const (n, _) = strings::cut(rest, " ");
+			const (n2, _) = strings::cut(n, ";");
+			const (n3, _) = strings::cut(n2, "#");
+			navn = strings::rtrim(n3);
+		};
+		if (navn == "") continue;
 		const sti = match (find_import(navn, fil)) {
 		case let s: str => yield s;
 		case void => continue;
