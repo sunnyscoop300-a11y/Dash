@@ -52,5 +52,8 @@ type s_cmd = struct { stages: []stage, try_: bool, bg: bool, line: int };
 type s_expr = struct { e: *expr, line: int };
 type s_break = int;
 type s_continue = int;
+// match x { 1, 2 => … \n "a" => { … } \n _ => … }
+type arm = struct { pats: []*expr, any: bool, body: []stmt, line: int };
+type s_match = struct { subj: *expr, arms: []arm, line: int };
 type stmt = (s_let | s_assign | s_if | s_while | s_for | s_fn | s_return
-	| s_cmd | s_expr | s_break | s_continue);
+	| s_cmd | s_expr | s_break | s_continue | s_match);

@@ -37,6 +37,15 @@ fn program_check(p: *parser) []stmt = {
 			next(p);
 			continue;
 		};
+		if (er_import(p)) {
+			match (import_fil(p)) {
+			case let s: []stmt => append(out, s...)!;
+			case failed =>
+				record();
+				skip_line(p);
+			};
+			continue;
+		};
 		const start = p.pos;
 		const t0 = peek(p), t1 = peek(p, 1);
 		match (statement(p)) {
@@ -81,6 +90,8 @@ fn collect(stmts: []stmt, n: *names) void = {
 			collect(i.body, n);
 			collect(i.els, n);
 		case let w: s_while => collect(w.body, n);
+		case let m: s_match =>
+			for (let a .. m.arms) collect(a.body, n);
 		case let f: s_for =>
 			append(n.vars, f.var)!;
 			collect(f.body, n);
@@ -115,6 +126,12 @@ fn walk_stmts(stmts: []stmt, n: *names) void = {
 		case let w: s_while =>
 			walk_expr(w.cond, n);
 			walk_stmts(w.body, n);
+		case let m: s_match =>
+			walk_expr(m.subj, n);
+			for (let a .. m.arms) {
+				for (let pat .. a.pats) walk_expr(pat, n);
+				walk_stmts(a.body, n);
+			};
 		case let f: s_for =>
 			walk_expr(f.it, n);
 			match (f.par) { case let e: *expr => walk_expr(e, n); case null => void; };
@@ -238,6 +255,7 @@ fn check_collect(src: []u8) void = {
 	warnings = [];
 	recovered = [];
 	err_hint = "";
+	kilder = [];
 	let toks: []token = [];
 	match (lex(src, 1)) {
 	case let t: []token => toks = t;
@@ -261,15 +279,19 @@ fn check_main(src: []u8) never = {
 	fmt::printfln("{}⚡ dsh check{} {}", orange(), reset(), script_name)!;
 	check_collect(src);
 	for (let pr .. problems) {
-		fmt::printfln("  {}✘ linje {}:{} {}", red(), pr.line, reset(), pr.msg)!;
+		const (fil, n) = kilde_sted(pr.line);
+		const hvor = if (pr.line >= KILDE_LINJER) fmt::asprintf("{} linje", fil)! else "linje";
+		fmt::printfln("  {}✘ {} {}:{} {}", red(), hvor, n, reset(), pr.msg)!;
 		const l = source_line(pr.line);
-		if (len(l) > 0) fmt::printfln("{}     {:4} │ {}{}", dim(), pr.line, l, reset())!;
+		if (len(l) > 0) fmt::printfln("{}     {:4} │ {}{}", dim(), n, l, reset())!;
 		if (len(pr.hint) > 0) fmt::printfln("{}          ↳ {}{}", orange(), pr.hint, reset())!;
 	};
 	for (let pr .. warnings) {
-		fmt::printfln("  {}⚠ linje {}:{} {}", orange(), pr.line, reset(), pr.msg)!;
+		const (fil, n) = kilde_sted(pr.line);
+		const hvor = if (pr.line >= KILDE_LINJER) fmt::asprintf("{} linje", fil)! else "linje";
+		fmt::printfln("  {}⚠ {} {}:{} {}", orange(), hvor, n, reset(), pr.msg)!;
 		const l = source_line(pr.line);
-		if (len(l) > 0) fmt::printfln("{}     {:4} │ {}{}", dim(), pr.line, l, reset())!;
+		if (len(l) > 0) fmt::printfln("{}     {:4} │ {}{}", dim(), n, l, reset())!;
 		if (len(pr.hint) > 0) fmt::printfln("{}          ↳ {}{}", orange(), pr.hint, reset())!;
 	};
 	if (len(problems) == 0) {

@@ -8,7 +8,7 @@
     <list name="keywords">
       <item>let</item><item>if</item><item>else</item><item>for</item><item>in</item>
       <item>while</item><item>fn</item><item>return</item><item>break</item>
-      <item>continue</item><item>parallel</item><item>and</item><item>or</item><item>not</item>
+      <item>continue</item><item>parallel</item><item>match</item><item>import</item><item>and</item><item>or</item><item>not</item>
     </list>
     <list name="builtins">
       <item>echo</item><item>try</item><item>fail</item><item>cd</item><item>exit</item>

@@ -469,6 +469,88 @@ fn ms(b: *[]u8, s: str) void = append(b, strings::toutf8(s)...)!;
 
 // --- sætninger (samme rækkefølge af scopes som i types.ha)
 
+// match: et heltal eller en tekst sammenlignet med konstanter bliver en
+// rigtig Hare-switch (et hop-bord), ellers en kæde af if/else.
+fn gmatch(m: *s_match) void = {
+	const subj = gex(m.subj);
+	const n = uniq();
+	emit(fmt::asprintf("const m{}: {} = {};", n, hare_type(subj.k), subj.c)!);
+	const sv = gx { c = fmt::asprintf("m{}", n)!, k = subj.k };
+	if (match_switch(m, subj.k)) {
+		emit(fmt::asprintf("switch (m{}) {{", n)!);
+		let har_any = false;
+		for (let a &.. m.arms) {
+			if (a.any) {
+				har_any = true;
+				emit("case =>");
+			} else {
+				let vs: []str = [];
+				for (let pat .. a.pats) append(vs, gex(pat).c)!;
+				emit(fmt::asprintf("case {} =>", strings::join(", ", vs...)!)!);
+			};
+			cdepth += 1;
+			emit("{");
+			cdepth += 1;
+			gblock(a.body);
+			cdepth -= 1;
+			emit("};");
+			cdepth -= 1;
+		};
+		if (!har_any) emit("case => void;");
+		emit("};");
+		return;
+	};
+	for (let i = 0z; i < len(m.arms); i += 1) {
+		const a = &m.arms[i];
+		const kw = if (i == 0) "if" else "} else if";
+		if (a.any) {
+			emit(if (i == 0) "{" else "} else {");
+		} else {
+			let cs: []str = [];
+			for (let pat .. a.pats) append(cs, cond(gbin("==", sv, gex(pat), a.line)))!;
+			emit(fmt::asprintf("{} ({}) {{", kw, strings::join(" || ", cs...)!)!);
+		};
+		cdepth += 1;
+		gblock(a.body);
+		cdepth -= 1;
+	};
+	if (len(m.arms) > 0) emit("};");
+};
+
+// Kan match blive en switch? Emnet skal være et ✔ heltal eller en ✔ tekst,
+// og alle mønstre konstanter af samme slags, uden dubletter.
+fn match_switch(m: *s_match, k: kind) bool = {
+	if (k != kind::I && k != kind::S) return false;
+	let set: []str = [];
+	for (let a .. m.arms) {
+		for (let pat .. a.pats) {
+			let key = "";
+			match (*pat) {
+			case let x: e_num =>
+				if (k != kind::I) return false;
+				key = fmt::asprintf("{}", x: i64)!;
+			case let x: e_str =>
+				if (k != kind::S) return false;
+				if (len(x.parts) > 1) return false;
+				if (len(x.parts) == 1) match (x.parts[0]) {
+				case let l: p_lit => key = l;
+				case => return false;
+				};
+			case let x: e_const =>
+				if (k != kind::S) return false;
+				match (x.v) {
+				case let s: str => key = s;
+				case => return false;
+				};
+			case => return false;
+			};
+			if (has(set, key)) return false;
+			append(set, key)!;
+		};
+	};
+	return true;
+};
+
 fn gblock(stmts: []stmt) void = {
 	push_scope();
 	gstmts(stmts);
@@ -532,6 +614,7 @@ fn gstmt(s: *stmt) void = {
 		cdepth -= 1;
 		emit("};");
 	case let f: s_for => gfor(&f);
+	case let m: s_match => gmatch(&m);
 	case let f: s_fn => gfn(&f);
 	case let r: s_return =>
 		if (cpar) {
@@ -794,6 +877,10 @@ fn compile_program(prog: []stmt, name: str, src: []u8) str = {
 	const fuld = if (strings::hasprefix(name, "/")) name
 		else strings::concat(os::getcwd(), "/", strings::trimprefix(name, "./"))!;
 	ms(&out, fmt::asprintf("\trt_start({}, {});\n", hlit(fuld), hlit(strings::fromutf8_unsafe(src)))!);
+	for (let k .. kilder) {
+		ms(&out, fmt::asprintf("\tappend(kilder, kilde {{ sti = {}, src = strings::toutf8({}), linje = {} }})!;\n",
+			hlit(k.sti), hlit(strings::fromutf8_unsafe(k.src)), k.linje)!);
+	};
 	ms(&out, "\trt_end(prog());\n};\n");
 	return strings::fromutf8_unsafe(out);
 };

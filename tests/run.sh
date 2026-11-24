@@ -133,6 +133,42 @@ Hirdi     12.5
 check "$(./dsh-hare -e 'parr.tabel([["a", "b"], ["ccc", ""]])' | cat -A | head -1)" 'a    b$' "parr.tabel uden mellemrum for enden"
 case "$(./dsh-hare -e 'print(parr.fmt(1, "q"))' 2>&1)" in *"ugyldig format-spec"*) ok=$((ok+1));; *) bad=$((bad+1)); echo "✘ parr.fmt ugyldig spec";; esac
 
+# match og import (0.15 «Flora»)
+check "$(./dsh-hare -e 'for i in range(5) {
+    match i {
+        0 => continue
+        1, 2 => echo "lille {i}"
+        3 => { let x = i * 10
+            echo "tre {x}" }
+        _ => echo "stor {i}"
+    }
+}')" "lille 1
+lille 2
+tre 30
+stor 4" "match med tal, flere mønstre, blok og _"
+check "$(./dsh-hare -e 'let n = "zuzu"
+match n {
+    "harboiy" => echo "flagermus"
+    "zuzu" => echo "zombie"
+}
+match 9 { 1 => echo "nej" }
+echo "slut"')" "zombie
+slut" "match med tekst og uden _"
+case "$(./dsh-hare -e 'match 1 {
+    _ => echo a
+    1 => echo b
+}' 2>&1)" in *"'_' skal være den sidste"*) ok=$((ok+1));; *) bad=$((bad+1)); echo "✘ match: _ midt i";; esac
+tmpd=$(mktemp -d)
+mkdir -p "$tmpd/lib"
+printf 'let HILSEN = "hej"\nfn dobbelt(x) {\n    return x * 2\n}\nfn del(a, b) {\n    return a / b\n}\n' > "$tmpd/lib/mat.Dash"
+printf 'import "lib/mat"\nimport "lib/mat.Dash"\necho "{HILSEN} {dobbelt(21)}"\n' > "$tmpd/hoved.Dash"
+check "$(./dsh-hare "$tmpd/hoved.Dash")" "hej 42" "import (og kun én gang)"
+printf 'import "lib/mat"\nprint(del(1, 0))\n' > "$tmpd/fejl.Dash"
+case "$(./dsh-hare "$tmpd/fejl.Dash" 2>&1)" in *"lib/mat.Dash:6: division med nul"*) ok=$((ok+1));; *) bad=$((bad+1)); echo "✘ import: fejl i den importerede fil";; esac
+printf 'import "lib/findes-ikke"\n' > "$tmpd/mangler.Dash"
+case "$(./dsh-hare check "$tmpd/mangler.Dash" 2>&1)" in *"kan ikke finde 'lib/findes-ikke'"*) ok=$((ok+1));; *) bad=$((bad+1)); echo "✘ import: mangler";; esac
+rm -rf "$tmpd"
+
 # dsh check: den ødelagte fil skal give præcis disse fejl og forslag
 out=$(./dsh-hare check tests/ødelagt.Dash 2>&1)
 for want in "linje 3: kommandoen '⚡'" "mangler der et # foran" "mangler der et komma i slutningen af linje 11" \

@@ -145,6 +145,18 @@ class Miguel:
             pass
         return navn.endswith(".Dash") or navn.endswith(".dash")
 
+    def mappe(self):
+        """Mappen, filen ligger i (til import), eller None."""
+        for hent in (lambda: self.buf.get_file().get_location(),
+                     lambda: self.buf.get_location()):
+            try:
+                g = hent()
+                if g is not None and g.get_path():
+                    return os.path.dirname(g.get_path())
+            except Exception:
+                pass
+        return None
+
     def _aendret(self, *_):
         self._planlaeg()
 
@@ -163,11 +175,19 @@ class Miguel:
         nr = self.nr
         s, e = self.buf.get_bounds()
         sti = gem_tmp(self.buf.get_text(s, e, True))
+        # import "…" skal findes ved siden af den rigtige fil, ikke i /tmp
+        miljoe = None
+        mappe = self.mappe()
+        if mappe:
+            miljoe = os.environ.copy()
+            miljoe["DSH_IMPORT_DIR"] = mappe
         # dsh check køres uden tråde: xed får besked, når den er færdig
         try:
-            proc = Gio.Subprocess.new([self.dsh, "check", sti],
-                                      Gio.SubprocessFlags.STDOUT_PIPE
-                                      | Gio.SubprocessFlags.STDERR_MERGE)
+            l = Gio.SubprocessLauncher.new(Gio.SubprocessFlags.STDOUT_PIPE
+                                           | Gio.SubprocessFlags.STDERR_MERGE)
+            if miljoe:
+                l.set_environ([f"{k}={v}" for k, v in miljoe.items()])
+            proc = l.spawnv([self.dsh, "check", sti])
         except GLib.Error as e:
             log("kan ikke starte", self.dsh, e.message)
             os.unlink(sti)

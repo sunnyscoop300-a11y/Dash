@@ -83,6 +83,46 @@ let kode = wait(job)                         # exitkoden (sætter også $status)
 - `dsh check` advarer (⚠) ved `sh -c`, `bash -c` og `zsh -c`. Skal en
   linje med vilje køre i brugerens egen shell, så skriv `# sh-ok` på den.
 
+## match og import (kommer i 0.15 «Flora» 🦇)
+
+**match** vælger en gren efter en værdi — renere end en lang kæde af
+`if`/`else if`:
+
+```
+match tast {
+    "q", "esc" => break
+    "left" => x -= 1
+    "right" => {
+        x += 1
+        spil_lyd(trin)
+    }
+    _ => echo "ukendt tast: {tast}"
+}
+```
+
+- Flere værdier i én gren adskilles med komma, og en gren er enten én linje
+  eller en `{ blok }`.
+- `_` fanger resten og skal stå sidst. Uden `_` sker der bare ingenting,
+  hvis intet passer.
+- `break`, `continue` og `return` virker inde i grenene.
+- **Violet** laver en match på et ✔ heltal eller en ✔ tekst med konstanter
+  om til en rigtig Hare-`switch` (et hop-bord) i stedet for en if-kæde.
+
+**import** tager fn'er og variabler med fra en anden `.Dash`-fil:
+
+```
+import "lib/farver"          # = lib/farver.Dash ved siden af scriptet
+import "~/dash-lib/tekst"
+
+print(farve(3))
+```
+
+- Stien regnes fra den fil, der importerer, ellers fra `~/.local/share/dash/lib/`.
+- En fil kommer kun med én gang, også hvis flere filer importerer den.
+- `import` står i yderste niveau af filen (ikke inde i en fn eller løkke).
+- Fejl i en importeret fil peger på den rigtige fil og linje, både i `dsh`,
+  `dsh check`, Miguel og programmer bygget med Violet.
+
 ## Parr 🦸 — formatering og udskrift
 
 Hare har `fmt`, Nim har `echo` — Dash har familien **Parr**:

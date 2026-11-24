@@ -92,6 +92,43 @@ let code = wait(job)                            # the exit code (also sets $stat
 - `dsh check` warns (⚠) about `sh -c`, `bash -c` and `zsh -c`. If a line
   really should run in the user's own shell, put `# sh-ok` on it.
 
+## match and import (coming in 0.15 «Flora» 🦇)
+
+**match** picks a branch by value — cleaner than a long `if`/`else if` chain:
+
+```
+match key {
+    "q", "esc" => break
+    "left" => x -= 1
+    "right" => {
+        x += 1
+        play(step)
+    }
+    _ => echo "unknown key: {key}"
+}
+```
+
+- Several values in one branch are separated by commas; a branch is one line
+  or a `{ block }`.
+- `_` catches the rest and must come last. Without `_`, nothing happens when
+  nothing matches.
+- `break`, `continue` and `return` work inside the branches.
+- **Violet** turns a match on a ✔ int or ✔ str with constant patterns into a
+  real Hare `switch` (a jump table) instead of an if chain.
+
+**import** brings in the functions and variables of another `.Dash` file:
+
+```
+import "lib/colours"         # = lib/colours.Dash next to the script
+import "~/dash-lib/text"
+```
+
+- Paths are relative to the importing file, then `~/.local/share/dash/lib/`.
+- A file is only included once, even if several files import it.
+- `import` goes at the top level of a file (not inside a fn or loop).
+- Errors inside an imported file point to the right file and line — in `dsh`,
+  `dsh check`, Miguel and Violet-built programs.
+
 ## Parr 🦸 — formatting and printing
 
 Hare has `fmt`, Nim has `echo` — Dash has the **Parr** family:

@@ -364,16 +364,46 @@ fn byte_at(b: []u8, ch: size) size = {
 	return len(b);
 };
 
+// file:///home/x/a%20b.Dash → /home/x/a b.Dash
+fn uri_sti(uri: str) str = {
+	if (!strings::hasprefix(uri, "file://")) return uri;
+	const b = strings::toutf8(strings::sub(uri, 7, strings::end));
+	let out: []u8 = [];
+	for (let i = 0z; i < len(b); i += 1) {
+		if (b[i] == '%' && i + 2 < len(b)) {
+			match (strconv::stou8(strings::fromutf8_unsafe(b[i + 1..i + 3]), strconv::base::HEX)) {
+			case let v: u8 =>
+				append(out, v)!;
+				i += 2;
+				continue;
+			case => void;
+			};
+		};
+		append(out, b[i])!;
+	};
+	return strings::fromutf8_unsafe(out);
+};
+
 // ── fejl og advarsler: dsh check på teksten i editoren ──
 
 fn diagnose(uri: str) void = {
 	const text = dok_get(uri);
 	script_src = strings::toutf8(text);
+	script_name = uri_sti(uri);    // så import "…" findes ved siden af filen
 	check_collect(script_src);
 	let items: []str = [];
 	const lister = [problems, warnings];
 	for (let k = 0z; k < 2; k += 1) {
 		for (let pr .. lister[k]) {
+			let pr = pr;
+			// fejl i en importeret fil vises på import-linjen
+			if (pr.line >= KILDE_LINJER) {
+				const (fil, n) = kilde_sted(pr.line);
+				const kn = pr.line / KILDE_LINJER;
+				pr.msg = fmt::asprintf("i {} (linje {}): {}", fil, n, pr.msg)!;
+				pr.line = kilder[kn - 1].linje;
+				for (pr.line >= KILDE_LINJER) pr.line = kilder[pr.line / KILDE_LINJER - 1].linje;
+			};
 			const l = linje(text, pr.line);
 			// fra første tegn, der ikke er mellemrum, til linjens ende
 			let s = 0z;
@@ -457,6 +487,8 @@ fn complete(id: str, uri: str, line: int, ch: int) void = {
 		};
 	} else {
 		for (let k .. KEYWORDS) append(items, item(k, 14, ""))!;
+		append(items, item("match", 14, "match x { 1, 2 => … \n _ => … }"))!;
+		append(items, item("import", 14, "import \"fil.Dash\" — fn'er fra en anden fil"))!;
 		for (let f .. BUILTIN_FNS) {
 			if (strings::hasprefix(f, "parr.")) continue;
 			append(items, item(f, 3, hover_tekst(f)))!;
@@ -568,6 +600,8 @@ const HJAELP: [_](str, str) = [
 	("try", "try kommando — må fejle; $status har exitkoden"),
 	("fail", "fail \"besked\" — stop scriptet med en fejl"),
 	("parallel", "for … in … parallel N — N løbere ad gangen"),
+	("match", "match x { 1, 2 => … \n \"a\" => { … } \n _ => … } — vælg en gren efter værdien"),
+	("import", "import \"fil.Dash\" — tag fn'er og variabler med fra en anden .Dash-fil"),
 ];
 
 fn hover_tekst(navn: str) str = {

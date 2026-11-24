@@ -295,6 +295,11 @@ fn call(name: str, args: []value, line: int) (value | failed) = {
 	case "menu" => return menu(args, line);
 	case "progress" => return progress(args, line);
 	case =>
+		match (mem_call(name, args, line)) {
+		case let v: value => return v;
+		case failed => return failed;
+		case void => void;
+		};
 		match (jj_call(name, args, line)) {
 		case let v: value => return v;
 		case failed => return failed;

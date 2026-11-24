@@ -63,6 +63,19 @@ fn exec_stmt(s: *stmt, e: *env) (flow | failed) = {
 		case let x: *expr => yield eval(x, e)?;
 		};
 		return flow::RETURN;
+	case let m: s_match =>
+		const v = eval(m.subj, e)?;
+		for (let a &.. m.arms) {
+			let hit = a.any;
+			for (let pat .. a.pats) {
+				if (hit) break;
+				hit = equal(v, eval(pat, e)?);
+			};
+			if (!hit) continue;
+			const inner = newenv(e);
+			defer freeenv(inner);
+			return run_block(a.body, inner);
+		};
 	case s_break =>
 		return flow::BREAK;
 	case s_continue =>

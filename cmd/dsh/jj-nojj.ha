@@ -14,6 +14,7 @@ use ascii;
 use fmt;
 use math;
 use os;
+use strconv;
 use strings;
 use viper;
 
@@ -118,6 +119,17 @@ fn jj_key(name: str, v: value, line: int) (viper::key | failed) = {
 	case "pagedown" => return 78: viper::key;
 	case => void;
 	};
+	// "f1" … "f12" og cifrene "0" … "9" (USB-scancodes)
+	const fb = strings::toutf8(s);
+	if (len(fb) >= 2 && len(fb) <= 3 && (fb[0] == 'f' || fb[0] == 'F')) {
+		match (strconv::stoi(strings::sub(s, 1, strings::end))) {
+		case let n: int =>
+			if (n >= 1 && n <= 12) return (57 + n): viper::key;
+		case => void;
+		};
+	};
+	if (len(fb) == 1 && fb[0] >= '1' && fb[0] <= '9') return (30 + (fb[0] - '1'): int): viper::key;
+	if (len(fb) == 1 && fb[0] == '0') return 39: viper::key;
 	const b = strings::toutf8(s);
 	if (len(b) == 1) {
 		let c = b[0];
@@ -173,6 +185,7 @@ fn jj_call(name: str, args: []value, line: int) (value | failed | void) = {
 			viper::present(win);
 		};
 		jj_started = true;
+		pad_poll();
 		if (viper::frame(win)) return true;
 		jj_close();
 		return false;
@@ -370,6 +383,57 @@ fn jj_call(name: str, args: []value, line: int) (value | failed | void) = {
 		const pitch = if (len(args) > 2) jj_num(name, args, 2, line)? else 1.0;
 		viper::play(a, &jj_sounds[id], vol, pitch);
 		return nilv: value;
+	case "blit" =>
+		// blit(buf, adr, række_bytes, bredde, højde, format, x, y [, w, h])
+		// tegner pixels direkte fra en bytes()-buffer: format 15 (PS1-VRAM,
+		// 16 bit BGR555), 24 (RGB, 3 bytes) eller 32 (BGRA, som i vinduet)
+		const win = jj_window(name, line)?;
+		if (len(args) != 8 && len(args) != 10) {
+			return die(line, "blit() vil have buf, adr, række_bytes, bredde, højde, format, x, y [, w, h]");
+		};
+		let a: [10]i64 = [0...];
+		for (let k = 0z; k < len(args); k += 1) a[k] = int_arg(name, args[k], line)?;
+		const sw = a[3], sh = a[4];
+		const dw = if (len(args) == 10) a[8] else sw, dh = if (len(args) == 10) a[9] else sh;
+		jj_blit(win, a[0], a[1], a[2], sw, sh, a[5], a[6], a[7], dw, dh, line)?;
+		return nilv: value;
+	case "stream_pcm" =>
+		// stream_pcm(buf, adr, frames): 16-bit stereo-samples (little-endian,
+		// 44100 Hz, som CD-lyd) fra en bytes()-buffer ud i højttalerne
+		if (len(args) != 3) return die(line, "stream_pcm() vil have buf, adr og antal frames");
+		const buf = mem_get(int_arg(name, args[0], line)?, name, line)?;
+		const off = int_arg(name, args[1], line)?;
+		const n = int_arg(name, args[2], line)?;
+		if (n <= 0) return nilv: value;
+		if (off < 0 || off + n * 4 > len(buf): i64) {
+			return dief(line, "stream_pcm(): {} frames fra 0x{:x} går udenfor bufferen", n, off);
+		};
+		const a = match (jj_snd) {
+		case let a: *viper::audio => yield a;
+		case null =>
+			const a = viper::audio_open();
+			jj_snd = a;
+			yield a;
+		};
+		let smp: []f32 = alloc([0.0f32...], n: size)!;
+		defer free(smp);
+		for (let k = 0z; k < n: size; k += 1) {
+			const o = off: size + k * 4;
+			const l = (buf[o]: u16 | buf[o + 1]: u16 << 8): i16;
+			const r = (buf[o + 2]: u16 | buf[o + 3]: u16 << 8): i16;
+			smp[k] = (l: f32 + r: f32) / 65536.0;
+		};
+		viper::audio_stream(a, smp);
+		return nilv: value;
+	case "fullscreen" =>
+		// fullscreen(true/false) → true, hvis vinduet kunne (kun SDL2 endnu)
+		need(name, args, 1, line)?;
+		return viper::set_fullscreen(jj_window(name, line)?, truthy(args[0]));
+	case "window_size" =>
+		// window_size(b, h): vinduet på skærmen; tegnefladen skaleres med
+		if (len(args) != 2) return die(line, "window_size() vil have bredde og højde");
+		return viper::set_window_size(jj_window(name, line)?,
+			jj_int(name, args, 0, line)?, jj_int(name, args, 1, line)?);
 	case "screenshot" =>
 		const win = jj_window(name, line)?;
 		const p = expanduser(str_arg(name, if (len(args) > 0) args[0] else nilv, line)?);
@@ -379,6 +443,10 @@ fn jj_call(name: str, args: []value, line: int) (value | failed | void) = {
 		case => return dief(line, "screenshot(): kan ikke gemme '{}'", p);
 		};
 	case =>
+		match (jj_pad_call(name, args, line)?) {
+		case let v: value => return v;
+		case void => void;
+		};
 		match (jj_text_call(name, args, line)?) {
 		case let v: value => return v;
 		case void => return jj3_call(name, args, line);
@@ -431,6 +499,52 @@ fn jj_auto_icon(win: *viper::window, stem: str) void = {
 			viper::image_free(&img);
 			return;
 		case viper::imgerror => void;
+		};
+	};
+};
+
+let jj_lut15: []u32 = [];
+
+fn jj_blit(win: *viper::window, h: i64, off: i64, stride: i64, sw: i64, sh: i64,
+		format: i64, x: i64, y: i64, w: i64, hh: i64, line: int) (void | failed) = {
+	const buf = mem_get(h, "blit", line)?;
+	const bpp: i64 = switch (format) {
+	case 15, 16 => yield 2;
+	case 24 => yield 3;
+	case 32 => yield 4;
+	case => return dief(line, "blit(): format skal være 15, 24 eller 32, ikke {}", format);
+	};
+	if (sw <= 0 || sh <= 0 || w <= 0 || hh <= 0) return;
+	const last = off + (sh - 1) * stride + sw * bpp;
+	if (off < 0 || stride < 0 || last > len(buf): i64) {
+		return dief(line, "blit(): {}×{} pixels fra 0x{:x} går udenfor bufferen", sw, sh, off);
+	};
+	if (bpp == 2 && len(jj_lut15) == 0) {
+		// 5 bit → 8 bit pr. farve, én gang for alle
+		for (let c = 0u32; c < 32768; c += 1) {
+			const r = c & 31, g = (c >> 5) & 31, b = (c >> 10) & 31;
+			append(jj_lut15, 0xff000000 | (r << 3 | r >> 2) << 16
+				| (g << 3 | g >> 2) << 8 | (b << 3 | b >> 2))!;
+		};
+	};
+	const x0 = if (x < win.clip_x0: i64) win.clip_x0: i64 else x;
+	const y0 = if (y < win.clip_y0: i64) win.clip_y0: i64 else y;
+	const x1 = if (x + w > win.clip_x1: i64) win.clip_x1: i64 else x + w;
+	const y1 = if (y + hh > win.clip_y1: i64) win.clip_y1: i64 else y + hh;
+	if (x0 >= x1 || y0 >= y1) return;
+	const ww = win.width: i64;
+	for (let yy = y0; yy < y1; yy += 1) {
+		const sy = (yy - y) * sh / hh;
+		const row = off + sy * stride;
+		const drow = yy * ww;
+		for (let xx = x0; xx < x1; xx += 1) {
+			const sx = (xx - x) * sw / w;
+			const o = (row + sx * bpp): size;
+			win.pixels[(drow + xx): size] = switch (bpp) {
+			case 2 => yield jj_lut15[(buf[o]: u32 | (buf[o + 1]: u32 & 0x7f) << 8): size];
+			case 3 => yield 0xff000000 | buf[o]: u32 << 16 | buf[o + 1]: u32 << 8 | buf[o + 2]: u32;
+			case => yield buf[o]: u32 | buf[o + 1]: u32 << 8 | buf[o + 2]: u32 << 16 | 0xff000000;
+			};
 		};
 	};
 };

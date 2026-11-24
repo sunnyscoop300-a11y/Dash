@@ -12,7 +12,10 @@ const BUILTIN_FNS: [_]str = ["print", "len", "str", "int", "float", "type", "ran
 	"env", "exists", "wait", "running", "kill", "is_dir", "is_file", "which", "read", "write", "append",
 	"glob", "input", "now", "sleep", "round", "abs", "min", "max", "cwd",
 	"ask", "menu", "progress", "sin", "cos", "sqrt", "floor", "random",
-	"parr.ln", "parr.err", "parr.fmt", "parr.tabel"];
+	"parr.ln", "parr.err", "parr.fmt", "parr.tabel",
+	"bytes", "rd8", "rd16", "rd32", "wr8", "wr16", "wr32", "bytes_len", "copy_bytes",
+	"fill_bytes", "free_bytes", "read_bytes", "read_into", "write_bytes",
+	"u32", "s32", "s16", "s8"];
 
 // JJGui (jj-nojj.ha): vinduer, grafik, mus, tastatur og lyd.
 const JJ_FNS: [_]str = ["window", "frame", "close_window", "clear", "rect", "outline",
@@ -20,7 +23,7 @@ const JJ_FNS: [_]str = ["window", "frame", "close_window", "clear", "rect", "out
 	"button", "mouse", "clicked", "right_clicked", "mouse_down", "wheel", "key",
 	"pressed", "typed", "delta", "width", "height", "image", "draw", "image_size", "free_image", "window_icon",
 	"textbox", "focused", "submitted", "textbox_set", "clipboard", "set_clipboard",
-	"sound", "sound_file", "play", "screenshot",
+	"sound", "sound_file", "play", "screenshot", "blit", "stream_pcm", "fullscreen", "window_size", "pad_name", "pad_button", "pad_axis",
 	"camera", "fog", "box3d", "floor3d", "circle3d", "project", "render3d"];
 
 const BUILTIN_CMDS: [_]str = ["echo", "cd", "exit", "fail"];

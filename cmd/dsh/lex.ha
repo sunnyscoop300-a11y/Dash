@@ -81,7 +81,7 @@ fn scan_balanced(src: []u8, i: size, open: u8, close: u8, line: int) (size | fai
 	return dief(line, "mangler '{}'", close: rune);
 };
 
-const TWO: [_]str = ["==", "!=", "<=", ">=", "+=", "-=", "*=", "/=", "&&", "||", ">>"];
+const TWO: [_]str = ["=>", "==", "!=", "<=", ">=", "+=", "-=", "*=", "/=", "&&", "||", ">>"];
 
 fn lex(src: []u8, line: int) ([]token | failed) = {
 	let toks: []token = [];

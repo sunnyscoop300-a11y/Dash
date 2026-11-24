@@ -73,6 +73,8 @@
       <keyword>break</keyword>
       <keyword>continue</keyword>
       <keyword>parallel</keyword>
+      <keyword>match</keyword>
+      <keyword>import</keyword>
       <keyword>and</keyword>
       <keyword>or</keyword>
       <keyword>not</keyword>

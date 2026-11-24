@@ -1,6 +1,9 @@
 // Tokens → syntax tree. Command lines are cut out of the source as raw
 // text and split into words, so they keep shell-like freedom.
 use fmt;
+use fs;
+use io;
+use os;
 use strings;
 
 type parser = struct {
@@ -8,6 +11,7 @@ type parser = struct {
 	toks: []token,
 	pos: size,
 	prev: token,
+	fil: str,    // filen, der læses (til import); "" = scriptet selv
 };
 
 fn peek(p: *parser, k: size = 0) token = {
@@ -73,10 +77,51 @@ fn program(p: *parser) ([]stmt | failed) = {
 	for (true) {
 		skip_seps(p);
 		if (peek(p).kind == tkind::EOF) return out;
+		if (er_import(p)) {
+			append(out, import_fil(p)?...)!;
+			end_stmt(p)?;
+			continue;
+		};
 		append(out, statement(p)?)!;
 		end_stmt(p)?;
 	};
 };
+
+// import "sti" — en anden .Dash-fil, hvis fn'er og variabler kommer med
+fn er_import(p: *parser) bool = {
+	const t = peek(p), n = peek(p, 1);
+	return t.kind == tkind::IDENT && t.val == "import"
+		&& (n.kind == tkind::STR || n.kind == tkind::RSTR) && n.line == t.line;
+};
+
+fn import_fil(p: *parser) ([]stmt | failed) = {
+	const line = next(p).line;
+	const navn = next(p).val;
+	const base = if (p.fil != "") p.fil else import_base();
+	const sti = match (find_import(navn, base)) {
+	case let s: str => yield s;
+	case void =>
+		return dieh(line, fmt::asprintf("kan ikke finde '{}' til import", navn)!,
+			"stien regnes fra scriptets egen mappe (eller ~/.local/share/dash/lib)");
+	};
+	// hver fil kommer kun med én gang (også hvis to filer importerer den)
+	for (let k .. kilder) if (k.sti == sti) return [];
+	const src = match (os::open(sti)) {
+	case let f: io::file =>
+		defer io::close(f)!;
+		yield match (io::drain(f)) {
+		case let b: []u8 => yield b;
+		case => return die(line, fmt::asprintf("kan ikke læse '{}'", sti)!);
+		};
+	case => return die(line, fmt::asprintf("kan ikke åbne '{}'", sti)!);
+	};
+	append(kilder, kilde { sti = sti, src = src, linje = line })!;
+	const base_linje = len(kilder): int * KILDE_LINJER;
+	let p2 = parser { src = src, toks = lex(src, base_linje + 1)?, fil = sti, ... };
+	if (checking) return program_check(&p2);    // dsh check: find alle fejl
+	return program(&p2)?;
+};
+
 
 fn block(p: *parser) ([]stmt | failed) = {
 	expect(p, "{")?;
@@ -85,6 +130,10 @@ fn block(p: *parser) ([]stmt | failed) = {
 		skip_seps(p);
 		if (at(p, "}")) { next(p); return out; };
 		if (peek(p).kind == tkind::EOF) return die(peek(p).line, "blok mangler '}'");
+		if (er_import(p)) {
+			return dieh(peek(p).line, "import skal stå i yderste niveau af filen",
+				"flyt import op øverst i filen — ikke inde i en fn, if eller løkke");
+		};
 		append(out, statement(p)?)!;
 		end_stmt(p)?;
 	};
@@ -156,6 +205,11 @@ fn statement(p: *parser) (stmt | failed) = {
 	};
 	if (t.kind == tkind::IDENT) {
 		const nx = peek(p, 1);
+		if (t.val == "match" && !is_assign(nx) && nx.line == t.line
+				&& !(nx.kind == tkind::OP && (nx.val == "(" || nx.val == "[" || nx.val == ".") && !nx.space)) {
+			next(p);
+			return match_rest(p, line)?;
+		};
 		if (is_assign(nx)) {
 			next(p);
 			const op = next(p).val;
@@ -180,6 +234,48 @@ fn statement(p: *parser) (stmt | failed) = {
 		return s_expr { e = pexpr(p)?, line = line };
 	};
 	return command(p, t, false)?;
+};
+
+fn match_rest(p: *parser, line: int) (s_match | failed) = {
+	const subj = pexpr(p)?;
+	expect(p, "{")?;
+	let arms: []arm = [];
+	let har_any = false;
+	for (true) {
+		skip_seps(p);
+		if (at(p, "}")) {
+			next(p);
+			break;
+		};
+		if (peek(p).kind == tkind::EOF) return die(peek(p).line, "match mangler '}'");
+		const al = peek(p).line;
+		if (har_any) return dieh(al, "en gren efter '_' bliver aldrig brugt", "'_' skal være den sidste gren i match");
+		let a = arm { line = al, ... };
+		if (peek(p).kind == tkind::IDENT && peek(p).val == "_") {
+			next(p);
+			a.any = true;
+			har_any = true;
+		} else {
+			for (true) {
+				append(a.pats, pexpr(p)?)!;
+				if (!at(p, ",")) break;
+				next(p);
+			};
+		};
+		if (!at(p, "=>")) {
+			const t = peek(p);
+			return dieh(t.line, fmt::asprintf("forventede '=>' i match, fik {}", desc(t))!,
+				"en gren skrives som:  værdi => kode   eller   _ => kode");
+		};
+		next(p);
+		if (at(p, "{")) {
+			a.body = block(p)?;
+		} else {
+			append(a.body, statement(p)?)!;
+		};
+		append(arms, a)!;
+	};
+	return s_match { subj = subj, arms = arms, line = line };
 };
 
 fn is_assign(t: token) bool = t.kind == tkind::OP && (t.val == "=" || t.val == "+="
@@ -669,4 +765,58 @@ fn primary(p: *parser) (*expr | failed) = {
 	case => void;
 	};
 	return dief(t.line, "uventet {}", desc(t));
+};
+
+// --- import
+
+// En importeret fil får sine linjenumre lagt oven i nr. × KILDE_LINJER, så
+// fejlbeskeder kan finde den rigtige fil og linje igen.
+def KILDE_LINJER: int = 1000000;
+type kilde = struct { sti: str, src: []u8, linje: int };
+let kilder: []kilde = [];
+
+fn import_base() str = {
+	const d = os::tryenv("DSH_IMPORT_DIR", "");
+	if (d != "") return strings::concat(d, "/x.Dash")!;
+	return script_name;
+};
+
+fn find_import(navn: str, base: str) (str | void) = {
+	let n = navn;
+	if (!strings::hassuffix(n, ".Dash") && !strings::hassuffix(n, ".dash")) {
+		n = strings::concat(n, ".Dash")!;
+	};
+	let kand: []str = [];
+	if (strings::hasprefix(n, "/")) {
+		append(kand, n)!;
+	} else if (strings::hasprefix(n, "~/")) {
+		append(kand, strings::concat(home(), strings::sub(n, 1, strings::end))!)!;
+	} else {
+		const (dir, _) = strings::rcut(base, "/");
+		append(kand, if (strings::contains(base, "/")) strings::concat(dir, "/", n)! else n)!;
+		append(kand, strings::concat(home(), "/.local/share/dash/lib/", n)!)!;
+	};
+	for (let k .. kand) {
+		match (os::stat(k)) {
+		case let st: fs::filestat =>
+			if (fs::isfile(st.mode)) return match (os::realpath(k)) {
+			case let r: str => yield strings::dup(r)!;
+			case => yield k;
+			};
+		case => void;
+		};
+	};
+};
+
+// linjenummer → (filnavn, linje i den fil)
+fn kilde_sted(line: int) (str, int) = {
+	const k = line / KILDE_LINJER;
+	if (k <= 0 || k > len(kilder): int) return (script_name, line);
+	return (kilder[k - 1].sti, line - k * KILDE_LINJER);
+};
+
+fn kilde_src(line: int) []u8 = {
+	const k = line / KILDE_LINJER;
+	if (k <= 0 || k > len(kilder): int) return script_src;
+	return kilder[k - 1].src;
 };
