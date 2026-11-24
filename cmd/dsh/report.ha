@@ -4,9 +4,9 @@ use io;
 use os;
 use strings;
 
-def VERSION: str = "0.15.0-hare";
+def VERSION: str = "0.16.0-hare";
 // hver version får et navn fra Farming Life in Another World
-def KODENAVN: str = "Flora";
+def KODENAVN: str = "Zabuton";
 
 let script_name = "dsh";
 let script_src: []u8 = [];

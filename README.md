@@ -492,6 +492,21 @@ I JJGui tegner `blit(buf, adr, række_bytes, bredde, højde, format, x, y [, w, 
 pixels direkte fra en buffer — format 15 (PS1-VRAM), 24 (RGB) eller 32 — og
 skalerer dem til `w`×`h`. Det er sådan **KATCHA** (`eksempler/katcha.Dash`),
 PS1-emulatoren i ren Dash, viser skærmen.
+## Nyt i 0.16 «Zabuton» 🕷️
+
+Zabuton er kæmpeedderkoppen i Farming Life in Another World, der væver alt
+tøjet til landsbyen. Næste version bliver «Lulu».
+
+- **match med intervaller og vagter**: `0x20..0x3f =>` (begge ender med) og
+  `0x03 if not nodisc =>`. Violet laver stadig intervaller om til en `switch`.
+- **violet prof / dsh prof**: kør et script og se, hvor tiden går — kald,
+  *Selv*-tid og *Inkl.*-tid for hver fn. Ctrl+C viser også tabellen.
+- **violet run** bygger om, når en importeret fil eller selve dsh er ændret.
+- Kan Violet ikke oversætte et script med `import`, indlæser dsh nu de
+  importerede filer rigtigt, når den tager over.
+- **KATCHA** er blevet hurtigere (CPU-løkken uden små fn-kald) og tegner
+  polygoner efter PS1'ens top-venstre-regel — ingen streger ved kanterne.
+
 ## Nyt i 0.15 «Flora» 🦇
 
 Flora er Lulus kusine i Farming Life in Another World — vampyren med alle

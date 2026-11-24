@@ -8,6 +8,17 @@ A script language with super speed — inspired by Dash Parr. Files are called
 > The original README is [README.md](README.md) (Danish).
 
 
+## New in 0.16 «Zabuton» 🕷️
+
+Zabuton is the giant spider in Farming Life in Another World who weaves all the
+village's clothes. The next version will be «Lulu».
+
+- **match ranges and guards** — `0x20..0x3f =>` (inclusive) and `0x03 if not nodisc =>`.
+- **violet prof / dsh prof** — calls, self time and inclusive time per fn; Ctrl+C prints it too.
+- **violet run** rebuilds when an imported file or dsh itself changes.
+- When Violet can't compile a script that uses `import`, dsh now loads the imports properly.
+- **KATCHA** — a faster CPU loop and PS1 top-left fill rule for polygons (no edge streaks).
+
 ## New in 0.15 «Flora» 🦇
 
 Flora is Lulu's cousin in Farming Life in Another World — the vampire with all
@@ -32,7 +43,7 @@ if status != 0 { echo "try caught it" }
 ```
 
 Every version gets a code name from *Farming Life in Another World*. The
-current one is **0.15 «Flora»** 🦇 (`dsh --version`); the next will be «Zabuton».
+current one is **0.16 «Zabuton»** 🕷️ (`dsh --version`); the next will be «Lulu».
 
 ## Build
 
