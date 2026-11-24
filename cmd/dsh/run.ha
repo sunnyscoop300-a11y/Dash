@@ -313,6 +313,7 @@ fn run_x(stages: []xstage, e: nullable *env, line: int, cap: bool, try_: bool) (
 			if (len(argv[0]) > 1) {
 				code = int_arg("exit", call("int", [argv[0][1]], line)?, line)?: int;
 			};
+			prof_rapport();
 			os::exit(code);
 		case "fail" =>
 			const msg = if (len(argv[0]) > 1) strings::join(" ", argv[0][1..]...)! else "fejl";

@@ -263,15 +263,33 @@ fn cache_dir() str = {
 	return strings::concat(os::tryenv("HOME", "/tmp"), "/.cache/violet")!;
 };
 
-// Filnavnet i cachen: scriptets navn + et fingeraftryk af indhold, sti og
-// version, så en ny Violet eller en ændring i scriptet giver en ny binær.
+// Filnavnet i cachen: scriptets navn + et fingeraftryk af indhold, sti,
+// version, selve dsh-binæren og alle importerede filer — så en ny Violet, en
+// genbygget dsh (fx med en rettet ViperGui) eller en ændring i et modul
+// giver en ny binær.
 fn cache_key(path: str, src: []u8) (str, str) = {
 	let h = sha256::sha256();
 	hash::write(&h, strings::toutf8(VERSION));
 	hash::write(&h, [0]);
+	// dsh selv: størrelse og ændringstid (billigere end at læse hele filen).
+	// /proc/self/exe er et link; dets egen tid er processens starttid, så
+	// vi slår den rigtige fil op først.
+	match (os::realpath("/proc/self/exe")) {
+	case let exe: str =>
+		match (os::stat(exe)) {
+		case let st: fs::filestat =>
+			hash::write(&h, strings::toutf8(fmt::asprintf("{}:{}:{}",
+				st.sz, st.mtime.sec, st.mtime.nsec)!));
+		case => void;
+		};
+	case => void;
+	};
+	hash::write(&h, [0]);
 	hash::write(&h, strings::toutf8(path));
 	hash::write(&h, [0]);
 	hash::write(&h, src);
+	let set: []str = [];
+	hash_imports(&h, src, path, &set);
 	let sum: [sha256::SZ]u8 = [0...];
 	hash::sum(&h, sum);
 	const hex = hex::encodestr(sum[..8])!;
@@ -286,6 +304,43 @@ fn cache_key(path: str, src: []u8) (str, str) = {
 	};
 	const name = strings::fromutf8_unsafe(base);
 	return (name, strings::concat(name, "-", hex)!);
+};
+
+// Følger `import "…"`-linjerne (rekursivt, hver fil én gang) og lægger de
+// importerede filers sti og indhold i fingeraftrykket.
+fn hash_imports(h: *sha256::state, src: []u8, fil: str, set: *[]str) void = {
+	const tekst = strings::fromutf8_unsafe(src);
+	const it = strings::tokenize(tekst, "\n");
+	for (true) {
+		const linje = match (strings::next_token(&it)) {
+		case let l: str => yield strings::ltrim(l);
+		case done => break;
+		};
+		if (!strings::hasprefix(linje, "import \"")) continue;
+		const rest = strings::sub(linje, len("import \""), strings::end);
+		const (navn, _) = strings::cut(rest, "\"");
+		const sti = match (find_import(navn, fil)) {
+		case let s: str => yield s;
+		case void => continue;
+		};
+		let kendt = false;
+		for (let s .. *set) if (s == sti) kendt = true;
+		if (kendt) continue;
+		append(set, sti)!;
+		const isrc = match (os::open(sti)) {
+		case let f: io::file =>
+			defer io::close(f)!;
+			yield match (io::drain(f)) {
+			case let b: []u8 => yield b;
+			case => continue;
+			};
+		case => continue;
+		};
+		hash::write(h, strings::toutf8(sti));
+		hash::write(h, [0]);
+		hash::write(h, isrc);
+		hash_imports(h, isrc, sti, set);
+	};
 };
 
 // Fjerner gamle binærer for samme script (andet fingeraftryk).
@@ -435,4 +490,30 @@ fn hare_default_path() str = {
 		};
 	};
 	return strings::join(":", paths...)!;
+};
+
+// violet prof: byg scriptet med målepunkter i hver fn og kør det. Returnerer
+// kun, hvis det ikke kan oversættes — så måler fortolkeren i stedet.
+fn prof_main(path: str, rest: []str) void = {
+	if (!(exec::lookup("hare") is str)) return;
+	cprof = true;
+	const code = match (try_compile(path)) {
+	case let c: str => yield c;
+	case void =>
+		cprof = false;
+		fmt::errorfln("{}💜 violet prof: {} kan ikke oversættes endnu ({}) — måler med dsh{}",
+			dim(), path, cerrs[0], reset())!;
+		return;
+	};
+	const dir = cache_dir();
+	match (os::mkdirs(dir, 0o755)) { case => void; };
+	const (name, _) = cache_key(path, script_src);
+	const bin = fmt::asprintf("{}/{}-prof", dir, name)!;
+	fmt::errorfln("{}💜 violet prof bygger {} med målepunkter …{}", dim(), path, reset())!;
+	if (!hare_build(code, bin, true, "", true)) {
+		cprof = false;
+		fmt::errorfln("{}💜 violet prof: hare build fejlede — måler med dsh{}", dim(), reset())!;
+		return;
+	};
+	exec_bin(bin, rest);
 };

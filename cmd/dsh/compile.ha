@@ -30,6 +30,7 @@ let cpar = false;             // vi skriver kroppen af en parallel-løkke
 let cpar_scope = 0;           // første scope inde i den
 let cpar_loops = 0;           // løkker inde i parallel-kroppen
 let ccaps: []size = [];       // variabler udefra, som kroppen bruger
+let cprof = false;            // violet prof: målepunkter i hver fn
 
 fn cerr(line: int, msg: str) void = {
 	append(cerrs, fmt::asprintf("linje {}: {}", line, msg)!)!;
@@ -537,7 +538,19 @@ fn gmatch(m: *s_match) void = {
 				emit("case =>");
 			} else {
 				let vs: []str = [];
-				for (let pat .. a.pats) append(vs, gex(pat).c)!;
+				for (let i = 0z; i < len(a.pats); i += 1) {
+					match (a.his[i]) {
+					case null => append(vs, gex(a.pats[i]).c)!;
+					case let h: *expr =>
+						// et interval bliver til alle værdierne (Hare-switch
+						// kender kun enkelte konstanter)
+						const lo = konst_int(a.pats[i]) as i64;
+						const hi = konst_int(h) as i64;
+						for (let v = lo; v <= hi; v += 1) {
+							append(vs, fmt::asprintf("{}i64", v)!)!;
+						};
+					};
+				};
 				emit(fmt::asprintf("case {} =>", strings::join(", ", vs...)!)!);
 			};
 			cdepth += 1;
@@ -555,12 +568,31 @@ fn gmatch(m: *s_match) void = {
 	for (let i = 0z; i < len(m.arms); i += 1) {
 		const a = &m.arms[i];
 		const kw = if (i == 0) "if" else "} else if";
-		if (a.any) {
+		let c = "";
+		if (!a.any) {
+			let cs: []str = [];
+			for (let j = 0z; j < len(a.pats); j += 1) {
+				match (a.his[j]) {
+				case null =>
+					append(cs, cond(gbin("==", sv, gex(a.pats[j]), a.line)))!;
+				case let h: *expr =>
+					append(cs, fmt::asprintf("({} && {})",
+						cond(gbin(">=", sv, gex(a.pats[j]), a.line)),
+						cond(gbin("<=", sv, gex(h), a.line)))!)!;
+				};
+			};
+			c = fmt::asprintf("({})", strings::join(" || ", cs...)!)!;
+		};
+		match (a.guard) {
+		case let g: *expr =>
+			const gc = cond(gex(g));
+			c = if (c == "") gc else fmt::asprintf("{} && ({})", c, gc)!;
+		case null => void;
+		};
+		if (c == "") {
 			emit(if (i == 0) "{" else "} else {");
 		} else {
-			let cs: []str = [];
-			for (let pat .. a.pats) append(cs, cond(gbin("==", sv, gex(pat), a.line)))!;
-			emit(fmt::asprintf("{} ({}) {{", kw, strings::join(" || ", cs...)!)!);
+			emit(fmt::asprintf("{} ({}) {{", kw, c)!);
 		};
 		cdepth += 1;
 		gblock(a.body);
@@ -569,27 +601,64 @@ fn gmatch(m: *s_match) void = {
 	if (len(m.arms) > 0) emit("};");
 };
 
+// et heltal skrevet direkte i koden (også -5), ellers void
+fn konst_int(e: *expr) (i64 | void) = {
+	match (*e) {
+	case let x: e_num => return x: i64;
+	case let u: e_un =>
+		if (u.op == "-") match (*u.a) {
+		case let x: e_num => return -(x: i64);
+		case => void;
+		};
+	case => void;
+	};
+};
+
 // Kan match blive en switch? Emnet skal være et ✔ heltal eller en ✔ tekst,
-// og alle mønstre konstanter af samme slags, uden dubletter.
+// alle mønstre konstanter af samme slags (intervaller af heltal er i orden),
+// ingen vagter og ingen dubletter.
 fn match_switch(m: *s_match, k: kind) bool = {
 	if (k != kind::I && k != kind::S) return false;
 	let set: []str = [];
+	let i_set: []i64 = [];
+	let antal = 0z;
 	for (let a .. m.arms) {
-		for (let pat .. a.pats) {
+		if (a.guard != null) return false;
+		for (let i = 0z; i < len(a.pats); i += 1) {
+			const pat = a.pats[i];
+			if (k == kind::I) {
+				const lo = match (konst_int(pat)) {
+				case let v: i64 => yield v;
+				case void => return false;
+				};
+				let hi = lo;
+				match (a.his[i]) {
+				case let h: *expr =>
+					hi = match (konst_int(h)) {
+					case let v: i64 => yield v;
+					case void => return false;
+					};
+				case null => void;
+				};
+				if (hi < lo || hi - lo > 4096) return false;
+				antal += (hi - lo + 1): size;
+				if (antal > 8192) return false;
+				for (let v = lo; v <= hi; v += 1) {
+					for (let x .. i_set) if (x == v) return false;
+					append(i_set, v)!;
+				};
+				continue;
+			};
+			if (a.his[i] != null) return false;
 			let key = "";
 			match (*pat) {
-			case let x: e_num =>
-				if (k != kind::I) return false;
-				key = fmt::asprintf("{}", x: i64)!;
 			case let x: e_str =>
-				if (k != kind::S) return false;
 				if (len(x.parts) > 1) return false;
 				if (len(x.parts) == 1) match (x.parts[0]) {
 				case let l: p_lit => key = l;
 				case => return false;
 				};
 			case let x: e_const =>
-				if (k != kind::S) return false;
 				match (x.v) {
 				case let s: str => key = s;
 				case => return false;
@@ -892,6 +961,10 @@ fn gfn(f: *s_fn) void = {
 	};
 	const rk = kind_of(fi.ret);
 	const tom = void_fn(idx);
+	if (cprof) {
+		emit(fmt::asprintf("prof_ind({});", idx)!);
+		emit(fmt::asprintf("defer prof_ud({});", idx)!);
+	};
 	gstmts(f.body);
 	if (!tom && !ends_in_return(f.body)) {
 		emit(if (rk == kind::V) "return nilv;" else "abort(\"Violet: fn uden return\");");
@@ -941,6 +1014,11 @@ fn compile_program(prog: []stmt, name: str, src: []u8) str = {
 	for (let k .. kilder) {
 		ms(&out, fmt::asprintf("\tappend(kilder, kilde {{ sti = {}, src = strings::toutf8({}), linje = {} }})!;\n",
 			hlit(k.sti), hlit(strings::fromutf8_unsafe(k.src)), k.linje)!);
+	};
+	if (cprof) {
+		let ns: []str = [];
+		for (let f .. fns) append(ns, hlit(f.name))!;
+		ms(&out, fmt::asprintf("\tprof_start([{}]);\n", strings::join(", ", ns...)!)!);
 	};
 	ms(&out, "\trt_end(prog());\n};\n");
 	return strings::fromutf8_unsafe(out);

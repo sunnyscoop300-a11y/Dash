@@ -125,11 +125,15 @@ match key {
 
 - Several values in one branch are separated by commas; a branch is one line
   or a `{ block }`.
+- **Ranges**: `0x20..0x3f =>` (both ends included), negative numbers too.
+- **Guards**: `0x03 if not nodisc =>` — the branch is only taken if the
+  condition holds as well. `_ if x > 9 =>` guards the rest.
 - `_` catches the rest and must come last. Without `_`, nothing happens when
   nothing matches.
 - `break`, `continue` and `return` work inside the branches.
 - **Violet** turns a match on a ✔ int or ✔ str with constant patterns into a
-  real Hare `switch` (a jump table) instead of an if chain.
+  real Hare `switch` (a jump table) instead of an if chain — ranges too.
+  With guards it becomes an if chain.
 
 **import** brings in the functions and variables of another `.Dash` file:
 
@@ -268,9 +272,22 @@ violet race.Dash --arch android  # for the phone: runs directly in Termux
 violet race.Dash --arch aarch64  # for a Raspberry Pi or proot Linux on a phone
 violet types race.Dash           # show the inferred types
 violet hare race.Dash            # show the Hare code she generates
+violet prof race.Dash            # run with a profiler: where does the time go? (dsh prof = interpreter)
 ```
 
 (`dsh build`, `dsh types` and `dsh hare` do the same.)
+
+**violet prof** builds the script with a probe in every fn and runs it. When the
+program ends (or you press Ctrl+C) it prints where the time went:
+
+```
+💜 violet prof  1.18s total
+  Funktion          Kald     Selv      %    Inkl.  pr. kald
+  step()      12.345.678  712.4ms  60.3%    1.02s      58ns
+```
+
+*Selv* (self) is time inside the fn itself, *Inkl.* includes the fns it calls.
+If the script can't be compiled, `dsh prof` measures in the interpreter instead.
 
 **violet run** caches the binary in `~/.cache/violet/` with a fingerprint of
 the script. The first run builds (a few seconds); after that the binary starts
@@ -446,7 +463,7 @@ All in `eksempler/` ("examples"):
 
 | Program | What it is |
 |---|---|
-| `katcha.Dash` | **KATCHA** 💜💀 — "Herkules, ich brauche Cheatcodes!!": a PlayStation 1 emulator in pure Dash (build it with Violet). R3000A CPU, GPU with gouraud/textured polygons, DMA, timers, joypad, a CD-ROM drive for `.cue`/`.bin`/`.iso` images (with fast boot via `SYSTEM.CNF`), a game list from `~/.katcha/spil/`, PS-EXE side-loading and Katcha's GameShark codebook. Bring your own BIOS dump. |
+| `katcha.Dash` | **KATCHA** 💜💀 — "Herkules, ich brauche Cheatcodes!!": a PlayStation 1 emulator in pure Dash (build it with Violet). R3000A CPU, GPU with gouraud/textured polygons, DMA, timers, joypad, SPU sound, CD and XA audio, MDEC video (cutscenes), a CD-ROM drive for `.cue`/`.bin`/`.iso` images (with fast boot via `SYSTEM.CNF`), a game list from `~/.katcha/spil/`, PS-EXE side-loading and Katcha's GameShark codebook. Bring your own BIOS dump. |
 | `bob.Dash` | **Bob's shop** — an app store for your own Dash programs and games: builds them with Violet into `~/.local/bin`, adds menu shortcuts, updates and removes them. The **System** tab updates Linux itself (pacman, AUR, apt, dnf, zypper, xbps, flatpak, snap). |
 | `zuzubox.Dash` | **ZuzuBox** 💀📦 — the zombie girl Zuzu (or the bat girl Harboiy) pushes crates onto glowing skulls in a purple crypt. 75 levels in 14 crypts, three themes (spooky, autumn, Christmas), a November countdown and an advent calendar with a new level every day. |
 | `boxdog.Dash` | **BoxDog** 🐶📦 — a puppy pushes crates onto paw tiles in a warehouse. |

@@ -56,6 +56,7 @@ fn exec_stmt(s: *stmt, e: *env) (flow | failed) = {
 			params = f.params,
 			body = f.body,
 			closure = e,
+			pid = 0,
 		})!);
 	case let r: s_return =>
 		ret_val = match (r.val) {
@@ -67,9 +68,19 @@ fn exec_stmt(s: *stmt, e: *env) (flow | failed) = {
 		const v = eval(m.subj, e)?;
 		for (let a &.. m.arms) {
 			let hit = a.any;
-			for (let pat .. a.pats) {
-				if (hit) break;
-				hit = equal(v, eval(pat, e)?);
+			for (let i = 0z; i < len(a.pats) && !hit; i += 1) {
+				const lo = eval(a.pats[i], e)?;
+				match (a.his[i]) {
+				case null => hit = equal(v, lo);
+				case let h: *expr =>
+					// interval: lo..hi, begge med
+					hit = truthy(binop(">=", v, lo, a.line)?)
+						&& truthy(binop("<=", v, eval(h, e)?, a.line)?);
+				};
+			};
+			if (hit) match (a.guard) {
+			case let g: *expr => hit = truthy(eval(g, e)?);
+			case null => void;
 			};
 			if (!hit) continue;
 			const inner = newenv(e);
@@ -357,6 +368,14 @@ fn call_fn(f: *func, args: []value, line: int) (value | failed) = {
 	};
 	const inner = newenv(f.closure);
 	defer freeenv(inner);
+	// dsh prof: tid og antal kald pr. fn
+	let pid = 0z;
+	if (prof_on) {
+		if (f.pid == 0) f.pid = prof_id(f.name) + 1;
+		pid = f.pid;
+		prof_ind(pid - 1);
+	};
+	defer if (pid > 0) prof_ud(pid - 1);
 	for (let i = 0z; i < len(args); i += 1) define(inner, f.params[i], args[i]);
 	ret_val = nilv;
 	switch (run_block(f.body, inner)?) {

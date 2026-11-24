@@ -193,6 +193,17 @@ tjek(kør(kode(['for i in range(5) {', '    match i {', '        0 => continue',
 tjek(kør(kode(['let n = "zuzu"', 'match n {', '    "harboiy" => echo "flagermus"', '    "zuzu" => echo "zombie"', '}',
     'match 9 { 1 => echo "nej" }', 'echo "slut"'])), kode(["zombie", "slut"]), "match med tekst og uden _")
 har(kør2(kode(['match 1 {', '    _ => echo a', '    1 => echo b', '}'])), "'_' skal være den sidste", "match: _ midt i")
+tjek(kør(kode(['let nodisc = false', 'for a in [0x05, 0x12, 0x2a, 0x40, -3, 3] {', '    match a {',
+    '        3 if nodisc => echo "ingen skive"', '        0x00..0x0f => echo "lav {a}"', '        0x10, 0x12 => echo "ti"',
+    '        0x20..0x3f => echo "gpu"', '        -5..-1 => echo "neg"', '        _ if a > 0x3f => echo "stor"', '        _ => echo "?"',
+    '    }', '}'])), kode(["lav 5", "ti", "gpu", "stor", "neg", "lav 3"]), "match: intervaller og vagter")
+write("/tmp/dsh-prof.Dash", kode(['fn f(x) { return x * 2 }', 'let s = 0', 'for i in range(100) { s += f(i) }', 'print(s)', '']))
+let pf = $(try $D prof /tmp/dsh-prof.Dash 2>&1)
+har(pf, "9900", "dsh prof: programmet kører")
+har(pf, "f()", "dsh prof: rapporten viser f()")
+har(pf, "100", "dsh prof: tæller kald")
+rm -f /tmp/dsh-prof.Dash
+
 let tmpd = $(mktemp -d)
 mkdir -p "{tmpd}/lib"
 write("{tmpd}/lib/mat.Dash", kode(['let HILSEN = "hej"', 'fn dobbelt(x) {', '    return x * 2', '}',
@@ -257,6 +268,8 @@ if exists(K) {
     # MDEC melder klar/optaget/klar (så spil ikke venter forgæves)
     tjek(regs($(try $D $K --test "{T}/mdec.bin"), ["r4", "r5", "r6"]), "r4=9000ffff r5=b000000f r6=9000ffff",
         "katcha: MDEC-status")
+    tjek(regs($(try $D $K --test "{T}/mdecfilm.bin"), ["r4", "r5", "r6"]), "r4=563c563c r5=563c563c r6=8600ffff",
+        "katcha: MDEC afkoder en makroblok (IDCT + farver)")
     # hurtig boot finder \KATCHA\TEST.EXE via SYSTEM.CNF på test-skiven (.cue/.bin og .iso)
     for d in ["cue", "iso"] {
         tjek(regs($(try $D $K --test "{T}/boot.bin" 1000 "{T}/test.{d}" --hurtig), ["r2", "r3"]),
@@ -277,6 +290,8 @@ if exists(K) {
                 "r4=00010282 r6=00000002", "katcha: CD-lyd Play + rapport (Violet)")
             tjek(regs($(try $KV --test "{T}/spu.bin" 3000000), ["r4", "r5"]), "r4=00000001 r5=00000000",
                 "katcha: SPU spiller ADPCM til ende (ENDX)")
+            tjek(regs($(try $KV --test "{T}/xatest.bin" 3000000 "{T}/xa.cue"), ["r4", "xa", "cdring"]),
+                "r4=4354414b xa=1 cdring=2352", "katcha: XA-lyd til lydchippen, data til CPU'en (Violet)")
             tjek($(try $KV --test "{T}/cpu.bin"), $(try $D $K --test "{T}/cpu.bin"), "katcha: Violet = dsh")
         } else {
             dumpet("violet kunne ikke bygge katcha.Dash")

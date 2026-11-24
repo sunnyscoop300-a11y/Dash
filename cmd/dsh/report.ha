@@ -48,6 +48,7 @@ fn report_error() void = {
 
 fn fail_and_exit(msg: str) never = {
 	flush_out();
+	prof_rapport();
 	fmt::errorfln("{}⚡✘ {}{}", red(), reset(), msg)!;
 	os::exit(1);
 };

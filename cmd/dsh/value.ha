@@ -14,6 +14,7 @@ type func = struct {
 	params: []str,
 	body: []stmt,
 	closure: *env,
+	pid: size,      // nummer i profileren + 1 (0 = ikke slået op endnu)
 };
 type value = (i64 | f64 | str | bool | nilv | *list | *mapv | *func);
 

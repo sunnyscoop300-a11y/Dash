@@ -203,10 +203,13 @@ fn rt_args() value = {
 
 fn rt_end(r: (void | failed)) void = {
 	match (r) {
-	case void => flush_out();
+	case void =>
+		flush_out();
+		prof_rapport();
 	case failed =>
 		flush_out();
 		report_error();
+		prof_rapport();
 		os::exit(1);
 	};
 };

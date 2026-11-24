@@ -254,14 +254,26 @@ fn match_rest(p: *parser, line: int) (s_match | failed) = {
 		if (peek(p).kind == tkind::IDENT && peek(p).val == "_") {
 			next(p);
 			a.any = true;
-			har_any = true;
 		} else {
 			for (true) {
 				append(a.pats, pexpr(p)?)!;
+				if (at(p, "..")) {
+					next(p);
+					append(a.his, pexpr(p)?)!;
+				} else {
+					append(a.his, null)!;
+				};
 				if (!at(p, ",")) break;
 				next(p);
 			};
 		};
+		// vagt: … if betingelse =>
+		if (at(p, "if")) {
+			next(p);
+			a.guard = pexpr(p)?;
+		};
+		// '_' uden vagt fanger alt — så må der ikke komme flere grene
+		if (a.any && a.guard == null) har_any = true;
 		if (!at(p, "=>")) {
 			const t = peek(p);
 			return dieh(t.line, fmt::asprintf("forventede '=>' i match, fik {}", desc(t))!,

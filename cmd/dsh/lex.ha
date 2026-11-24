@@ -81,7 +81,7 @@ fn scan_balanced(src: []u8, i: size, open: u8, close: u8, line: int) (size | fai
 	return dief(line, "mangler '{}'", close: rune);
 };
 
-const TWO: [_]str = ["=>", "==", "!=", "<=", ">=", "+=", "-=", "*=", "/=", "&&", "||", ">>",
+const TWO: [_]str = ["=>", "..", "==", "!=", "<=", ">=", "+=", "-=", "*=", "/=", "&&", "||", ">>",
 	"<<", "//", "&=", "|=", "^="];
 
 // Et ciffer i et 0x- eller 0b-tal, eller void.

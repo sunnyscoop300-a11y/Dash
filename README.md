@@ -102,11 +102,15 @@ match tast {
 
 - Flere værdier i én gren adskilles med komma, og en gren er enten én linje
   eller en `{ blok }`.
+- **Intervaller**: `0x20..0x3f =>` (begge ender med), også negative tal.
+- **Vagter**: `0x03 if not nodisc =>` — grenen bruges kun, hvis betingelsen
+  også passer. `_ if x > 9 =>` er en vagt på resten.
 - `_` fanger resten og skal stå sidst. Uden `_` sker der bare ingenting,
   hvis intet passer.
 - `break`, `continue` og `return` virker inde i grenene.
 - **Violet** laver en match på et ✔ heltal eller en ✔ tekst med konstanter
-  om til en rigtig Hare-`switch` (et hop-bord) i stedet for en if-kæde.
+  (og intervaller) om til en rigtig Hare-`switch` (et hop-bord) i stedet for en
+  if-kæde. Er der vagter, bliver det en if-kæde.
 
 **import** tager fn'er og variabler med fra en anden `.Dash`-fil:
 
@@ -248,9 +252,23 @@ violet kapløb.Dash --arch android   # til telefonen: kører direkte i Termux
 violet kapløb.Dash --arch aarch64   # til en Raspberry Pi eller proot-Linux på telefonen
 violet types kapløb.Dash      # vis typerne (trin 1)
 violet hare kapløb.Dash       # vis den Hare-kode, hun laver
+violet prof kapløb.Dash       # kør med profiler: hvor går tiden? (dsh prof = i fortolkeren)
 ```
 
 (`dsh build`, `dsh types` og `dsh hare` gør det samme.)
+
+**violet prof** bygger scriptet med et målepunkt i hver fn og kører det. Når
+programmet slutter (eller du trykker Ctrl+C), skriver den, hvor tiden gik:
+
+```
+💜 violet prof  1.18s i alt
+  Funktion          Kald     Selv      %    Inkl.  pr. kald
+  step()      12.345.678  712.4ms  60.3%    1.02s      58ns
+  setr()         705.596   48.9ms   4.1%   48.9ms      69ns
+```
+
+*Selv* er tiden i fn'en selv, *Inkl.* med de fn'er, den kalder. Kan scriptet
+ikke oversættes, måler `dsh prof` i fortolkeren i stedet.
 
 **violet run** gemmer binæren i `~/.cache/violet/` med et fingeraftryk af
 scriptet. Første gang bygger hun (et par sekunder), derefter starter

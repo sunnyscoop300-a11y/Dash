@@ -402,7 +402,9 @@ fn ends_in_return(stmts: []stmt) bool = {
 		return len(i.els) > 0 && ends_in_return(i.body) && ends_in_return(i.els);
 	case let m: s_match =>
 		// kun hvis der er en '_'-gren, og alle grene slutter med return
-		if (len(m.arms) == 0 || !m.arms[len(m.arms) - 1].any) return false;
+		if (len(m.arms) == 0) return false;
+		const sidste = &m.arms[len(m.arms) - 1];
+		if (!sidste.any || sidste.guard != null) return false;
 		for (let a .. m.arms) if (!ends_in_return(a.body)) return false;
 		return true;
 	case => return false;
@@ -452,7 +454,11 @@ fn tstmt(s: *stmt) void = {
 	case let m: s_match =>
 		texpr(m.subj);
 		for (let a &.. m.arms) {
-			for (let pat .. a.pats) texpr(pat);
+			for (let i = 0z; i < len(a.pats); i += 1) {
+				texpr(a.pats[i]);
+				match (a.his[i]) { case let h: *expr => texpr(h); case null => void; };
+			};
+			match (a.guard) { case let g: *expr => texpr(g); case null => void; };
 			tblock(a.body);
 		};
 	case let f: s_for =>

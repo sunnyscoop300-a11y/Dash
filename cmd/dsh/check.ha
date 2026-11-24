@@ -130,6 +130,8 @@ fn walk_stmts(stmts: []stmt, n: *names) void = {
 			walk_expr(m.subj, n);
 			for (let a .. m.arms) {
 				for (let pat .. a.pats) walk_expr(pat, n);
+				for (let h .. a.his) match (h) { case let e: *expr => walk_expr(e, n); case null => void; };
+				match (a.guard) { case let g: *expr => walk_expr(g, n); case null => void; };
 				walk_stmts(a.body, n);
 			};
 		case let f: s_for =>

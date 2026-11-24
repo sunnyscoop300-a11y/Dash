@@ -23,7 +23,8 @@ export fn main() void = {
 		if (len(args) < 2) fail_and_exit("brug: violet fil.Dash [-o navn] [--strip] [--arch aarch64]\n      violet run fil.Dash [args...]   |   violet types fil.Dash   |   violet hare fil.Dash");
 		let a: []str = [];
 		append(a, args[0])!;
-		if (args[1] != "types" && args[1] != "hare" && args[1] != "build" && args[1] != "run") {
+		if (args[1] != "types" && args[1] != "hare" && args[1] != "build" && args[1] != "run"
+				&& args[1] != "prof") {
 			append(a, "build")!;
 		};
 		append(a, args[1..]...)!;
@@ -34,6 +35,17 @@ export fn main() void = {
 	if (len(args) > 1 && args[1] == "run") {
 		if (len(args) < 3) fail_and_exit("brug: violet run fil.Dash [args...]");
 		run_main(args[2], args[3..]);
+		let a: []str = [];
+		append(a, args[0])!;
+		append(a, args[2..]...)!;
+		args = a;
+	};
+	// violet prof / dsh prof: kør med profiler. Violet bygger en binær med
+	// målepunkter i hver fn; kan scriptet ikke oversættes, måler fortolkeren.
+	if (len(args) > 1 && args[1] == "prof") {
+		if (len(args) < 3) fail_and_exit("brug: violet prof fil.Dash [args...]");
+		if (strings::hassuffix(os::args[0], "violet")) prof_main(args[2], args[3..]);
+		prof_start([]);
 		let a: []str = [];
 		append(a, args[0])!;
 		append(a, args[2..]...)!;
@@ -147,7 +159,9 @@ export fn main() void = {
 	case failed =>
 		flush_out();
 		report_error();
+		prof_rapport();
 		os::exit(1);
 	};
 	flush_out();
+	prof_rapport();
 };
