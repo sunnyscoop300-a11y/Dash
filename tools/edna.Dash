@@ -1,12 +1,13 @@
 #!/usr/bin/env dsh
-# opgrader.Dash — skriver gamle .Dash-scripts om til nyt Dash 💨
+# edna.Dash — Edna Mode syr nye dragter til dine gamle .Dash-scripts 👓
 #
-#   dsh tools/opgrader.Dash fil.Dash           vis hvad der ville blive ændret
-#   dsh tools/opgrader.Dash mappe/             … for alle .Dash-filer i mappen
-#   dsh tools/opgrader.Dash mappe/ --skriv     skriv ændringerne (gammel fil → fil.Dash.før)
+#   dsh tools/edna.Dash fil.Dash           vis hvad der ville blive ændret
+#   dsh tools/edna.Dash mappe/             … for alle .Dash-filer i mappen
+#   dsh tools/edna.Dash mappe/ --skriv     skriv ændringerne (gammel fil → fil.Dash.før)
 #
-# Hver gang sproget får noget nyt, kommer der en regel her. Reglerne ændrer
-# kun det, de er helt sikre på — resten bliver stående, og det gamle virker stadig.
+# Edna er hende fra De Utrolige, der syr Dashs dragt. Hver gang sproget får
+# noget nyt, kommer der en regel her. Reglerne ændrer kun det, de er helt
+# sikre på — resten bliver stående, og det gamle virker stadig. No capes!
 #
 # Regler:
 #   0.17 «Lulu»   import "x"  →  sprint x    (eller sprint "sti/x" med en sti)
@@ -53,7 +54,7 @@ fn regel_sprint(l, fil) {
     return "sprint \"{navn}\"{efter}"
 }
 
-fn opgrader(l, fil) {
+fn ny_dragt(l, fil) {
     let ny = l
     ny = regel_sprint(ny, fil)
     return ny
@@ -67,7 +68,7 @@ for a in args {
     if a == "--skriv" { skriv = true } else { mål.push(a) }
 }
 if mål.len == 0 {
-    print("brug: dsh tools/opgrader.Dash fil.Dash|mappe … [--skriv]")
+    print("brug: dsh tools/edna.Dash fil.Dash|mappe … [--skriv]")
     exit 1
 }
 
@@ -93,7 +94,7 @@ for fil in filer.sort() {
     let nr = 0
     for l in read(fil).lines() {
         nr += 1
-        let ny = opgrader(l, fil)
+        let ny = ny_dragt(l, fil)
         if ny != l {
             n += 1
             print("{fil}:{nr}")
@@ -114,10 +115,17 @@ for fil in filer.sort() {
     }
 }
 
+fn antal(n, en, flere) {
+    if n == 1 { return "1 {en}" }
+    return "{n} {flere}"
+}
+
+let ll = antal(i_alt, "linje", "linjer")
+let ff = antal(ændrede, "fil", "filer")
 if i_alt == 0 {
-    print("💜 alt er allerede nyt Dash ({filer.len} filer)")
+    print("👓 Edna: alt har allerede den nyeste dragt ({antal(filer.len, "fil", "filer")})")
 } else if skriv {
-    print("💨 {i_alt} linjer i {ændrede} filer er opgraderet (de gamle ligger som .Dash.før)")
+    print("👓 Edna: {ll} i {ff} har fået ny dragt (de gamle ligger som .Dash.før)")
 } else {
-    print("💨 {i_alt} linjer i {ændrede} filer kan opgraderes — kør igen med --skriv")
+    print("👓 Edna: {ll} i {ff} kan få ny dragt — kør igen med --skriv")
 }

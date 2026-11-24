@@ -220,11 +220,11 @@ write("{tmpd}/sprint.Dash", kode(['sprint hurtig', 'sprint "lib/mat"', 'echo "{F
 tjek($(try $D "{tmpd}/sprint.Dash"), "💨 8 10", "sprint: navn og sti")
 write("{tmpd}/sprint2.Dash", kode(['fn f() {', '    sprint hurtig', '}', '']))
 har($(try $D check "{tmpd}/sprint2.Dash" 2>&1), "sprint skal stå i yderste niveau", "sprint: kun øverst i filen")
-# tools/opgrader.Dash skriver import om til sprint (og kun når modulet findes)
+# tools/edna.Dash (Edna Mode) skriver import om til sprint (og kun når modulet findes)
 write("{tmpd}/gammel.Dash", kode(['import "hurtig"', 'import "lib/mat"', 'import "skærm.png"', 'echo "{FART} {løb(4)} {dobbelt(5)}"', '']))
-try $D tools/opgrader.Dash "{tmpd}/gammel.Dash" --skriv > /dev/null
+try $D tools/edna.Dash "{tmpd}/gammel.Dash" --skriv > /dev/null
 let gl = read("{tmpd}/gammel.Dash").lines()
-tjek([gl[0], gl[1], gl[2]].join(" | "), 'sprint hurtig | sprint "lib/mat" | import "skærm.png"', "opgrader: import → sprint")
+tjek([gl[0], gl[1], gl[2]].join(" | "), 'sprint hurtig | sprint "lib/mat" | import "skærm.png"', "edna: import → sprint")
 if HARE {
     tjek($(try $D run "{tmpd}/sprint.Dash" 2> /dev/null), "💨 8 10", "sprint: også med Violet")
 }

@@ -171,14 +171,16 @@ sprint "lib/colours"         # a path still needs "…"
 `import` still works. Bare names are only for `sprint`, because
 `import picture` may also be ImageMagick's command.
 
-**Upgrade old scripts:** `tools/opgrader.Dash` rewrites old syntax into new.
+**Edna 👓 — upgrade old scripts:** `tools/edna.Dash` makes new suits for old
+scripts, just like Edna Mode makes Dash's suit in The Incredibles: it rewrites
+old syntax into new.
 Every time the language gets something new, it gets a rule (right now:
 `import "x"` → `sprint x`). It only changes what it is sure about, so e.g.
 `import "screen.png"` is left alone.
 
 ```
-dsh tools/opgrader.Dash examples/            # show what would change
-dsh tools/opgrader.Dash examples/ --skriv    # do it (old file → file.Dash.før)
+dsh tools/edna.Dash examples/            # show what would change
+dsh tools/edna.Dash examples/ --skriv    # do it (old file → file.Dash.før)
 ```
 
 ## Parr 🦸 — formatting and printing

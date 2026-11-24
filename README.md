@@ -139,14 +139,15 @@ sprint "lib/farver"          # en sti skal stadig i "…"
 `import` virker stadig. Navne uden anførselstegn er kun til `sprint`, fordi
 `import billede` også kan være ImageMagicks kommando.
 
-**Opgradér gamle scripts:** `tools/opgrader.Dash` skriver gammel syntaks om til
-ny. Hver gang sproget får noget nyt, kommer der en regel i den (lige nu:
+**Edna 👓 — opgradér gamle scripts:** `tools/edna.Dash` syr nye dragter til
+gamle scripts, ligesom Edna Mode syr Dashs dragt i De Utrolige: den skriver
+gammel syntaks om til ny. Hver gang sproget får noget nyt, kommer der en regel i den (lige nu:
 `import "x"` → `sprint x`). Den ændrer kun det, den er sikker på, så fx
 `import "skærm.png"` bliver stående.
 
 ```
-dsh tools/opgrader.Dash eksempler/            # vis hvad der ville blive ændret
-dsh tools/opgrader.Dash eksempler/ --skriv    # gør det (gammel fil → fil.Dash.før)
+dsh tools/edna.Dash eksempler/            # vis hvad der ville blive ændret
+dsh tools/edna.Dash eksempler/ --skriv    # gør det (gammel fil → fil.Dash.før)
 ```
 
 ## Parr 🦸 — formatering og udskrift
