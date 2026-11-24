@@ -10,6 +10,9 @@
 #
 #   dsh eksempler/wt-mini.Dash
 #
+# NYE viser de nye serier (dem WEBTOON mærker NEW) fra alle ugedage.
+# Søg øverst til højre: søgningen gælder alle Originals (alle ugedage og de
+# afsluttede), Esc tømmer feltet.
 # Klik på et cover for kapitlerne, klik på et kapitel for at læse det.
 # Hjul, piletaster og mellemrum ruller, Esc går tilbage. FØLG gemmer serien
 # under Min liste. "Åbn på WEBTOON" åbner serien i browseren.
@@ -68,6 +71,15 @@ let job_slags = ""
 let job_fil = ""
 let hentet = {}
 let cover_t = 0.0
+
+# søgning: på tværs af alle Originals
+let søg = ""
+let alle = []
+let alle_job = nil
+let alle_hentet = false
+let cover_job = nil
+let ønske_t = 0.0
+let sidste_ønske = ""
 
 let valgt = nil
 let kapitler = []
@@ -246,8 +258,10 @@ fn gem_bogmærker() {
 fn ny_serie(f) {
     let m = ""
     if f.len > 5 { m = f[5] }
+    let u = ""
+    if f.len > 6 { u = f[6] }
     return {"id": f[0], "navn": f[1], "genre": f[2], "liste": f[3], "png": f[4], "mærke": m,
-            "pic": -1, "linjer": []}
+            "url": u, "pic": -1, "linjer": []}
 }
 
 fn frigiv_covers() {
@@ -279,6 +293,10 @@ fn læs_dag(fil) {
 fn vis_fane(f) {
     fane = f
     rul = 0
+    if f == "nye" {
+        start_søgning()
+        return nil
+    }
     if f == "mine" {
         frigiv_covers()
         for x in fav_liste() { serier.push(ny_serie(x)) }
@@ -291,6 +309,12 @@ fn vis_fane(f) {
 }
 
 fn opdater() {
+    if fane == "nye" {
+        alle_hentet = false
+        start_søgning()
+        sig(GRØN, "Henter de nye serier fra WEBTOON...")
+        return nil
+    }
     if fane == "mine" {
         vis_fane("mine")
         return nil
@@ -305,12 +329,81 @@ fn opdater() {
     sig(GRØN, "Henter {dn}-serierne fra WEBTOON...")
 }
 
+# ── søgning ──────────────────────────────────────────────────────────
+fn læs_alle() {
+    let fil = "{DATA}/alle.tsv"
+    if not exists(fil) { return nil }
+    let ls = read(fil).lines()
+    if ls.len == 0 or not ls[0].starts_with("OK") { return nil }
+    for c in alle { if c.pic >= 0 { free_image(c.pic) } }
+    alle = []
+    let k = 1
+    while k < ls.len {
+        let f = felter(ls[k])
+        if f.len >= 5 { alle.push(ny_serie(f)) }
+        k += 1
+    }
+}
+
+fn start_søgning() {
+    if alle.len == 0 { læs_alle() }
+    if not alle_hentet and alle_job == nil {
+        alle_hentet = true
+        alle_job = start(["alle"])
+    }
+}
+
+# det, der vises i gitteret: søgeresultater eller fanen
+fn vis() {
+    let q = søg.trim().lower()
+    if q == "" and fane == "nye" {
+        let nye = []
+        for c in alle { if c.mærke == "NY" { nye.push(c) } }
+        return nye
+    }
+    if q == "" { return serier }
+    let ud = []
+    for c in alle {
+        if c.navn.lower().contains(q) or c.genre.lower().contains(q) { ud.push(c) }
+    }
+    return ud
+}
+
+# bed hjælperen om covers til de første søgeresultater, der mangler et
+fn bestil_covers(dt) {
+    ønske_t -= dt
+    if ønske_t > 0 or (søg.trim() == "" and fane != "nye") { return nil }
+    ønske_t = 0.6
+    if cover_job != nil and running(cover_job) { return nil }
+    let ønsker = []
+    for c in vis() {
+        if ønsker.len < 48 and c.url != "" and not exists(c.png) { ønsker.push(c.url + "\t" + c.png) }
+    }
+    if ønsker.len == 0 { return nil }
+    let tekst = ønsker.join("\n")
+    if tekst == sidste_ønske { return nil }
+    sidste_ønske = tekst
+    write("{DATA}/cover-ønsker.tsv", tekst + "\n")
+    cover_job = start(["covers", "{DATA}/cover-ønsker.tsv"])
+}
+
+fn søgefelt(x, y, w) {
+    let st = textbox("søg", x, y, w, {"h": 30, "r": 8, "tom": "Søg i alle serier...",
+        "bund": KORT, "kant": LINJE, "fokus": GRØN, "tekst": TEKST, "dæmp": DÆMP,
+        "markering": "#00dc6460"})
+    if st != søg {
+        søg = st
+        rul = 0
+        if søg.trim() != "" { start_søgning() }
+    }
+}
+
 # ét cover ad gangen, så vinduet aldrig fryser; nye covers dukker op løbende
 fn indlæs_covers(dt) {
     cover_t -= dt
     if cover_t > 0 { return nil }
     cover_t = 0.15
-    for c in serier {
+    for c in vis() {
         if c.pic < 0 and exists(c.png) {
             c.pic = image(c.png)
             return nil
@@ -371,27 +464,45 @@ fn opdater_fav_ids() {
 }
 opdater_fav_ids()
 
+fn ryd_søg() {
+    if søg != "" {
+        søg = ""
+        textbox_set("søg", "", false)
+        rul = 0
+    }
+}
+
 fn tegn_grid() {
     clear(BG)
-    let rækker = int((serier.len + KOL - 1) / KOL)
+    let liste = vis()
+    let rækker = int((liste.len + KOL - 1) / KOL)
     let gh = H - 28 - GRID_Y
     let maks = max(0, rækker * TRIN_Y + 16 - gh)
     rul = max(0, min(maks, rul))
     let åbnet = nil
     let stjernet = nil
     let x0 = int((W - KOL * TRIN_X) / 2) + 8
-    for k in range(serier.len) {
+    for k in range(liste.len) {
         let x = x0 + (k % KOL) * TRIN_X
         let y = GRID_Y + 12 + int(k / KOL) * TRIN_Y - rul
         if y + KORT_H >= GRID_Y and y <= H {
-            let r = tegn_kort(serier[k], x, y)
-            if r == 1 { åbnet = serier[k] }
-            if r == 2 { stjernet = serier[k] }
+            let r = tegn_kort(liste[k], x, y)
+            if r == 1 { åbnet = liste[k] }
+            if r == 2 { stjernet = liste[k] }
         }
     }
-    if serier.len == 0 and job == nil {
-        let s = "Ingen serier endnu - tryk Opdater."
-        if fane == "mine" { s = "Du følger ingen serier endnu - klik på stjernen på et cover." }
+    if liste.len == 0 {
+        let s = ""
+        if søg.trim() == "" and fane == "nye" {
+            if alle.len == 0 { s = "Henter de nye serier fra WEBTOON..." }
+            else { s = "Ingen nye serier lige nu." }
+        } else if søg.trim() != "" {
+            if alle.len == 0 { s = "Henter alle serier fra WEBTOON til søgningen..." }
+            else { s = "Ingen serier passer til \"{søg.trim()}\"." }
+        } else if job == nil {
+            s = "Ingen serier endnu - tryk Opdater."
+            if fane == "mine" { s = "Du følger ingen serier endnu - klik på stjernen på et cover." }
+        }
         text((W - text_width(s, 1)) / 2, GRID_Y + 200, s, DÆMP, 1)
     }
     if maks > 0 {
@@ -406,15 +517,20 @@ fn tegn_grid() {
     text(31, 20, "WT", "#0a0a0b", 2)
     text(84, 16, "Mini", TEKST, 3)
     text(82, 58, "WEBTOON i Dash", DÆMP, 1)
-    if chip(260, 26, 100, "Min liste", fane == "mine") { vis_fane("mine") }
+    let ingen_søg = søg.trim() == ""
+    if chip(260, 26, 64, "NYE", fane == "nye" and ingen_søg) { ryd_søg(); vis_fane("nye") }
+    if chip(332, 26, 100, "Min liste", fane == "mine" and ingen_søg) { ryd_søg(); vis_fane("mine") }
     for i in range(7) {
         let navn = DAG_NAVN[i]
         if i == i_dag { navn = navn + "*" }
-        if chip(372 + i * 66, 26, 58, navn, fane == DAGE[i]) { vis_fane(DAGE[i]) }
+        if chip(444 + i * 62, 26, 56, navn, fane == DAGE[i] and ingen_søg) { ryd_søg(); vis_fane(DAGE[i]) }
     }
     if knap(W - 128, 24, 104, 32, "Opdater") { opdater() }
-    if serier.len > 0 { text(262, 72, "{serier.len} serier", DÆMP, 1) }
-    if job != nil { spinner(W - 150, 40) }
+    søgefelt(W - 400, 64, 376)
+    if søg.trim() != "" { text(262, 72, "{liste.len} fundet i alle serier", GRØN, 1) }
+    else if fane == "nye" and liste.len > 0 { text(262, 72, "{liste.len} nye serier", GRØN, 1) }
+    else if serier.len > 0 { text(262, 72, "{serier.len} serier", DÆMP, 1) }
+    if job != nil or alle_job != nil { spinner(W - 150, 40) }
     # bunden
     rect(0, H - 28, W, 28, TOP)
     rect(0, H - 28, W, 1, LINJE)
@@ -768,13 +884,27 @@ fn tilbage() {
 let skud = env("WT_SKUD", "")
 let skud_n = 0
 vis_fane(fane)
+if env("WT_FANE", "") != "" { vis_fane(env("WT_FANE", "")) }
+if env("WT_SOEG", "") != "" {
+    søg = env("WT_SOEG", "")
+    textbox_set("søg", søg, false)
+    start_søgning()
+}
 
 while frame() {
     let dt = min(delta(), 0.1)
     tid += dt
     if besked_t > 0 { besked_t -= dt }
-    if key("esc") or pressed("backspace") {
-        if visning == "grid" { if key("esc") { break } } else { tilbage() }
+    let skriver = focused("søg")
+    if pressed("esc") {
+        if visning != "grid" { tilbage() } else if søg != "" { ryd_søg() } else { break }
+    } else if pressed("backspace") and not skriver and visning != "grid" {
+        tilbage()
+    }
+    if alle_job != nil and not running(alle_job) {
+        alle_job = nil
+        læs_alle()
+        if alle.len > 0 { sig(GRØN, "{alle.len} serier at søge i.") }
     }
     # job i baggrunden
     if job != nil {
@@ -794,8 +924,9 @@ while frame() {
     match visning {
         "grid" => {
             rul -= hjul * 80
-            if key("down") { rul += 12 }
-            if key("up") { rul -= 12 }
+            if key("down") and not skriver { rul += 12 }
+            if key("up") and not skriver { rul -= 12 }
+            bestil_covers(dt)
             indlæs_covers(dt)
             tegn_grid()
         }
