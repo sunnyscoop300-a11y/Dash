@@ -234,7 +234,26 @@ fn mini_player() {
     polygon([[194, 36], [194, 68], [222, 52]], "#e6ccff")
 }
 
-let ikoner = ["boxman", "cube-runner", "jj-demo", "nonbiri", "serietracker", "bob", "wt-mini", "fishout", "mini-player"]
+fn mini_cloud() {
+    clear("#0d0714")
+    # pladen
+    circle(128, 128, 84, "#1a0f26")
+    circle(128, 128, 76, "#08040d")
+    for r in [62, 50] { circle(128, 128, r, "#1a0f26"); circle(128, 128, r - 3, "#08040d") }
+    circle(128, 128, 26, "#a64dff")
+    circle(128, 128, 5, "#0d0714")
+    # skyen ovenpå
+    let sky = "#e6ccff"
+    circle(96, 70, 26, sky)
+    circle(132, 56, 34, sky)
+    circle(168, 72, 24, sky)
+    round_rect(70, 66, 124, 32, 16, sky)
+    polygon([[122, 74], [122, 98], [144, 86]], "#7a2ee0")
+    round_rect(36, 196, 184, 46, 14, "#7a2ee0")
+    text(128 - text_width("CLOUD", 3) / 2, 206, "CLOUD", "#e6ccff", 3)
+}
+
+let ikoner = ["boxman", "cube-runner", "jj-demo", "nonbiri", "serietracker", "bob", "wt-mini", "fishout", "mini-player", "mini-cloud"]
 # kun nogle af dem:  IKONER=wt-mini,fishout dsh eksempler/ikoner/tegn-ikoner.Dash
 if env("IKONER", "") != "" { ikoner = env("IKONER", "").split(",") }
 let i = 0
@@ -250,6 +269,7 @@ while frame() {
     else if n == "wt-mini" { wt_mini() }
     else if n == "fishout" { fishout() }
     else if n == "mini-player" { mini_player() }
+    else if n == "mini-cloud" { mini_cloud() }
     screenshot("{ud}/{n}.png")
     # afrundede, gennemsigtige hjørner (kræver python3 + pillow; ellers firkantet)
     try python3 "{ud}/rund.py" "{ud}/{n}.png" 2> /dev/null

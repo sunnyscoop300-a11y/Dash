@@ -1,0 +1,22 @@
+#!/usr/bin/env violet-run
+# mini-cloud.Dash — Mini Player Cloud ☁️🎧: din musik streamet direkte fra TeraBox
+# bob-navn: Mini Player Cloud
+# bob-kategori: program
+# bob-farve: #a64dff
+# bob-om: Mini Player i cloud-udgaven: sangene hentes ikke ned, men streames direkte fra TeraBox (rclone serve http). Kun covers gemmes. Kræver net.
+#
+#   dsh eksempler/mini-cloud.Dash          (pc)
+#   dsh eksempler/mini-cloud.Dash mobil    (telefon)
+#
+# Starter bare mini-player.Dash i cloud-tilstand — alt andet (remote.txt, covers,
+# albums) virker som i Mini Player. Se toppen af mini-player.Dash.
+
+let mp = ""
+for s in [script.dir + "/mini-player.Dash", env("HOME", "") + "/Dash/eksempler/mini-player.Dash"] {
+    if mp == "" and exists(s) { mp = s }
+}
+if mp == "" {
+    print("💀 kan ikke finde mini-player.Dash (den skal ligge ved siden af mini-cloud.Dash)")
+    exit 1
+}
+dsh $mp cloud $args
