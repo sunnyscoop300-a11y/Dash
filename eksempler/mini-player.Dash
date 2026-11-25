@@ -9,9 +9,10 @@
 #   dsh eksempler/mini-player.Dash mobil      mobil-udgaven: stående, store covers, touch
 #   dsh eksempler/mini-player.Dash cloud      CLOUD v2: streamer fra TeraBox (kan kombineres: mobil cloud)
 #
-# Cloud v2: sangene hentes IKKE ned. Mini Player starter "rclone serve http" og mpv
-# spiller direkte derfra. På telefonen ligger kun covers og små pladsholdere (en
-# webadresse pr. sang) i ~/Music/mini-player-cloud. Listen opdateres ved start og
+# Cloud v2: INTET gemmes på telefonen. Mini Player starter "rclone serve http", og mpv
+# streamer sangen direkte derfra. Listen, info og covers hentes fra skyen ved hver
+# start og ligger kun midlertidigt i /tmp/mini-player-cloud (covers kun i hukommelsen),
+# som tømmes, når appen lukker. Listen opdateres ved start og
 # hvert 10. minut (MP_AUTO=sekunder). Kræver net, mens du lytter.
 #
 # Mobil: MP_STR=720x1280 (standard) er vinduets størrelse. Sæt Termux:X11 til
@@ -70,11 +71,16 @@ if RCLONE == "" {
 let CLOUD = env("MP_CLOUD", "") != ""
 for a in args { if a == "cloud" { CLOUD = true } }
 let CACHE = env("MP_CACHE", "{HJEM}/.cache/mini-player")
+# cloud: INTET fast på disken. Alt (pladsholdere, info, covers et øjeblik) ligger i
+# en midlertidig mappe, der tømmes ved start og når appen lukker.
+let TMP_ROD = "/tmp/mini-player-cloud"
 if CLOUD {
-    LIB = env("MP_MAPPE", "{HJEM}/Music/mini-player-cloud")
-    CACHE = env("MP_CACHE", "{HJEM}/.cache/mini-player-cloud")
+    LIB = env("MP_MAPPE", "{TMP_ROD}/bibliotek")
+    CACHE = env("MP_CACHE", "{TMP_ROD}/info")
 }
 let PORT = env("MP_PORT", "8767")
+# cloud: covers laves her et øjeblik, læses ind i hukommelsen og slettes med det samme
+let TMP = "{TMP_ROD}/covers"
 
 # "terabox:Musik/KATCHA MIX" → "terabox:" og "Musik/KATCHA MIX"
 fn remote_navn(r) { return r.split(":")[0] + ":" }
@@ -100,7 +106,7 @@ fn url_del(t) {
 
 # hvad mpv/ffprobe skal åbne: filen selv, eller i cloud-tilstand webadressen i pladsholderen
 fn kilde(fil) {
-    if CLOUD { return read(fil).trim() }
+    if CLOUD { return read(fil).split("\n")[0].trim() }
     return fil
 }
 mkdir -p $LIB $CACHE
@@ -138,12 +144,31 @@ fn alle_mp3() {
 }
 
 # coveret i en bestemt størrelse (kvadratisk), lavet af hjælperen
-fn cover_sti(k, n) { return "{CACHE}/{k}-{n}.png" }
+fn cover_sti(k, n) {
+    if CLOUD { return "{TMP}/{k}-{n}.png" }
+    return "{CACHE}/{k}-{n}.png"
+}
 
 # ── hjælper: dsh mini-player.Dash forbered 360 56 ...  (i baggrunden) ─
 # laver info (længde, titel, kunstner) og covers i de ønskede størrelser
 
 fn find_cover(fil, k) {
+    if CLOUD {
+        # linje 2 i pladsholderen er coverets webadresse (hvis der er et)
+        mkdir -p $TMP
+        let linjer = read(fil).split("\n")
+        if linjer.len > 1 and linjer[1].trim() != "" {
+            let u = linjer[1].trim()
+            let src = "{TMP}/{k}.src.png"
+            try ffmpeg -v quiet -y -i $u -frames:v 1 $src
+            if exists(src) { return src }
+        }
+        let lyd = kilde(fil)
+        let art = "{TMP}/{k}.art.png"
+        try ffmpeg -v quiet -y -i $lyd -an -frames:v 1 $art
+        if exists(art) { return art }
+        return ""
+    }
     let base = fil.dir + "/" + fil.stem
     for e in [".png", ".jpg", ".jpeg", ".webp", ".PNG", ".JPG"] {
         if exists(base + e) { return base + e }
@@ -198,11 +223,14 @@ fn forbered_en(fil, størrelser) {
     # covers i alle de størrelser, der mangler
     if read(info).trim().split("\t")[3] != "1" { return nil }
     for n in størrelser {
-        if not exists(cover_sti(k, n)) {
+        # cloud: ".vist" = appen har allerede læst det ind i hukommelsen
+        if not exists(cover_sti(k, n)) and not exists(cover_sti(k, n) + ".vist") {
             if src == "" { src = find_cover(fil, k) }
             if src != "" { lav_billede(src, cover_sti(k, n), n) }
         }
     }
+    # cloud: det store originale cover skal ikke blive liggende
+    if CLOUD and src != "" { rm -f $src }
 }
 
 if args.len > 0 and args[0] == "forbered" {
@@ -219,32 +247,53 @@ if args.len > 0 and args[0] == "forbered" {
 if args.len > 2 and args[0] == "cloudhent" {
     let r = args[1]
     let mål = args[2]
-    let ud = $($RCLONE lsf -R --files-only --include "*.mp3" --include "*.MP3" $r)
-    # covers først, så hjælperen finder dem, når sangene dukker op
-    mkdir -p $mål
-    $RCLONE sync $r $mål --include "*.png" --include "*.jpg" --include "*.jpeg" --include "*.webp"
+    let ud = $($RCLONE lsf -R --files-only --include "*.mp3" --include "*.MP3" --include "*.png" --include "*.jpg" --include "*.jpeg" --include "*.webp" --include "*.PNG" --include "*.JPG" $r)
     let base = "http://127.0.0.1:{PORT}"
     if remote_sti(r) != "" { base = base + "/" + url_del(remote_sti(r)) }
-    let findes = []
+    let sange_rel = []
+    let billeder_rel = []
     for l in ud.split("\n") {
         let rel = l.trim()
         if rel != "" {
-            let sti = mål + "/" + rel
-            findes = findes + [sti]
-            let url = base + "/" + url_del(rel)
-            if not exists(sti) or read(sti).trim() != url {
-                let d = sti.dir
-                mkdir -p $d
-                write(sti, url + "\n")
-            }
+            if rel.lower().ends_with(".mp3") { sange_rel = sange_rel + [rel] } else { billeder_rel = billeder_rel + [rel] }
         }
     }
-    let lokale = $(try find $mål -type f -iname "*.mp3")
+    mkdir -p $mål
+    let findes = []
+    for rel in sange_rel {
+        # samme navn som sangen, ellers cover.png/folder.jpg i mappen
+        let dele = rel.split("/")
+        let mappe = ""
+        if dele.len > 1 {
+            let d = []
+            for i in range(0, dele.len - 1) { d = d + [dele[i]] }
+            mappe = d.join("/") + "/"
+        }
+        let stamme = rel.replace(".mp3", "").replace(".MP3", "")
+        let cover = ""
+        for kand in [stamme + ".png", stamme + ".jpg", stamme + ".jpeg", stamme + ".webp", stamme + ".PNG", stamme + ".JPG", mappe + "cover.png", mappe + "cover.jpg", mappe + "folder.jpg", mappe + "folder.png"] {
+            if cover == "" {
+                for bl in billeder_rel { if bl == kand { cover = base + "/" + url_del(kand) } }
+            }
+        }
+        let sti = mål + "/" + rel
+        findes = findes + [sti]
+        let indhold = base + "/" + url_del(rel) + "\n" + cover + "\n"
+        if not exists(sti) or read(sti) != indhold {
+            let d = sti.dir
+            mkdir -p $d
+            write(sti, indhold)
+            # coveret kan være skiftet → info og covers laves forfra
+            rm -f "{CACHE}/{nøgle(sti)}.tsv"
+        }
+    }
+    let lokale = $(try find $mål -type f)
     for l in lokale.split("\n") {
         let f = l.trim()
         if f != "" {
             let ok = false
             for x in findes { if x == f { ok = true } }
+            # alt andet (slettede sange, gamle covers fra før) skal væk: kun pladsholdere her
             if not ok { rm -f $f }
         }
     }
@@ -452,6 +501,27 @@ fn uden_citat(t) {
     return ud.trim()
 }
 
+# cloud: covers bor kun i hukommelsen. Filen læses ind og slettes med det samme,
+# og billedet huskes her (også efter en ny scan), så det ikke skal hentes igen.
+let billeder = {}
+fn har_billede(k, n) {
+    if CLOUD and billeder.has("{k}-{n}") { return true }
+    return exists(cover_sti(k, n))
+}
+fn hent_billede(k, n) {
+    let id = "{k}-{n}"
+    if CLOUD and billeder.has(id) { return billeder[id] }
+    let f = cover_sti(k, n)
+    if not exists(f) { return -1 }
+    let img = image(f)
+    if CLOUD {
+        billeder[id] = img
+        rm -f $f
+        touch "{f}.vist"
+    }
+    return img
+}
+
 fn læs_info(s) {
     if not s.klar {
         let info = "{CACHE}/{s.nøgle}.tsv"
@@ -466,11 +536,17 @@ fn læs_info(s) {
         s.klar = true
     }
     # de små covers hentes ind, så snart hjælperen har lavet dem
-    if s.cover and not MOBIL and s.lille < 0 and exists(cover_sti(s.nøgle, LILLE)) {
-        s.lille = image(cover_sti(s.nøgle, LILLE))
+    if s.cover and not MOBIL and s.lille < 0 and har_billede(s.nøgle, LILLE) {
+        s.lille = hent_billede(s.nøgle, LILLE)
     }
-    if s.cover and MOBIL and s.grid < 0 and exists(cover_sti(s.nøgle, GRID)) {
-        s.grid = image(cover_sti(s.nøgle, GRID))
+    if s.cover and MOBIL and s.grid < 0 and har_billede(s.nøgle, GRID) {
+        s.grid = hent_billede(s.nøgle, GRID)
+    }
+    # cloud: også det store cover ind i hukommelsen med det samme (filen må ikke blive liggende)
+    if CLOUD and s.cover and s.stor < 0 {
+        let n = STOR
+        if MOBIL { n = MSTOR }
+        if har_billede(s.nøgle, n) { s.stor = hent_billede(s.nøgle, n) }
     }
 }
 
@@ -487,7 +563,7 @@ fn mangler_noget(s) {
         }
         return false
     }
-    for n in STØRRELSER { if not exists(cover_sti(s.nøgle, n)) { return true } }
+    for n in STØRRELSER { if not har_billede(s.nøgle, n) { return true } }
     return false
 }
 
@@ -505,10 +581,12 @@ fn start_forbered() {
 fn scan() {
     let gammel = ""
     if nu >= 0 and nu < sange.len { gammel = sange[nu].fil }
-    for s in sange {
-        if s.lille >= 0 { free_image(s.lille) }
-        if s.stor >= 0 { free_image(s.stor) }
-        if s.grid >= 0 { free_image(s.grid) }
+    if not CLOUD {
+        for s in sange {
+            if s.lille >= 0 { free_image(s.lille) }
+            if s.stor >= 0 { free_image(s.stor) }
+            if s.grid >= 0 { free_image(s.grid) }
+        }
     }
     sange = []
     for f in alle_mp3() { sange = sange + [ny_sang(f)] }
@@ -534,8 +612,8 @@ let serve_t = 0.0
 fn start_serve() {
     if not CLOUD or which(RCLONE) == nil { return nil }
     let rod = remote_navn(REMOTES[0])
-    mkdir -p "{CACHE}/vfs"
-    serve_job = &($RCLONE serve http $rod --addr "127.0.0.1:{PORT}" --read-only --vfs-cache-mode full --vfs-cache-max-size 2G --cache-dir "{CACHE}/vfs" --dir-cache-time 30s < /dev/null >> "{CACHE}/serve.log" 2>&1)
+    # ingen vfs-cache: sangen streames bare, intet gemmes på disken (mpv buffer i RAM)
+    serve_job = &($RCLONE serve http $rod --addr "127.0.0.1:{PORT}" --read-only --vfs-cache-mode off --dir-cache-time 30s < /dev/null >> "{CACHE}/serve.log" 2>&1)
 }
 
 # "terabox:*" → alle mapperne derinde (spørger rclone hver gang, så nye mapper kommer med)
@@ -565,7 +643,7 @@ fn sync_næste() {
     let mål = "{LIB}/{mappe_navn(r)}"
     mkdir -p $mål
     if CLOUD {
-        sync_job = &(dsh $script cloudhent $r $mål < /dev/null >> "{CACHE}/sync.log" 2>&1)
+        sync_job = &(dsh $script cloudhent $r $mål cloud < /dev/null >> "{CACHE}/sync.log" 2>&1)
         if not stille { sig(LYS, "Opdaterer {mappe_navn(r)} ({sync_nr}/{sync_liste.len}) ...") }
     } else {
         sync_job = &($RCLONE sync $r $mål --include "*.mp3" --include "*.png" --include "*.jpg" --include "*.jpeg" --include "*.webp" < /dev/null >> "{CACHE}/sync.log" 2>&1)
@@ -649,7 +727,7 @@ fn spil(i, start) {
         return nil
     }
     stop()
-    if nu >= 0 and nu < sange.len and nu != i and sange[nu].stor >= 0 {
+    if not CLOUD and nu >= 0 and nu < sange.len and nu != i and sange[nu].stor >= 0 {
         free_image(sange[nu].stor)
         sange[nu].stor = -1
     }
@@ -821,7 +899,7 @@ fn tegn_nu() {
         return nil
     }
     let s = sange[nu]
-    if s.cover and s.stor < 0 and exists(cover_sti(s.nøgle, STOR)) { s.stor = image(cover_sti(s.nøgle, STOR)) }
+    if s.cover and s.stor < 0 and har_billede(s.nøgle, STOR) { s.stor = hent_billede(s.nøgle, STOR) }
     if s.stor >= 0 { draw(s.stor, x, y) } else { tom_cover(x, y, STOR, 6) }
     let ty = y + STOR + 14
     text(x, ty, klip(s.titel, STOR, 2), LYS, 2)
@@ -1072,7 +1150,7 @@ fn m_spiller_liggende() {
         return nil
     }
     let s = sange[nu]
-    if s.cover and s.stor < 0 and exists(cover_sti(s.nøgle, MSTOR)) { s.stor = image(cover_sti(s.nøgle, MSTOR)) }
+    if s.cover and s.stor < 0 and har_billede(s.nøgle, MSTOR) { s.stor = hent_billede(s.nøgle, MSTOR) }
     if s.stor >= 0 { draw(s.stor, x, y) } else { tom_cover(x, y, MSTOR, 8) }
     let x2 = x + MSTOR + 48
     let rw = W - x2 - 32
@@ -1104,7 +1182,7 @@ fn m_spiller() {
         return nil
     }
     let s = sange[nu]
-    if s.cover and s.stor < 0 and exists(cover_sti(s.nøgle, MSTOR)) { s.stor = image(cover_sti(s.nøgle, MSTOR)) }
+    if s.cover and s.stor < 0 and har_billede(s.nøgle, MSTOR) { s.stor = hent_billede(s.nøgle, MSTOR) }
     if s.stor >= 0 { draw(s.stor, x, y) } else { tom_cover(x, y, MSTOR, 10) }
     let ty = y + MSTOR + 24
     text(x, ty, klip(s.titel, MSTOR, 3), LYS, 3)
@@ -1129,6 +1207,13 @@ fn m_spiller() {
 try pkill -f "mpv --no-video --really-quiet --no-terminal" 2> /dev/null
 try pkill -f "ffplay -nodisp -autoexit -loglevel quiet" 2> /dev/null
 try pkill -f $MÆRKE 2> /dev/null
+if CLOUD {
+    # frisk start: intet fra sidst, alt hentes fra skyen igen
+    rm -rf $TMP_ROD
+    mkdir -p $LIB $CACHE $TMP
+    # rester fra de første cloud-udgaver, der gemte på disken
+    rm -rf "{HJEM}/Music/mini-player-cloud" "{HJEM}/.cache/mini-player-cloud"
+}
 scan()
 if alben.len > 1 { visning = "albums" }
 if CLOUD and which(RCLONE) != nil {
@@ -1181,6 +1266,8 @@ while frame() {
             sync_fejl = sync_fejl + [r]
             try rmdir "{LIB}/{mappe_navn(r)}" 2> /dev/null   # kun hvis den er tom
         }
+        # cloud: vis hvert album, så snart det er hentet
+        if CLOUD and sync_kø.len > 0 { scan() }
         if not sync_næste() {
             if sync_fejl.len == 0 {
                 ryd_gamle_mapper()
@@ -1266,3 +1353,9 @@ while frame() {
     }
 }
 stop()
+# cloud: luk webserveren og fjern alt det midlertidige — intet bliver liggende
+if CLOUD {
+    if serve_job != nil { try kill(serve_job, 15) }
+    try pkill -f "serve http {remote_navn(REMOTES[0])} --addr 127.0.0.1:{PORT}" 2> /dev/null
+    rm -rf $TMP_ROD
+}
