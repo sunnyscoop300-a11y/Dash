@@ -84,7 +84,7 @@ fn pop(x, y, tekst, farve) {
 # fangst-statistik i terminalen med Parr 🦸
 fn statistik() {
     let rækker = [["Fisk", "Antal", "Point"]]
-    for ty in ["rød", "blå", "grøn", "lilla", "guld", "støvle"] {
+    for ty in ["rød", "blå", "grøn", "lilla", "ål", "sværd", "guld", "støvle"] {
         let n = fangster.get(ty, 0)
         if n > 0 { rækker.push([ty, n, n * point(ty)]) }
     }
@@ -94,6 +94,16 @@ fn statistik() {
 
 fn rammer(f, x, y) {
     return x >= f["x"] and x <= f["x"] + f["b"] and y >= f["y"] - 6 and y <= f["y"] + f["h"] + 6
+}
+
+# touch (mobil): venstre tredjedel = sejl til venstre, højre = til højre,
+# midten = kast krogen / hiv den op
+fn tryk_zone() {
+    if not mouse_down() and not clicked() { return "" }
+    let x = mouse()[0]
+    if x < W / 3 { return "venstre" }
+    if x > W * 2 / 3 { return "højre" }
+    return "midt"
 }
 
 fn opdater(dt) {
@@ -112,11 +122,11 @@ fn opdater(dt) {
     }
     # båden sejler, mens krogen er oppe
     if krog == "oppe" {
-        if key("left") or key("a") { båd_x -= 260 * dt }
-        if key("right") or key("d") { båd_x += 260 * dt }
+        if key("left") or key("a") or tryk_zone() == "venstre" { båd_x -= 260 * dt }
+        if key("right") or key("d") or tryk_zone() == "højre" { båd_x += 260 * dt }
         båd_x = max(0, min(W - BÅD_B - 10, båd_x))
     }
-    if pressed("space") {
+    if pressed("space") or (clicked() and tryk_zone() == "midt") {
         if krog == "oppe" {
             krog = "synker"
             spil(plask)
@@ -142,6 +152,13 @@ fn opdater(dt) {
     } else if krog == "hiver" {
         let fart = 360
         if fangst != nil and fangst["type"] == "støvle" { fart = 200 }
+        if fangst != nil and fangst["type"] == "sværd" { fart = 260 }
+        # ålen er glat: den kan smutte af krogen på vej op
+        if fangst != nil and fangst["type"] == "ål" and random(1000) < int(dt * 450) {
+            pop(kx - 30, krog_y - 20, "GLAT!", "#c8c46a")
+            spil(plask)
+            fangst = nil
+        }
         krog_y -= fart * dt
         if krog_y <= VAND - 40 {
             krog_y = VAND - 40
@@ -155,6 +172,14 @@ fn opdater(dt) {
                     "guld" => {
                         pop(kx - 40, VAND - 70, "+{p} GULD!", "#ffd84a")
                         spil(guldlyd)
+                    }
+                    "sværd" => {
+                        pop(kx - 70, VAND - 70, "+{p} SVÆRDFISK!", "#bfe6ff")
+                        spil(guldlyd)
+                    }
+                    "ål" => {
+                        pop(kx - 40, VAND - 70, "+{p} ÅL!", "#d8d48a")
+                        spil(pling)
                     }
                     "støvle" => {
                         pop(kx - 50, VAND - 70, "{p} STØVLE!", "#ff6a5a")
@@ -271,7 +296,7 @@ while frame() {
         midt(240, "FISH OUT", "#ffc93c", 5)
         midt(320, "Fang så mange fisk du kan på 60 sekunder!", "#ffffff", 1)
         midt(346, "Piletaster sejler · mellemrum sænker og hiver krogen", "#bfe6ff", 1)
-        midt(372, "Guldfisk +100 · støvle -50", "#ffd84a", 1)
+        midt(372, "Guld +100 · sværdfisk +75 · ål +40 (glat!) · støvle -50", "#ffd84a", 1)
         midt(412, "Tryk ENTER", "#7dff7a", 2)
     } else if tilstand == "slut" {
         boks(220, 220)
