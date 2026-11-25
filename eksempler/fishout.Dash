@@ -27,6 +27,7 @@ let guldlyd = sound("triangle", 660, 1760, 0.35, 0.5)
 let plask = sound("noise", 400, 200, 0.12, 0.25)
 let buh = sound("square", 220, 110, 0.3, 0.35)
 let slutlyd = sound("triangle", 880, 220, 0.6, 0.5)
+let mørkelyd = sound("square", 330, 70, 0.7, 0.4)
 let lyd = true
 
 fn spil(nr) {
@@ -55,6 +56,7 @@ let ny_rekord = false
 let t = 0.0
 let pause = false
 let fangster = {}       # hvor mange af hver fisk (til Parr-statistikken)
+let mørk_t = 0.0        # DARK TIME: sekunder tilbage med dobbelt point
 
 fn nyt_spil() {
     score = 0
@@ -65,6 +67,7 @@ fn nyt_spil() {
     fisk = []
     pops = []
     fangster = {}
+    mørk_t = 0.0
     let k = 0
     while k < 9 {
         let f = ny_fisk()
@@ -84,7 +87,7 @@ fn pop(x, y, tekst, farve) {
 # fangst-statistik i terminalen med Parr 🦸
 fn statistik() {
     let rækker = [["Fisk", "Antal", "Point"]]
-    for ty in ["rød", "blå", "grøn", "lilla", "ål", "sværd", "guld", "støvle"] {
+    for ty in ["rød", "blå", "grøn", "lilla", "ål", "sværd", "dark", "guld", "støvle"] {
         let n = fangster.get(ty, 0)
         if n > 0 { rækker.push([ty, n, n * point(ty)]) }
     }
@@ -108,6 +111,7 @@ fn tryk_zone() {
 
 fn opdater(dt) {
     tid -= dt
+    mørk_t = max(0.0, mørk_t - dt)
     if tid <= 0 {
         tid = 0
         tilstand = "slut"
@@ -165,6 +169,8 @@ fn opdater(dt) {
             krog = "oppe"
             if fangst != nil {
                 let p = point(fangst["type"])
+                # DARK TIME: alle fisk giver dobbelt (men støvlen trækker stadig kun fra)
+                if mørk_t > 0 and p > 0 { p = p * 2 }
                 score = max(0, score + p)
                 let ty = fangst["type"]
                 fangster[ty] = fangster.get(ty, 0) + 1
@@ -172,6 +178,11 @@ fn opdater(dt) {
                     "guld" => {
                         pop(kx - 40, VAND - 70, "+{p} GULD!", "#ffd84a")
                         spil(guldlyd)
+                    }
+                    "dark" => {
+                        pop(kx - 80, VAND - 70, "+{p} DARK TIME! x2", "#c48cff")
+                        spil(mørkelyd)
+                        mørk_t = 8.0
                     }
                     "sværd" => {
                         pop(kx - 70, VAND - 70, "+{p} SVÆRDFISK!", "#bfe6ff")
@@ -229,7 +240,7 @@ fn opdater(dt) {
 
 fn tegn_alt() {
     clear("#0d2a5c")
-    baggrund(t)
+    baggrund(t, mørk_t > 0)
     # bobler
     for b in bobler {
         circle(b[0], b[1], b[2], "#bfe6ff90")
@@ -244,6 +255,7 @@ fn tegn_alt() {
         text(p["x"], p["y"], p["tekst"], p["farve"], 2)
     }
     hud(score, int(tid + 0.99), rekord)
+    if mørk_t > 0 and tilstand == "spil" { midt(HUD + 10, "DARK TIME x2 · {int(mørk_t + 0.99)}", "#c48cff", 2) }
     fod()
 }
 
@@ -297,7 +309,8 @@ while frame() {
         midt(320, "Fang så mange fisk du kan på 60 sekunder!", "#ffffff", 1)
         midt(346, "Piletaster sejler · mellemrum sænker og hiver krogen", "#bfe6ff", 1)
         midt(372, "Guld +100 · sværdfisk +75 · ål +40 (glat!) · støvle -50", "#ffd84a", 1)
-        midt(412, "Tryk ENTER", "#7dff7a", 2)
+        midt(398, "DarkFish +66 = DARK TIME: dobbelt point i 8 sek!", "#c48cff", 1)
+        midt(428, "Tryk ENTER", "#7dff7a", 2)
     } else if tilstand == "slut" {
         boks(220, 220)
         midt(244, "TIDEN ER GÅET!", "#ffc93c", 3)

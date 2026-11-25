@@ -46,19 +46,31 @@ fn ø(x, b, h) {
     }
 }
 
-fn baggrund(t) {
+# mørk = DARK TIME (efter en DarkFish): nattehimmel, måne og lilla hav
+fn baggrund(t, mørk) {
     # himmel
-    rect(0, HUD, W, VAND - HUD, "#5ec4ff")
-    rect(0, HUD, W, 30, "#4ab6f8")
-    sky(170 + int(t * 6) % 40, 92, S)
-    sky(520 - int(t * 4) % 30, 80, S)
-    sky(780 + int(t * 5) % 35, 104, S)
+    if mørk {
+        rect(0, HUD, W, VAND - HUD, "#1c0b33")
+        rect(0, HUD, W, 30, "#140726")
+        circle(820, 110, 26, "#f0e6ff")
+        circle(808, 102, 24, "#1c0b33")
+        for st in [[120, 90], [260, 130], [400, 84], [610, 120], [700, 78], [930, 140]] {
+            if (int(t * 3) + st[0]) % 5 != 0 { rect(st[0], st[1], 4, 4, "#e8d8ff") }
+        }
+    } else {
+        rect(0, HUD, W, VAND - HUD, "#5ec4ff")
+        rect(0, HUD, W, 30, "#4ab6f8")
+        sky(170 + int(t * 6) % 40, 92, S)
+        sky(520 - int(t * 4) % 30, 80, S)
+        sky(780 + int(t * 5) % 35, 104, S)
+    }
     ø(0, 200, 40)
     ø(W - 220, 220, 44)
     # vand: lysere oppe, mørkere nede
     let y = VAND
     let trin = 0
     let farver = ["#1f8ee0", "#1a7fd4", "#1871c4", "#1664b4", "#1458a4", "#124c94", "#104286"]
+    if mørk { farver = ["#4a1f8a", "#41197c", "#38146e", "#301060", "#280c52", "#200944", "#190638"] }
     while y < BUND {
         rect(0, y, W, 60, farver[min(trin, farver.len - 1)])
         y += 60

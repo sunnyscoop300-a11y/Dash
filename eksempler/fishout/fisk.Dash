@@ -38,6 +38,17 @@ let SVÆRD = [
     "d...lllllllllllll............",
     ".....d....d..................",
 ]
+# DarkFish: KATCHA's gotiske fisk — sort med lilla finner, glødende øje og hugtænder (w)
+let DARK = [
+    "......d.ddd.d.....",
+    "d....bbbbbbbbbb...",
+    "dd..bbbdbbdbbbbbb.",
+    "ddbbbbbdbbdbbbbobb",
+    "ddbbbbbdbbdbbbbbbw",
+    "dd..lllllllllllww.",
+    "d....llllllllllll.",
+    ".......dd...dd....",
+]
 let STØVLE = [
     "..dddddd..",
     "..bbbbbb..",
@@ -58,6 +69,7 @@ let FARVER = {
     "lilla": {"b": "#a07ae6", "d": "#6a44b0", "l": "#d8c4ff", "o": "#101010"},
     "ål": {"b": "#6b6a3a", "d": "#3d3c1c", "l": "#a8a46a", "o": "#101010"},
     "sværd": {"b": "#3d6f9e", "d": "#22405e", "l": "#c8dceb", "o": "#101010", "s": "#dfe6ee"},
+    "dark": {"b": "#1a1024", "d": "#8a4cff", "l": "#3a2458", "o": "#ff3cdc", "w": "#f4f0ff"},
     "guld": {"b": "#ffd23a", "d": "#d08a10", "l": "#fff2a0", "o": "#101010"},
     "støvle": {"b": "#8a5a32", "d": "#5a3518", "l": "#8a5a32", "o": "#101010"},
 }
@@ -66,6 +78,7 @@ let FARVER = {
 fn fisk_type(dybde) {
     match dybde {
         _ if random(18) == 0 => { return "guld" }
+        _ if random(22) == 0 => { return "dark" }
         _ if random(14) == 0 => { return "sværd" }
         _ if dybde > 200 and random(4) == 0 => { return "ål" }
         0..80 => { return "rød" }
@@ -83,6 +96,7 @@ fn point(type) {
         "lilla" => { return 50 }
         "ål" => { return 40 }
         "sværd" => { return 75 }
+        "dark" => { return 66 }
         "guld" => { return 100 }
         "støvle" => { return -50 }
         _ => { return 0 }
@@ -92,6 +106,7 @@ fn point(type) {
 fn fart(type) {
     match type {
         "sværd" => { return 240 }
+        "dark" => { return 150 }
         "guld" => { return 190 }
         "ål" => { return 55 }
         "rød", "blå" => { return 110 }
@@ -105,6 +120,7 @@ fn form(type) {
         "støvle" => { return STØVLE }
         "ål" => { return ÅL }
         "sværd" => { return SVÆRD }
+        "dark" => { return DARK }
         _ => { return LILLE }
     }
 }
@@ -123,6 +139,16 @@ fn tegn_fisk(f, t) {
     # ålen vrider sig
     if f["type"] == "ål" { bob = int(sin(t * 9 + f["x"] * 0.03) * 7) }
     sprite(form(f["type"]), f["x"], f["y"] + bob, S, FARVER[f["type"]], not f["højre"])
+    if f["type"] == "dark" {
+        # lilla gnister omkring den
+        let k = 0
+        while k < 4 {
+            let gx = f["x"] + ((int(t * 6) + k * 17) % 9) * 8
+            let gy = f["y"] - 8 + ((int(t * 4) + k * 5) % 4) * 12
+            rect(gx, gy, 4, 4, "#c48cff")
+            k += 1
+        }
+    }
     if f["type"] == "guld" {
         # glimmer
         let k = 0
