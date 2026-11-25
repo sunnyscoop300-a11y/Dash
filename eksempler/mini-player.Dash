@@ -355,6 +355,8 @@ let spillet = 0.0        # sekunder siden afspilleren blev startet
 let lever_t = 0.0
 let bland = false
 let gentag = "alle"      # alle · en · ingen
+let forvalgt = -1        # cloud: den næste sang, som allerede er ved at blive hentet
+let forvarmet_for = -1
 let sync_job = nil
 let forb_job = nil
 let forb_igen = 0.0
@@ -612,8 +614,10 @@ let serve_t = 0.0
 fn start_serve() {
     if not CLOUD or which(RCLONE) == nil { return nil }
     let rod = remote_navn(REMOTES[0])
-    # ingen vfs-cache: sangen streames bare, intet gemmes på disken (mpv buffer i RAM)
-    serve_job = &($RCLONE serve http $rod --addr "127.0.0.1:{PORT}" --read-only --vfs-cache-mode off --dir-cache-time 30s < /dev/null >> "{CACHE}/serve.log" 2>&1)
+    # TeraBox er ~2 sek. om at svare hver gang. rclone gemmer derfor det hentede i
+    # /tmp/mini-player-cloud/vfs, så den næste sang kan forberedes, og pause/spol går
+    # hurtigt. Mappen slettes, når appen lukker — intet bliver liggende.
+    serve_job = &($RCLONE serve http $rod --addr "127.0.0.1:{PORT}" --read-only --vfs-cache-mode full --cache-dir "{TMP_ROD}/vfs" --vfs-cache-max-size 1G --dir-cache-time 5m < /dev/null >> "{CACHE}/serve.log" 2>&1)
 }
 
 # "terabox:*" → alle mapperne derinde (spørger rclone hver gang, så nye mapper kommer med)
@@ -776,6 +780,8 @@ fn næste(auto) {
     if auto and gentag == "en" { spil(nu, 0.0); return nil }
     if bland and l.len > 1 {
         let n = nu
+        # cloud: brug den tilfældige sang, der allerede er forberedt
+        if forvalgt >= 0 and forvalgt < sange.len and forvalgt != nu and plads(l, forvalgt) >= 0 { n = forvalgt }
         while n == nu { n = l[random(l.len)] }
         spil(n, 0.0)
         return nil
@@ -786,6 +792,32 @@ fn næste(auto) {
         k = 0
     }
     spil(l[k], 0.0)
+}
+
+# cloud: hvilken sang kommer efter den, der spiller nu?
+fn vælg_næste() {
+    let l = kø()
+    if l.len == 0 { return -1 }
+    if gentag == "en" { return nu }
+    if bland and l.len > 1 {
+        let n = nu
+        while n == nu { n = l[random(l.len)] }
+        return n
+    }
+    let k = plads(l, nu) + 1
+    if k >= l.len { k = 0 }
+    return l[k]
+}
+
+# cloud: hent starten (1 MB) af en sang i baggrunden, så den starter med det samme
+fn forvarm(n) {
+    if not CLOUD or n < 0 or n >= sange.len { return nil }
+    let u = kilde(sange[n].fil)
+    if which("curl") != nil {
+        &(curl -s -o /dev/null -r 0-1048575 $u < /dev/null > /dev/null 2>&1)
+    } else {
+        &(ffprobe -v quiet $u < /dev/null > /dev/null 2>&1)
+    }
 }
 
 fn forrige() {
@@ -1281,6 +1313,12 @@ while frame() {
         }
     }
     # cloud: hold webserveren kørende, og opdatér listen af og til
+    # (først når sangen har spillet 3 sek., så den ikke tager båndbredde fra starten)
+    if CLOUD and spiller != nil and nu >= 0 and forvarmet_for != nu and spillet > 3.0 {
+        forvarmet_for = nu
+        forvalgt = vælg_næste()
+        if forvalgt != nu { forvarm(forvalgt) }
+    }
     if CLOUD {
         serve_t -= dt
         if serve_t <= 0 {
