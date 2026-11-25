@@ -19,6 +19,25 @@ let STOR = [
     "d....llllllllllll.",
     ".......dd...dd....",
 ]
+# ålen: lang og tynd, lever helt nede ved bunden
+let ÅL = [
+    "...ddddddddddddddddddd....",
+    "dbbbbbbbbbbbbbbbbbbbbbbbb.",
+    "dbbbbbbbbbbbbbbbbbbbbbbbob",
+    ".lllllllllllllllllllllllll",
+    "...d..............d.......",
+]
+# sværdfisken: stor, hurtig og med et langt sværd (s)
+let SVÆRD = [
+    "......dd.....................",
+    ".....dddd....................",
+    "d...bbbbbbbbbb...............",
+    "dd.bbbbbbbbbbbbbb............",
+    "ddbbbbbdbbdbbbbobbsssssssssss",
+    "dd.lllllllllllllll...........",
+    "d...lllllllllllll............",
+    ".....d....d..................",
+]
 let STØVLE = [
     "..dddddd..",
     "..bbbbbb..",
@@ -37,6 +56,8 @@ let FARVER = {
     "blå": {"b": "#4aa8f0", "d": "#2463b8", "l": "#bfe4ff", "o": "#101010"},
     "grøn": {"b": "#8cc48a", "d": "#4a8a52", "l": "#d4ecc4", "o": "#101010"},
     "lilla": {"b": "#a07ae6", "d": "#6a44b0", "l": "#d8c4ff", "o": "#101010"},
+    "ål": {"b": "#6b6a3a", "d": "#3d3c1c", "l": "#a8a46a", "o": "#101010"},
+    "sværd": {"b": "#3d6f9e", "d": "#22405e", "l": "#c8dceb", "o": "#101010", "s": "#dfe6ee"},
     "guld": {"b": "#ffd23a", "d": "#d08a10", "l": "#fff2a0", "o": "#101010"},
     "støvle": {"b": "#8a5a32", "d": "#5a3518", "l": "#8a5a32", "o": "#101010"},
 }
@@ -45,6 +66,8 @@ let FARVER = {
 fn fisk_type(dybde) {
     match dybde {
         _ if random(18) == 0 => { return "guld" }
+        _ if random(14) == 0 => { return "sværd" }
+        _ if dybde > 200 and random(4) == 0 => { return "ål" }
         0..80 => { return "rød" }
         81..150 => { return "blå" }
         151..220 => { return "grøn" }
@@ -58,6 +81,8 @@ fn point(type) {
         "blå" => { return 20 }
         "grøn" => { return 30 }
         "lilla" => { return 50 }
+        "ål" => { return 40 }
+        "sværd" => { return 75 }
         "guld" => { return 100 }
         "støvle" => { return -50 }
         _ => { return 0 }
@@ -66,7 +91,9 @@ fn point(type) {
 
 fn fart(type) {
     match type {
+        "sværd" => { return 240 }
         "guld" => { return 190 }
+        "ål" => { return 55 }
         "rød", "blå" => { return 110 }
         _ => { return 70 }
     }
@@ -76,6 +103,8 @@ fn form(type) {
     match type {
         "grøn", "lilla" => { return STOR }
         "støvle" => { return STØVLE }
+        "ål" => { return ÅL }
+        "sværd" => { return SVÆRD }
         _ => { return LILLE }
     }
 }
@@ -91,6 +120,8 @@ fn ny_fisk() {
 
 fn tegn_fisk(f, t) {
     let bob = int(sin(t * 4 + f["y"]) * 3)
+    # ålen vrider sig
+    if f["type"] == "ål" { bob = int(sin(t * 9 + f["x"] * 0.03) * 7) }
     sprite(form(f["type"]), f["x"], f["y"] + bob, S, FARVER[f["type"]], not f["højre"])
     if f["type"] == "guld" {
         # glimmer
