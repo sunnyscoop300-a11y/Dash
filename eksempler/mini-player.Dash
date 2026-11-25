@@ -1,0 +1,1268 @@
+#!/usr/bin/env dsh
+# Mini Player 💜🎧 — mp3-afspiller (til mini-apps-familien: SJ Mini, WT Mini, ...) i ren Dash + JJGui, synkroniseret med TeraBox
+# bob-navn: Mini Player
+# bob-kategori: program
+# bob-farve: #a64dff
+# bob-om: Hør din musik med covers: henter mp3'er og covers fra TeraBox (rclone-extra) og spiller dem med mpv. Bland, gentag og spol, og covers vises ved hver sang.
+#
+#   dsh eksempler/mini-player.Dash            pc-udgaven (1000x640)
+#   dsh eksempler/mini-player.Dash mobil      mobil-udgaven: stående, store covers, touch
+#   dsh eksempler/mini-player.Dash cloud      CLOUD v2: streamer fra TeraBox (kan kombineres: mobil cloud)
+#
+# Cloud v2: sangene hentes IKKE ned. Mini Player starter "rclone serve http" og mpv
+# spiller direkte derfra. På telefonen ligger kun covers og små pladsholdere (en
+# webadresse pr. sang) i ~/Music/mini-player-cloud. Listen opdateres ved start og
+# hvert 10. minut (MP_AUTO=sekunder). Kræver net, mens du lytter.
+#
+# Mobil: MP_STR=720x1280 (standard) er vinduets størrelse. Sæt Termux:X11 til
+# samme opløsning (Preferences → Output → Display resolution mode: custom), så
+# fylder den hele skærmen. Træk med fingeren for at rulle, tryk for at vælge.
+#
+# Musikken ligger i MP_MAPPE (standard ~/Music/mini-player) og hentes fra
+# TeraBox med rclone (rclone-extra, som har et terabox-remote):
+#   MP_REMOTE   hvor musikken ligger i skyen   (standard "terabox:Mini Player")
+#   ~/.config/mini-player/remote.txt: en mappe i skyen pr. linje, fx
+#       terabox:KATCHA MIX
+#       terabox:KATCHA DJ MAMA - MEIN HINTERN HAT DEN BASS!!
+#   Hver mappe hentes til sin egen mappe i biblioteket, og hver mappe er et album.
+#   "terabox:*" = ALLE mapper i TeraBox (nye mapper kommer automatisk med).
+#   Telefonen bliver en præcis kopi: det du sletter på TeraBox, slettes også her.
+#   "terabox:Musik/*" = alle mapper inde i Musik. Mapper der starter med "From:"
+#   (telefon-backup) springes over; en linje "-Navn" springer også en mappe over.
+#   MP_RCLONE   rclone-programmet             (standard rclone-tb hvis den findes, ellers rclone)
+#
+# Covers: læg et billede med SAMME NAVN som sangen ved siden af den
+#   35-meter-bass.mp3  +  35-meter-bass.png   (eller .jpg/.jpeg/.webp)
+# Ellers prøver den cover.png/folder.jpg i mappen og til sidst coveret inde i mp3'en.
+#
+# Taster: mellemrum pause · ←/→ spol 10 sek · N/P næste/forrige · S sync · Esc luk
+# Afspilning: mpv (eller ffplay). Covers: ImageMagick. Info: ffprobe.
+
+let HJEM = env("HOME", ".")
+let LIB = env("MP_MAPPE", "{HJEM}/Music/mini-player")
+let REMOTES = []
+let SPRING_OVER = []
+if env("MP_REMOTE", "") != "" { REMOTES = [env("MP_REMOTE", "")] }
+if REMOTES.len == 0 and exists("{HJEM}/.config/mini-player/remote.txt") {
+    for l in read("{HJEM}/.config/mini-player/remote.txt").split("\n") {
+        let t = l.trim()
+        if t.starts_with("-") { SPRING_OVER = SPRING_OVER + [t.replace("-", "").trim()] }
+        else { if t != "" and not t.starts_with("#") { REMOTES = REMOTES + [t] } }
+    }
+}
+if REMOTES.len == 0 { REMOTES = ["terabox:Mini Player"] }
+let REMOTE = REMOTES[0]
+
+# "terabox:Musik/KATCHA MIX" → "KATCHA MIX": mappen den hentes til i biblioteket
+fn mappe_navn(r) {
+    let sti = r
+    if r.contains(":") { sti = r.split(":")[1] }
+    let dele = []
+    for d in sti.split("/") { if d.trim() != "" { dele = dele + [d.trim()] } }
+    if dele.len == 0 { return "TeraBox" }
+    return dele[dele.len - 1]
+}
+let RCLONE = env("MP_RCLONE", "")
+if RCLONE == "" {
+    RCLONE = "rclone"
+    if which("rclone-tb") != nil { RCLONE = "rclone-tb" }
+}
+let CLOUD = env("MP_CLOUD", "") != ""
+for a in args { if a == "cloud" { CLOUD = true } }
+let CACHE = env("MP_CACHE", "{HJEM}/.cache/mini-player")
+if CLOUD {
+    LIB = env("MP_MAPPE", "{HJEM}/Music/mini-player-cloud")
+    CACHE = env("MP_CACHE", "{HJEM}/.cache/mini-player-cloud")
+}
+let PORT = env("MP_PORT", "8767")
+
+# "terabox:Musik/KATCHA MIX" → "terabox:" og "Musik/KATCHA MIX"
+fn remote_navn(r) { return r.split(":")[0] + ":" }
+fn remote_sti(r) {
+    let dele = []
+    for d in r.replace(remote_navn(r), "").split("/") { if d != "" { dele = dele + [d] } }
+    return dele.join("/")
+}
+
+# webadresse-sikker sti (ü/ß må gerne stå direkte, rclone/Go forstår dem)
+fn url_del(t) {
+    let ud = ""
+    for c in t.chars {
+        if c == " " { ud += "%20" }
+        else if c == "#" { ud += "%23" }
+        else if c == "?" { ud += "%3F" }
+        else if c == "%" { ud += "%25" }
+        else if c == "\"" { ud += "%22" }
+        else { ud += c }
+    }
+    return ud
+}
+
+# hvad mpv/ffprobe skal åbne: filen selv, eller i cloud-tilstand webadressen i pladsholderen
+fn kilde(fil) {
+    if CLOUD { return read(fil).trim() }
+    return fil
+}
+mkdir -p $LIB $CACHE
+
+let MAGICK = "magick"
+if which("magick") == nil { MAGICK = "convert" }
+
+# ── fælles: navne og filer ───────────────────────────────────────────
+fn nøgle(fil) {
+    let rel = fil.replace(LIB + "/", "")
+    return rel.replace("/", "__").replace(" ", "_")
+}
+
+# TeraBox gemmer en fil, der uploades igen, som "Navn_20261126_030559.mp3".
+# Ligger originalen "Navn.mp3" ved siden af, er det en dublet → spring over.
+fn dublet(f) {
+    let c = f.stem.chars
+    let n = c.len
+    if n < 17 or c[n - 16] != "_" or c[n - 7] != "_" { return false }
+    for i in range(n - 15, n) {
+        if i != n - 7 and not "0123456789".contains(c[i]) { return false }
+    }
+    let base = ""
+    for i in range(0, n - 16) { base += c[i] }
+    return exists(f.dir + "/" + base + "." + f.ext) or exists(f.dir + "/" + base + ".mp3")
+}
+
+fn alle_mp3() {
+    let ud = $(try find $LIB -type f -iname "*.mp3")
+    let l = []
+    for f in ud.split("\n") {
+        if f.trim() != "" and not dublet(f.trim()) { l = l + [f.trim()] }
+    }
+    return l.sort()
+}
+
+# coveret i en bestemt størrelse (kvadratisk), lavet af hjælperen
+fn cover_sti(k, n) { return "{CACHE}/{k}-{n}.png" }
+
+# ── hjælper: dsh mini-player.Dash forbered 360 56 ...  (i baggrunden) ─
+# laver info (længde, titel, kunstner) og covers i de ønskede størrelser
+
+fn find_cover(fil, k) {
+    let base = fil.dir + "/" + fil.stem
+    for e in [".png", ".jpg", ".jpeg", ".webp", ".PNG", ".JPG"] {
+        if exists(base + e) { return base + e }
+    }
+    for n in ["cover.png", "cover.jpg", "folder.jpg", "folder.png"] {
+        if exists(fil.dir + "/" + n) { return fil.dir + "/" + n }
+    }
+    # coveret inde i mp3'en (ID3)
+    let art = "{CACHE}/{k}.art.png"
+    let lyd = kilde(fil)
+    if not exists(art) { try ffmpeg -v quiet -y -i $lyd -an -frames:v 1 $art }
+    if exists(art) { return art }
+    return ""
+}
+
+fn lav_billede(src, png, s) {
+    let ny = png + ".ny"
+    try $MAGICK $src -resize "{s}x{s}^" -gravity center -extent "{s}x{s}" -define png:compression-level=1 "PNG24:{ny}"
+    if exists(ny) { mv -f $ny $png }
+}
+
+fn forbered_en(fil, størrelser) {
+    let k = nøgle(fil)
+    let info = "{CACHE}/{k}.tsv"
+    let src = ""
+    # står der "intet cover", men er der kommet et billede med samme navn siden? så forfra
+    if exists(info) and read(info).trim().split("\t")[3] != "1" {
+        for e in [".png", ".jpg", ".jpeg", ".webp"] {
+            if exists(fil.dir + "/" + fil.stem + e) { rm -f $info }
+        }
+    }
+    if not exists(info) {
+        let dur = "0"
+        let titel = fil.stem
+        let kunstner = ""
+        let lyd = kilde(fil)
+        let ud = $(try ffprobe -v error -show_entries "format=duration:format_tags=title,artist" -of "default=nw=1" $lyd)
+        for l in ud.split("\n") {
+            let t = l.trim()
+            if t.starts_with("duration=") and t != "duration=N/A" { dur = t.replace("duration=", "") }
+            if t.lower().starts_with("tag:title=") { titel = t.split("=")[1] }
+            if t.lower().starts_with("tag:artist=") { kunstner = t.split("=")[1] }
+        }
+        # cloud: svarede serveren ikke (endnu)? så prøv igen senere i stedet for at gemme 0 sek
+        if CLOUD and dur == "0" { return nil }
+        src = find_cover(fil, k)
+        let har = "0"
+        if src != "" { har = "1" }
+        write(info + ".ny", "{dur}\t{titel}\t{kunstner}\t{har}\n")
+        mv -f "{info}.ny" $info
+    }
+    # covers i alle de størrelser, der mangler
+    if read(info).trim().split("\t")[3] != "1" { return nil }
+    for n in størrelser {
+        if not exists(cover_sti(k, n)) {
+            if src == "" { src = find_cover(fil, k) }
+            if src != "" { lav_billede(src, cover_sti(k, n), n) }
+        }
+    }
+}
+
+if args.len > 0 and args[0] == "forbered" {
+    let størrelser = []
+    for i in range(1, args.len) { if args[i] != "cloud" { størrelser = størrelser + [int(args[i])] } }
+    if størrelser.len == 0 { størrelser = [360, 56] }
+    for f in alle_mp3() parallel 4 { forbered_en(f, størrelser) }
+    exit 0
+}
+
+# ── hjælper (cloud): dsh mini-player.Dash cloudhent "terabox:X" MÅL ──
+# laver en pladsholder (med webadressen) pr. sang, fjerner dem der er slettet i
+# skyen, og henter kun billederne (covers) ned
+if args.len > 2 and args[0] == "cloudhent" {
+    let r = args[1]
+    let mål = args[2]
+    let ud = $($RCLONE lsf -R --files-only --include "*.mp3" --include "*.MP3" $r)
+    # covers først, så hjælperen finder dem, når sangene dukker op
+    mkdir -p $mål
+    $RCLONE sync $r $mål --include "*.png" --include "*.jpg" --include "*.jpeg" --include "*.webp"
+    let base = "http://127.0.0.1:{PORT}"
+    if remote_sti(r) != "" { base = base + "/" + url_del(remote_sti(r)) }
+    let findes = []
+    for l in ud.split("\n") {
+        let rel = l.trim()
+        if rel != "" {
+            let sti = mål + "/" + rel
+            findes = findes + [sti]
+            let url = base + "/" + url_del(rel)
+            if not exists(sti) or read(sti).trim() != url {
+                let d = sti.dir
+                mkdir -p $d
+                write(sti, url + "\n")
+            }
+        }
+    }
+    let lokale = $(try find $mål -type f -iname "*.mp3")
+    for l in lokale.split("\n") {
+        let f = l.trim()
+        if f != "" {
+            let ok = false
+            for x in findes { if x == f { ok = true } }
+            if not ok { rm -f $f }
+        }
+    }
+    exit 0
+}
+
+# ── vinduet: pc eller mobil ──────────────────────────────────────────
+let MOBIL = env("MP_MOBIL", "") != ""
+for a in args { if a == "mobil" { MOBIL = true } }
+let W = 1000
+let H = 640
+if MOBIL {
+    let str = env("MP_STR", "720x1280").split("x")
+    W = int(str[0])
+    H = int(str[1])
+}
+if CLOUD { window("Mini Player Cloud", W, H) } else { window("Mini Player", W, H) }
+
+let STOR = 360            # pc: det store cover
+let LILLE = 56            # pc: covers i listen
+# mobil: på højkant (stående) eller på tværs (liggende) — layoutet tilpasser sig
+let LIGGENDE = MOBIL and W > H
+let M_TOP = 96
+let M_FANER = 120
+if LIGGENDE {
+    M_TOP = 80
+    M_FANER = 84
+}
+let MSTOR = min(W - 64, H - 680)   # mobil: det store cover, så knapperne også kan være der
+if LIGGENDE { MSTOR = H - M_TOP - M_FANER - 40 }
+let KOL = 2                        # mobil: covers pr. række i gitteret
+let GRID = int((W - 64) / 2)
+if LIGGENDE {
+    # så stort som der er plads til i højden, og så mange ved siden af hinanden som muligt
+    let maks = max(120, H - M_TOP - M_FANER - 104 - 96 - 40)
+    KOL = max(2, int((W - 48 + 16 + maks + 15) / (maks + 16)))
+    GRID = int((W - 48 - 16 * (KOL - 1)) / KOL)
+}
+let STØRRELSER = [STOR, LILLE]
+if MOBIL { STØRRELSER = [MSTOR, GRID] }
+
+let BG = "#0d0714"
+let PANEL = "#1a0f26"
+let PANEL_LYS = "#26173a"
+let LILLA = "#a64dff"
+let LILLA_M = "#7a2ee0"
+let LYS = "#e6ccff"
+let DÆMP = "#8a7a99"
+let TOP = "#08040d"
+let RØD = "#ff5a7a"
+
+let sange = []
+let rul = 0
+let nu = -1
+let spiller = nil
+let pos = 0.0
+let pause = false
+let spillet = 0.0        # sekunder siden afspilleren blev startet
+let lever_t = 0.0
+let bland = false
+let gentag = "alle"      # alle · en · ingen
+let sync_job = nil
+let forb_job = nil
+let forb_igen = 0.0
+let besked = ""
+let besked_farve = DÆMP
+let besked_t = 0.0
+let tid = 0.0
+let info_t = 0.0
+let visning = "covers"   # mobil: "albums", "covers" (sangene som covers) eller "spiller"
+let gitter_rul = 0
+let album_rul = 0
+let alben = []           # [{navn, antal}] — en mappe i biblioteket = et album
+let album_valg = ""      # "" = alle sange
+
+# touch: et tryk er når fingeren slippes uden at have flyttet sig; et træk ruller
+let tryk_ned = false
+let tryk_sx = 0
+let tryk_sy = 0
+let tryk_flyt = 0
+let sidste_y = 0
+let tap = false
+let træk_dy = 0
+
+fn opdater_touch() {
+    tap = false
+    træk_dy = 0
+    let m = mouse()
+    if mouse_down() {
+        if not tryk_ned {
+            tryk_ned = true
+            tryk_sx = m[0]
+            tryk_sy = m[1]
+            tryk_flyt = 0
+            sidste_y = m[1]
+        } else {
+            træk_dy = m[1] - sidste_y
+            sidste_y = m[1]
+            tryk_flyt = max(tryk_flyt, abs(m[0] - tryk_sx) + abs(m[1] - tryk_sy))
+        }
+    } else {
+        if tryk_ned {
+            tryk_ned = false
+            if tryk_flyt < 16 { tap = true }
+        } else {
+            # et hurtigt tryk: ned og op i samme billede (sker tit med touch i Termux:X11)
+            if clicked() { tap = true }
+        }
+    }
+}
+
+fn trykket() {
+    if MOBIL { return tap }
+    return clicked()
+}
+
+fn sig(farve, s) {
+    besked = s
+    besked_farve = farve
+    besked_t = 5.0
+}
+
+fn inde(x, y, w, h) {
+    let m = mouse()
+    return m[0] >= x and m[0] < x + w and m[1] >= y and m[1] < y + h
+}
+
+fn klip(s, maxw, sk) {
+    if text_width(s, sk) <= maxw { return s }
+    let r = ""
+    for c in s.chars {
+        if text_width(r + c + "...", sk) > maxw { return r + "..." }
+        r += c
+    }
+    return r
+}
+
+fn mmss(sek) {
+    let s = int(max(0.0, sek))
+    let m = int(s / 60)
+    let r = s % 60
+    if r < 10 { return "{m}:0{r}" }
+    return "{m}:{r}"
+}
+
+# ── biblioteket ──────────────────────────────────────────────────────
+# albummet er mappen sangen ligger i; sange direkte i biblioteket hører til
+# et album opkaldt efter mappen i skyen (fx "KATCHA MIX")
+# albummet er den mappe, sangen ligger i (sange løst i biblioteket = "Singler")
+fn album_af(f) {
+    if f.dir == LIB { return "Singler" }
+    return f.dir.name
+}
+
+fn ny_sang(f) {
+    return {"fil": f, "nøgle": nøgle(f), "titel": f.stem, "kunstner": "", "dur": 0.0, "album": album_af(f),
+            "klar": false, "cover": false, "lille": -1, "stor": -1, "grid": -1}
+}
+
+fn find_alben() {
+    alben = []
+    let set = {}
+    for s in sange {
+        if set.has(s.album) {
+            alben[set[s.album]].antal = alben[set[s.album]].antal + 1
+        } else {
+            set[s.album] = alben.len
+            alben = alben + [{"navn": s.album, "antal": 1}]
+        }
+    }
+    let fandtes = false
+    for a in alben { if a.navn == album_valg { fandtes = true } }
+    if not fandtes { album_valg = "" }
+}
+
+# sangene i det valgte album (eller alle)
+fn vist() {
+    let l = []
+    for i in range(sange.len) { if album_valg == "" or sange[i].album == album_valg { l = l + [i] } }
+    return l
+}
+
+# albummets cover = det første cover blandt dets sange
+fn album_cover(navn, mobil) {
+    for s in sange {
+        if s.album == navn {
+            if mobil and s.grid >= 0 { return s.grid }
+            if not mobil and s.lille >= 0 { return s.lille }
+        }
+    }
+    return -1
+}
+
+# fjerner " og ' rundt om en titel ("FAIRWAY FEVER" → FAIRWAY FEVER)
+fn uden_citat(t) {
+    let r = t.trim()
+    let c = r.chars
+    let a = 0
+    let b = c.len
+    while a < b and (c[a] == "\"" or c[a] == "'") { a += 1 }
+    while b > a and (c[b - 1] == "\"" or c[b - 1] == "'") { b -= 1 }
+    if a == 0 and b == c.len { return r }
+    let ud = ""
+    for i in range(a, b) { ud += c[i] }
+    return ud.trim()
+}
+
+fn læs_info(s) {
+    if not s.klar {
+        let info = "{CACHE}/{s.nøgle}.tsv"
+        if not exists(info) { return nil }
+        let f = read(info).trim().split("\t")
+        if f.len < 4 { return nil }
+        s.dur = float(f[0])
+        let t = uden_citat(f[1])
+        if t != "" { s.titel = t }
+        s.kunstner = uden_citat(f[2])
+        s.cover = f[3] == "1"
+        s.klar = true
+    }
+    # de små covers hentes ind, så snart hjælperen har lavet dem
+    if s.cover and not MOBIL and s.lille < 0 and exists(cover_sti(s.nøgle, LILLE)) {
+        s.lille = image(cover_sti(s.nøgle, LILLE))
+    }
+    if s.cover and MOBIL and s.grid < 0 and exists(cover_sti(s.nøgle, GRID)) {
+        s.grid = image(cover_sti(s.nøgle, GRID))
+    }
+}
+
+fn mangler_noget(s) {
+    if not exists("{CACHE}/{s.nøgle}.tsv") { return true }
+    if not s.klar { return false }
+    if not s.cover {
+        # er der kommet et cover med samme navn siden? så skal hjælperen en tur mere
+        for e in [".png", ".jpg", ".jpeg", ".webp"] {
+            if exists(s.fil.dir + "/" + s.fil.stem + e) {
+                s.klar = false
+                return true
+            }
+        }
+        return false
+    }
+    for n in STØRRELSER { if not exists(cover_sti(s.nøgle, n)) { return true } }
+    return false
+}
+
+fn start_forbered() {
+    if forb_job != nil { return nil }
+    let mangler = false
+    for s in sange { if mangler_noget(s) { mangler = true } }
+    if not mangler { return nil }
+    let cmd = ["dsh", script, "forbered"]
+    if CLOUD { cmd = cmd + ["cloud"] }
+    for n in STØRRELSER { cmd = cmd + ["{n}"] }
+    forb_job = &($cmd < /dev/null > /dev/null 2> /dev/null)
+}
+
+fn scan() {
+    let gammel = ""
+    if nu >= 0 and nu < sange.len { gammel = sange[nu].fil }
+    for s in sange {
+        if s.lille >= 0 { free_image(s.lille) }
+        if s.stor >= 0 { free_image(s.stor) }
+        if s.grid >= 0 { free_image(s.grid) }
+    }
+    sange = []
+    for f in alle_mp3() { sange = sange + [ny_sang(f)] }
+    nu = -1
+    for i in range(sange.len) { if sange[i].fil == gammel { nu = i } }
+    for s in sange { læs_info(s) }
+    find_alben()
+    start_forbered()
+}
+
+# mapperne hentes én ad gangen; hver til sin egen mappe i biblioteket
+let sync_kø = []
+let sync_nr = 0
+let sync_fejl = []
+let sync_liste = []
+let liste_usikker = false
+let stille = false       # auto-opdatering i cloud: ingen "Opdaterer ..."-beskeder
+let auto_t = float(env("MP_AUTO", "600"))
+let serve_job = nil
+let serve_t = 0.0
+
+# cloud: rclone serve http gør TeraBox til en lille webserver, som mpv streamer fra
+fn start_serve() {
+    if not CLOUD or which(RCLONE) == nil { return nil }
+    let rod = remote_navn(REMOTES[0])
+    mkdir -p "{CACHE}/vfs"
+    serve_job = &($RCLONE serve http $rod --addr "127.0.0.1:{PORT}" --read-only --vfs-cache-mode full --vfs-cache-max-size 2G --cache-dir "{CACHE}/vfs" --dir-cache-time 30s < /dev/null >> "{CACHE}/serve.log" 2>&1)
+}
+
+# "terabox:*" → alle mapperne derinde (spørger rclone hver gang, så nye mapper kommer med)
+fn udvid(r) {
+    if not r.ends_with("*") { return [r] }
+    let base = r.replace("*", "")
+    let ud = $(try $RCLONE lsf --dirs-only $base 2> /dev/null)
+    let l = []
+    for linje in ud.split("\n") {
+        let navn = linje.trim()
+        if navn.ends_with("/") { navn = navn.replace("/", "") }
+        let spring = navn == "" or navn.starts_with("From:")
+        for s in SPRING_OVER { if s == navn { spring = true } }
+        if not spring { l = l + [base + navn] }
+    }
+    if l.len == 0 { liste_usikker = true }
+    return l
+}
+
+fn sync_næste() {
+    if sync_kø.len == 0 { return false }
+    let r = sync_kø[0]
+    let rest = []
+    for i in range(1, sync_kø.len) { rest = rest + [sync_kø[i]] }
+    sync_kø = rest
+    sync_nr += 1
+    let mål = "{LIB}/{mappe_navn(r)}"
+    mkdir -p $mål
+    if CLOUD {
+        sync_job = &(dsh $script cloudhent $r $mål < /dev/null >> "{CACHE}/sync.log" 2>&1)
+        if not stille { sig(LYS, "Opdaterer {mappe_navn(r)} ({sync_nr}/{sync_liste.len}) ...") }
+    } else {
+        sync_job = &($RCLONE sync $r $mål --include "*.mp3" --include "*.png" --include "*.jpg" --include "*.jpeg" --include "*.webp" < /dev/null >> "{CACHE}/sync.log" 2>&1)
+        sig(LYS, "Henter {mappe_navn(r)} ({sync_nr}/{sync_liste.len}) ...")
+    }
+    return true
+}
+
+# mapper, der ikke længere findes på TeraBox (eller i remote.txt), fjernes fra telefonen.
+# Kun når HELE syncen gik godt, så en netværksfejl aldrig sletter din musik.
+fn ryd_gamle_mapper() {
+    if liste_usikker or sync_liste.len == 0 { return nil }
+    let behold = []
+    for r in sync_liste { behold = behold + [mappe_navn(r)] }
+    let ud = $(try find $LIB -mindepth 1 -maxdepth 1 -type d)
+    for d in ud.split("\n") {
+        let sti = d.trim()
+        if sti != "" {
+            let navn = sti.name
+            let kendt = false
+            for b in behold { if b == navn { kendt = true } }
+            if not kendt {
+                rm -rf $sti
+                print("fjernet (ikke på TeraBox længere): {navn}")
+            }
+        }
+    }
+}
+
+fn start_sync() {
+    if sync_job != nil { return nil }
+    if which(RCLONE) == nil {
+        sig(RØD, "Kan ikke finde {RCLONE} - installer rclone-extra (med TeraBox) eller sæt MP_RCLONE")
+        return nil
+    }
+    write("{CACHE}/sync.log", "")
+    sync_liste = []
+    liste_usikker = false
+    for r in REMOTES { sync_liste = sync_liste + udvid(r) }
+    if sync_liste.len == 0 {
+        sig(RØD, "Fandt ingen mapper at hente - tjek remote.txt")
+        return nil
+    }
+    sync_kø = sync_liste
+    sync_nr = 0
+    sync_fejl = []
+    sync_næste()
+}
+
+# ── afspilning ───────────────────────────────────────────────────────
+# afspilleren får et mærke på, så vi altid kan finde den igen med pgrep/pkill.
+# I proot på telefonen kan jobbet se "færdigt" ud, mens mpv stadig spiller.
+let MÆRKE = "mini-player-afspiller"
+
+fn afspiller(fil, start) {
+    let s = "{int(start)}"
+    if which("mpv") != nil {
+        return ["mpv", "--no-video", "--really-quiet", "--no-terminal", "--title={MÆRKE}", "--start={s}", kilde(fil)]
+    }
+    return ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet", "-window_title", MÆRKE, "-ss", s, kilde(fil)]
+}
+
+fn spiller_lever() {
+    return $(try pgrep -f $MÆRKE 2> /dev/null).trim() != ""
+}
+
+fn stop() {
+    if spiller != nil {
+        if pause { try kill(spiller, "CONT") }
+        try kill(spiller)
+        spiller = nil
+    }
+    try pkill -f $MÆRKE 2> /dev/null
+    pause = false
+}
+
+fn spil(i, start) {
+    if i < 0 or i >= sange.len { return nil }
+    if which("mpv") == nil and which("ffplay") == nil {
+        sig(RØD, "Installer mpv (eller ffmpeg) for at kunne spille musik")
+        return nil
+    }
+    stop()
+    if nu >= 0 and nu < sange.len and nu != i and sange[nu].stor >= 0 {
+        free_image(sange[nu].stor)
+        sange[nu].stor = -1
+    }
+    nu = i
+    pos = start
+    spillet = 0.0
+    let cmd = afspiller(sange[i].fil, start)
+    spiller = &($cmd < /dev/null > /dev/null 2> /dev/null)
+}
+
+# pause = stop afspilleren og husk hvor vi var; play = start den igen derfra.
+# (at fryse mpv med STOP virker ikke i proot på telefonen)
+fn skift_pause() {
+    if spiller == nil {
+        if nu >= 0 { spil(nu, pos) } else { spil(0, 0.0) }
+        return nil
+    }
+    stop()
+}
+
+fn spol(d) {
+    if nu < 0 { return nil }
+    let p = max(0.0, pos + d)
+    if sange[nu].dur > 0 { p = min(p, sange[nu].dur - 1) }
+    # på pause: flyt bare stedet; musikken starter derfra, når der trykkes play
+    if spiller == nil { pos = p; return nil }
+    spil(nu, p)
+}
+
+# køen: sangene i det album, der spiller lige nu
+fn kø() {
+    if nu < 0 or nu >= sange.len { return vist() }
+    let l = []
+    for i in range(sange.len) { if sange[i].album == sange[nu].album { l = l + [i] } }
+    return l
+}
+
+fn plads(l, i) {
+    for k in range(l.len) { if l[k] == i { return k } }
+    return -1
+}
+
+fn næste(auto) {
+    let l = kø()
+    if l.len == 0 { return nil }
+    if auto and gentag == "en" { spil(nu, 0.0); return nil }
+    if bland and l.len > 1 {
+        let n = nu
+        while n == nu { n = l[random(l.len)] }
+        spil(n, 0.0)
+        return nil
+    }
+    let k = plads(l, nu) + 1
+    if k >= l.len {
+        if auto and gentag == "ingen" { stop(); nu = -1; pos = 0.0; return nil }
+        k = 0
+    }
+    spil(l[k], 0.0)
+}
+
+fn forrige() {
+    let l = kø()
+    if l.len == 0 { return nil }
+    if pos > 3 and nu >= 0 { spil(nu, 0.0); return nil }
+    let k = plads(l, nu) - 1
+    if k < 0 { k = l.len - 1 }
+    spil(l[k], 0.0)
+}
+
+# ── fælles tegning ───────────────────────────────────────────────────
+fn knap(x, y, w, h, s, aktiv, sk) {
+    let over = inde(x, y, w, h)
+    let c = PANEL_LYS
+    if aktiv { c = LILLA_M }
+    if over and not MOBIL { c = LILLA }
+    round_rect(x, y, w, h, 8 * sk, c)
+    text(x + (w - text_width(s, sk)) / 2, y + int((h - 16 * sk) / 2), s, LYS, sk)
+    return over and trykket()
+}
+
+fn rund_knap(cx, cy, r, stor) {
+    let over = inde(cx - r, cy - r, r * 2, r * 2)
+    let c = PANEL_LYS
+    if stor { c = LILLA_M }
+    if over and not MOBIL { c = LILLA }
+    circle(cx, cy, r, c)
+    return over and trykket()
+}
+
+fn ikon_play(cx, cy, s) {
+    polygon([[cx - s / 2, cy - s], [cx - s / 2, cy + s], [cx + s, cy]], LYS)
+}
+
+fn ikon_pause(cx, cy, s) {
+    rect(cx - s, cy - s, s * 2 / 3, s * 2, LYS)
+    rect(cx + s / 3, cy - s, s * 2 / 3, s * 2, LYS)
+}
+
+fn ikon_skip(cx, cy, s, frem) {
+    let b = max(4, int(s / 2))
+    if frem {
+        polygon([[cx - s, cy - s], [cx - s, cy + s], [cx + s / 2, cy]], LYS)
+        rect(cx + s / 2, cy - s, b, s * 2, LYS)
+    } else {
+        polygon([[cx + s, cy - s], [cx + s, cy + s], [cx - s / 2, cy]], LYS)
+        rect(cx - s / 2 - b, cy - s, b, s * 2, LYS)
+    }
+}
+
+fn kunstner_af(s) {
+    if s.kunstner == "" { return "KATCHA" }
+    return s.kunstner
+}
+
+fn tom_cover(x, y, n, sk) {
+    round_rect(x, y, n, n, 12, PANEL_LYS)
+    text(x + (n - text_width("K", sk)) / 2, y + (n - 16 * sk) / 2, "K", LILLA_M, sk)
+}
+
+# tidslinje + tider; klik/tryk for at hoppe
+fn tidslinje(x, y, w, tyk, sk) {
+    let s = sange[nu]
+    round_rect(x, y, w, tyk, tyk / 2, PANEL_LYS)
+    if s.dur > 0 {
+        let f = min(1.0, pos / s.dur)
+        round_rect(x, y, max(tyk, int(w * f)), tyk, tyk / 2, LILLA)
+        circle(x + int(w * f), y + tyk / 2, tyk, LYS)
+        if inde(x, y - 16, w, tyk + 32) and trykket() {
+            let m = mouse()
+            spol((m[0] - x) * 1.0 / w * s.dur - pos)
+        }
+    }
+    text(x, y + tyk + 10, mmss(pos), DÆMP, sk)
+    let slut = mmss(s.dur)
+    text(x + w - text_width(slut, sk), y + tyk + 10, slut, DÆMP, sk)
+}
+
+fn bland_gentag(x, y, w, h, sk) {
+    if knap(x, y, w, h, "BLAND", bland, sk) { bland = not bland }
+    let gt = "GENTAG"
+    if gentag == "en" { gt = "1 SANG" }
+    if gentag == "ingen" { gt = "STOP" }
+    if knap(x + w + 16, y, w, h, gt, gentag != "ingen", sk) {
+        if gentag == "alle" { gentag = "en" } else { if gentag == "en" { gentag = "ingen" } else { gentag = "alle" } }
+    }
+}
+
+# ── pc ───────────────────────────────────────────────────────────────
+fn tegn_top() {
+    rect(0, 0, W, 56, TOP)
+    rect(0, 55, W, 1, LILLA_M)
+    text(24, 14, "MINI", LILLA, 3)
+    text(24 + text_width("MINI ", 3), 14, "PLAYER", LYS, 3)
+    let st = "{sange.len} sange"
+    if CLOUD { st = "{sange.len} i skyen" }
+    if sync_job != nil { st = "synkroniserer..." }
+    else { if forb_job != nil { st = "laver covers..." } }
+    text(W - 150 - 16 - text_width(st, 1), 22, st, DÆMP, 1)
+    if knap(W - 150, 12, 134, 32, "SYNC TERABOX", sync_job != nil, 1) { start_sync() }
+}
+
+fn tegn_nu() {
+    let x = 32
+    let y = 80
+    round_rect(x - 8, y - 8, STOR + 16, H - y - 8, 14, PANEL)
+    if nu < 0 or nu >= sange.len {
+        tom_cover(x, y, STOR, 6)
+        text(x + (STOR - text_width("vælg en sang", 1)) / 2, y + STOR + 20, "vælg en sang", DÆMP, 1)
+        return nil
+    }
+    let s = sange[nu]
+    if s.cover and s.stor < 0 and exists(cover_sti(s.nøgle, STOR)) { s.stor = image(cover_sti(s.nøgle, STOR)) }
+    if s.stor >= 0 { draw(s.stor, x, y) } else { tom_cover(x, y, STOR, 6) }
+    let ty = y + STOR + 14
+    text(x, ty, klip(s.titel, STOR, 2), LYS, 2)
+    text(x, ty + 34, klip(kunstner_af(s), STOR, 1), LILLA, 1)
+    let by = ty + 62
+    tidslinje(x, by, STOR, 8, 1)
+    let cy = by + 62
+    let cx = x + STOR / 2
+    if rund_knap(cx - 76, cy, 22, false) { forrige() }
+    ikon_skip(cx - 76, cy, 9, false)
+    if rund_knap(cx, cy, 30, true) { skift_pause() }
+    if spiller != nil and not pause { ikon_pause(cx, cy, 11) } else { ikon_play(cx + 2, cy, 11) }
+    if rund_knap(cx + 76, cy, 22, false) { næste(false) }
+    ikon_skip(cx + 76, cy, 9, true)
+    if knap(x, cy - 14, 64, 28, "BLAND", bland, 1) { bland = not bland }
+    let gt = "GENTAG"
+    if gentag == "en" { gt = "1 SANG" }
+    if gentag == "ingen" { gt = "STOP" }
+    if knap(x + STOR - 70, cy - 14, 70, 28, gt, gentag != "ingen", 1) {
+        if gentag == "alle" { gentag = "en" } else { if gentag == "en" { gentag = "ingen" } else { gentag = "alle" } }
+    }
+}
+
+fn tom_bibliotek(x, y, w, sk) {
+    let l1 = "Ingen sange endnu"
+    text(x + (w - text_width(l1, sk + 1)) / 2, y, l1, LYS, sk + 1)
+    let l2 = "Tryk SYNC for at hente fra"
+    text(x + (w - text_width(l2, sk)) / 2, y + 50 * sk, l2, DÆMP, sk)
+    let vis_r = REMOTE
+    if REMOTES.len > 1 { vis_r = "{REMOTES.len} mapper i remote.txt" }
+    let r = klip(vis_r, w - 40, sk)
+    text(x + (w - text_width(r, sk)) / 2, y + 74 * sk, r, LILLA, sk)
+}
+
+fn tegn_liste() {
+    let lx = 32 + STOR + 32
+    let lw = W - lx - 24
+    let top = 72
+    let rh = 68
+    round_rect(lx, top, lw, H - top - 16, 14, PANEL)
+    if sange.len == 0 {
+        tom_bibliotek(lx, 230, lw, 1)
+        return nil
+    }
+    # albums som knapper øverst: ALLE + hver mappe
+    let cx = lx + 12
+    let cy = top + 10
+    if alben.len > 1 {
+        let navne = [""]
+        for a in alben { navne = navne + [a.navn] }
+        for n in navne {
+            let t = n
+            if t == "" { t = "ALLE" }
+            t = klip(t, 220, 1)
+            let bw = text_width(t, 1) + 24
+            if cx + bw > lx + lw - 12 {
+                cx = lx + 12
+                cy += 36
+            }
+            if knap(cx, cy, bw, 28, t, album_valg == n, 1) {
+                album_valg = n
+                rul = 0
+            }
+            cx += bw + 8
+        }
+        top = cy + 30
+    }
+    let l = vist()
+    let synlig = int((H - top - 32) / rh)
+    let maks = max(0, l.len - synlig)
+    if inde(lx, top, lw, H - top) { rul -= wheel() }
+    rul = max(0, min(maks, rul))
+    let y = top + 8
+    let j = rul
+    while j < l.len and j < rul + synlig {
+        let i = l[j]
+        let s = sange[i]
+        let over = inde(lx + 8, y, lw - 16, rh - 6)
+        if i == nu { round_rect(lx + 8, y, lw - 16, rh - 6, 10, LILLA_M) }
+        else { if over { round_rect(lx + 8, y, lw - 16, rh - 6, 10, PANEL_LYS) } }
+        if s.lille >= 0 { draw(s.lille, lx + 16, y + 3) }
+        else {
+            round_rect(lx + 16, y + 3, LILLE, LILLE, 6, LILLA_M)
+            text(lx + 16 + (LILLE - text_width("K", 3)) / 2, y + 12, "K", LYS, 3)
+        }
+        let tx = lx + 16 + LILLE + 14
+        let tw = lw - (tx - lx) - 70
+        text(tx, y + 10, klip(s.titel, tw, 1), LYS, 1)
+        text(tx, y + 34, klip(kunstner_af(s), tw, 1), DÆMP, 1)
+        if s.dur > 0 {
+            let d = mmss(s.dur)
+            text(lx + lw - 24 - text_width(d, 1), y + 22, d, DÆMP, 1)
+        }
+        if over and clicked() { spil(i, 0.0) }
+        y += rh
+        j += 1
+    }
+    if maks > 0 {
+        let bh = H - top - 32
+        let th = max(30, int(bh * synlig / l.len))
+        let ty = top + 8 + int((bh - th) * rul / maks)
+        round_rect(lx + lw - 8, ty, 4, th, 2, LILLA_M)
+    }
+}
+
+# ── mobil ────────────────────────────────────────────────────────────
+fn m_top() {
+    rect(0, 0, W, M_TOP, TOP)
+    rect(0, M_TOP - 2, W, 2, LILLA_M)
+    text(28, 30, "MINI", LILLA, 3)
+    text(28 + text_width("MINI ", 3), 30, "PLAYER", LYS, 3)
+    let st = "{sange.len} sange"
+    if CLOUD { st = "{sange.len} i skyen" }
+    if sync_job != nil { st = "synker..." }
+    else { if forb_job != nil { st = "covers..." } }
+    text(W - 180 - 20 - text_width(st, 2), 38, st, DÆMP, 2)
+    if knap(W - 180, 20, 160, 56, "SYNC", sync_job != nil, 2) { start_sync() }
+}
+
+# fanerne i bunden: COVERS | SPILLER, og en lille "nu spiller"-bjælke over dem
+fn m_faner() {
+    let y = H - M_FANER
+    rect(0, y, W, M_FANER, TOP)
+    rect(0, y, W, 2, LILLA_M)
+    let bw = int((W - 64) / 3)
+    let bh = M_FANER - 48
+    if knap(16, y + 24, bw, bh, "ALBUMS", visning == "albums", 2) { visning = "albums" }
+    if knap(32 + bw, y + 24, bw, bh, "COVERS", visning == "covers", 2) { visning = "covers" }
+    if knap(48 + bw * 2, y + 24, bw, bh, "SPILLER", visning == "spiller", 2) { visning = "spiller" }
+}
+
+fn m_nu_bjælke() {
+    if nu < 0 or nu >= sange.len { return nil }
+    let s = sange[nu]
+    let h = 104
+    let y = H - M_FANER - h
+    rect(0, y, W, h, PANEL)
+    rect(0, y, W, 2, LILLA_M)
+    if s.grid >= 0 { draw(s.grid, 20, y + 12, 80, 80) } else { tom_cover(20, y + 12, 80, 3) }
+    text(116, y + 24, klip(s.titel, W - 116 - 120, 2), LYS, 2)
+    text(116, y + 60, klip(kunstner_af(s), W - 116 - 120, 1), LILLA, 2)
+    if s.dur > 0 { rect(0, y + h - 6, int(W * min(1.0, pos / s.dur)), 6, LILLA) }
+    if rund_knap(W - 60, y + h / 2, 38, true) { skift_pause() }
+    else { if inde(0, y, W - 110, h) and tap { visning = "spiller" } }
+    if spiller != nil and not pause { ikon_pause(W - 60, y + h / 2, 14) } else { ikon_play(W - 58, y + h / 2, 14) }
+}
+
+fn m_covers() {
+    let top = M_TOP + 16 + 64
+    let bund = H - M_FANER
+    if nu >= 0 { bund -= 104 }
+    if sange.len == 0 {
+        tom_bibliotek(0, 360, W, 2)
+        return nil
+    }
+    let l = vist()
+    let tile_h = GRID + 96
+    let rækker = int((l.len + KOL - 1) / KOL)
+    let total = rækker * tile_h
+    let maks = max(0, total - (bund - top))
+    if inde(0, top, W, bund - top) {
+        gitter_rul -= træk_dy
+        gitter_rul -= wheel() * 80
+    }
+    gitter_rul = max(0, min(maks, gitter_rul))
+    let j = 0
+    while j < l.len {
+        let i = l[j]
+        let s = sange[i]
+        let x = 24 + (j % KOL) * (GRID + 16)
+        let y = top + int(j / KOL) * tile_h - gitter_rul
+        if y + tile_h > top and y < bund {
+            if i == nu { round_rect(x - 8, y - 8, GRID + 16, tile_h - 4, 14, LILLA_M) }
+            if s.grid >= 0 { draw(s.grid, x, y) } else { tom_cover(x, y, GRID, 8) }
+            text(x, y + GRID + 12, klip(s.titel, GRID, 2), LYS, 2)
+            text(x, y + GRID + 48, klip(kunstner_af(s), GRID, 2), DÆMP, 2)
+            if inde(x, y, GRID, tile_h - 16) and inde(0, top, W, bund - top) and tap {
+                if i == nu { visning = "spiller" } else { spil(i, 0.0) }
+            }
+        }
+        j += 1
+    }
+    # overskriften med albummets navn (dækker det, der ruller op under den)
+    rect(0, M_TOP, W, top - M_TOP, BG)
+    let navn = album_valg
+    if navn == "" { navn = "Alle sange" }
+    let bredde = W - 48
+    if album_valg != "" { bredde = W - 48 - 160 }
+    text(24, M_TOP + 30, klip(navn, bredde, 2), LYS, 2)
+    if album_valg != "" {
+        if knap(W - 24 - 140, M_TOP + 18, 140, 48, "ALLE", false, 2) {
+            album_valg = ""
+            gitter_rul = 0
+        }
+    }
+}
+
+fn m_albums() {
+    let top = M_TOP + 16
+    let bund = H - M_FANER
+    if nu >= 0 { bund -= 104 }
+    if alben.len == 0 {
+        tom_bibliotek(0, 360, W, 2)
+        return nil
+    }
+    let tile_h = GRID + 96
+    let rækker = int((alben.len + KOL - 1) / KOL)
+    let maks = max(0, rækker * tile_h - (bund - top))
+    if inde(0, top, W, bund - top) {
+        album_rul -= træk_dy
+        album_rul -= wheel() * 80
+    }
+    album_rul = max(0, min(maks, album_rul))
+    let j = 0
+    while j < alben.len {
+        let a = alben[j]
+        let x = 24 + (j % KOL) * (GRID + 16)
+        let y = top + int(j / KOL) * tile_h - album_rul
+        if y + tile_h > top and y < bund {
+            let spiller_her = nu >= 0 and nu < sange.len and sange[nu].album == a.navn
+            if spiller_her { round_rect(x - 8, y - 8, GRID + 16, tile_h - 4, 14, LILLA_M) }
+            # en lille "stak" bag coveret, så det ligner et album
+            round_rect(x + 10, y - 6, GRID - 20, GRID, 12, PANEL_LYS)
+            let c = album_cover(a.navn, true)
+            if c >= 0 { draw(c, x, y) } else { tom_cover(x, y, GRID, 8) }
+            text(x, y + GRID + 12, klip(a.navn, GRID, 2), LYS, 2)
+            let n = "{a.antal} sange"
+            if a.antal == 1 { n = "1 sang" }
+            text(x, y + GRID + 48, n, DÆMP, 2)
+            if inde(x, y, GRID, tile_h - 16) and inde(0, top, W, bund - top) and tap {
+                album_valg = a.navn
+                gitter_rul = 0
+                visning = "covers"
+            }
+        }
+        j += 1
+    }
+    rect(0, M_TOP, W, 16, BG)
+}
+
+# liggende: coveret til venstre, titel og knapper til højre
+fn m_spiller_liggende() {
+    let x = 32
+    let y = M_TOP + 20
+    if nu < 0 or nu >= sange.len {
+        tom_cover(x, y, MSTOR, 8)
+        text(x + MSTOR + 48, y + 40, "tryk på et cover under COVERS", DÆMP, 2)
+        return nil
+    }
+    let s = sange[nu]
+    if s.cover and s.stor < 0 and exists(cover_sti(s.nøgle, MSTOR)) { s.stor = image(cover_sti(s.nøgle, MSTOR)) }
+    if s.stor >= 0 { draw(s.stor, x, y) } else { tom_cover(x, y, MSTOR, 8) }
+    let x2 = x + MSTOR + 48
+    let rw = W - x2 - 32
+    text(x2, y + 10, klip(s.titel, rw, 3), LYS, 3)
+    text(x2, y + 62, klip(kunstner_af(s), rw, 2), LILLA, 2)
+    tidslinje(x2, y + 120, rw, 14, 2)
+    let cx = x2 + int(rw / 2)
+    let cy = max(y + 230, min(y + 260, H - M_FANER - 150))
+    if rund_knap(cx - 160, cy, 48, false) { forrige() }
+    ikon_skip(cx - 160, cy, 17, false)
+    if rund_knap(cx, cy, 64, true) { skift_pause() }
+    if spiller != nil and not pause { ikon_pause(cx, cy, 22) } else { ikon_play(cx + 4, cy, 22) }
+    if rund_knap(cx + 160, cy, 48, false) { næste(false) }
+    ikon_skip(cx + 160, cy, 17, true)
+    bland_gentag(cx - 208, cy + 80, 200, 56, 2)
+}
+
+fn m_spiller() {
+    if LIGGENDE {
+        m_spiller_liggende()
+        return nil
+    }
+    let x = int((W - MSTOR) / 2)
+    let y = M_TOP + 24
+    if nu < 0 or nu >= sange.len {
+        tom_cover(x, y, MSTOR, 10)
+        let t = "tryk på et cover under COVERS"
+        text(x + (MSTOR - text_width(t, 2)) / 2, y + MSTOR + 40, t, DÆMP, 2)
+        return nil
+    }
+    let s = sange[nu]
+    if s.cover and s.stor < 0 and exists(cover_sti(s.nøgle, MSTOR)) { s.stor = image(cover_sti(s.nøgle, MSTOR)) }
+    if s.stor >= 0 { draw(s.stor, x, y) } else { tom_cover(x, y, MSTOR, 10) }
+    let ty = y + MSTOR + 24
+    text(x, ty, klip(s.titel, MSTOR, 3), LYS, 3)
+    text(x, ty + 52, klip(kunstner_af(s), MSTOR, 2), LILLA, 2)
+    let by = ty + 100
+    tidslinje(x, by, MSTOR, 14, 2)
+    let cy = by + 122
+    let cx = W / 2
+    if rund_knap(cx - 160, cy, 48, false) { forrige() }
+    ikon_skip(cx - 160, cy, 17, false)
+    if rund_knap(cx, cy, 64, true) { skift_pause() }
+    if spiller != nil and not pause { ikon_pause(cx, cy, 22) } else { ikon_play(cx + 4, cy, 22) }
+    if rund_knap(cx + 160, cy, 48, false) { næste(false) }
+    ikon_skip(cx + 160, cy, 17, true)
+    let bw = 200
+    bland_gentag(cx - bw - 8, cy + 86, bw, 60, 2)
+}
+
+# ── start ────────────────────────────────────────────────────────────
+# en afspiller fra sidste gang (hvis Mini Player blev lukket med Ctrl+C) spiller
+# måske stadig — stop den, så der ikke kører to sange oven i hinanden
+try pkill -f "mpv --no-video --really-quiet --no-terminal" 2> /dev/null
+try pkill -f "ffplay -nodisp -autoexit -loglevel quiet" 2> /dev/null
+try pkill -f $MÆRKE 2> /dev/null
+scan()
+if alben.len > 1 { visning = "albums" }
+if CLOUD and which(RCLONE) != nil {
+    try pkill -f "serve http {remote_navn(REMOTES[0])} --addr 127.0.0.1:{PORT}" 2> /dev/null
+    start_serve()
+    serve_t = 5.0
+}
+if (sange.len == 0 or CLOUD or env("MP_SYNC", "") != "") and which(RCLONE) != nil { start_sync() }
+if env("MP_SPIL", "") != "" {   # test: start en sang med det samme
+    spil(int(env("MP_SPIL", "0")), 0.0)
+    if env("MP_VIS", "") != "" { visning = env("MP_VIS", "") }
+}
+
+while frame() {
+    let dt = min(delta(), 0.1)
+    tid += dt
+    besked_t -= dt
+    opdater_touch()
+
+    # afspilning: tiden går, og når sangen er slut, kommer den næste
+    if spiller != nil and not pause {
+        pos += dt
+        spillet += dt
+        # er jobbet "færdigt", så tjek (højst to gange i sekundet) om mpv virkelig er væk
+        let slut = false
+        if not running(spiller) {
+            lever_t -= dt
+            if lever_t <= 0 {
+                lever_t = 0.5
+                slut = not spiller_lever()
+            }
+        }
+        if slut {
+            try wait(spiller)
+            spiller = nil
+            # stoppede den med det samme, kan afspilleren ikke spille (ingen lyd?)
+            if spillet < 1.5 {
+                sig(RØD, "Kunne ikke spille sangen - virker mpv/lyden?")
+            } else {
+                næste(true)
+            }
+        }
+    }
+    # sync færdig → find de nye sange
+    if sync_job != nil and not running(sync_job) {
+        let st = wait(sync_job)
+        sync_job = nil
+        if st != 0 {
+            let r = sync_liste[sync_nr - 1]
+            sync_fejl = sync_fejl + [r]
+            try rmdir "{LIB}/{mappe_navn(r)}" 2> /dev/null   # kun hvis den er tom
+        }
+        if not sync_næste() {
+            if sync_fejl.len == 0 {
+                ryd_gamle_mapper()
+                if CLOUD {
+                    if not stille { sig(LYS, "Cloud er opdateret") }
+                } else { sig(LYS, "TeraBox er synkroniseret") }
+            }
+            else { sig(RØD, "Kunne ikke hente {mappe_navn(sync_fejl[0])} - findes mappen? (se sync.log)") }
+            scan()
+            stille = false
+        }
+    }
+    # cloud: hold webserveren kørende, og opdatér listen af og til
+    if CLOUD {
+        serve_t -= dt
+        if serve_t <= 0 {
+            serve_t = 5.0
+            if serve_job == nil or not running(serve_job) { start_serve() }
+        }
+        auto_t -= dt
+        if auto_t <= 0 {
+            auto_t = float(env("MP_AUTO", "600"))
+            if sync_job == nil {
+                stille = true
+                start_sync()
+            }
+        }
+    }
+    # covers og info kommer løbende fra hjælperen
+    info_t -= dt
+    if info_t <= 0 {
+        info_t = 0.5
+        for s in sange { læs_info(s) }
+        if forb_job != nil and not running(forb_job) {
+            try wait(forb_job)
+            forb_job = nil
+            for s in sange { læs_info(s) }
+            # kom der nye sange til (fx fra en sync), mens hjælperen arbejdede? så en tur mere
+            # (lidt senere, så den ikke kører i ring, hvis cloud-serveren ikke svarer endnu)
+            forb_igen = 2.0
+        }
+        if forb_igen > 0 {
+            forb_igen -= 0.5
+            if forb_igen <= 0 { start_forbered() }
+        }
+    }
+
+    # taster
+    if pressed("space") { skift_pause() }
+    if pressed("right") { spol(10.0) }
+    if pressed("left") { spol(-10.0) }
+    if pressed("n") { næste(false) }
+    if pressed("p") { forrige() }
+    if pressed("s") { start_sync() }
+    if pressed("esc") { break }
+
+    clear(BG)
+    if MOBIL {
+        if visning == "spiller" { m_spiller() }
+        else {
+            if visning == "albums" { m_albums() } else { m_covers() }
+            m_nu_bjælke()
+        }
+        m_top()
+        m_faner()
+    } else {
+        tegn_top()
+        tegn_nu()
+        tegn_liste()
+    }
+    if besked_t > 0 {
+        let sk = 1
+        if MOBIL { sk = 2 }
+        let bw = min(W - 20, text_width(besked, sk) + 32)
+        let by = H - 52 * sk
+        if MOBIL { by = H - M_FANER - 70 }
+        round_rect((W - bw) / 2, by, bw, 34 * sk, 10, TOP)
+        text((W - bw) / 2 + 16, by + 9 * sk, klip(besked, bw - 32, sk), besked_farve, sk)
+    }
+    if env("MP_SKUD", "") != "" and tid > 2.5 {
+        screenshot(env("MP_SKUD", ""))
+        break
+    }
+}
+stop()

@@ -220,7 +220,21 @@ fn fishout() {
     for k in range(3) { circle(60 + k * 70, 230 - k * 6, 5 + k, "#bfe6ff90") }
 }
 
-let ikoner = ["boxman", "cube-runner", "jj-demo", "nonbiri", "serietracker", "bob", "wt-mini", "fishout"]
+# ── Mini Player: en lilla vinylplade med en play-knap ────────────────
+fn mini_player() {
+    clear("#0d0714")
+    circle(128, 118, 92, "#1a0f26")
+    circle(128, 118, 84, "#08040d")
+    for r in [70, 58, 46] { circle(128, 118, r, "#1a0f26"); circle(128, 118, r - 3, "#08040d") }
+    circle(128, 118, 30, "#a64dff")
+    circle(128, 118, 6, "#0d0714")
+    round_rect(44, 196, 168, 46, 14, "#7a2ee0")
+    text(128 - text_width("MINI", 3) / 2, 206, "MINI", "#e6ccff", 3)
+    circle(204, 52, 30, "#a64dff")
+    polygon([[194, 36], [194, 68], [222, 52]], "#e6ccff")
+}
+
+let ikoner = ["boxman", "cube-runner", "jj-demo", "nonbiri", "serietracker", "bob", "wt-mini", "fishout", "mini-player"]
 # kun nogle af dem:  IKONER=wt-mini,fishout dsh eksempler/ikoner/tegn-ikoner.Dash
 if env("IKONER", "") != "" { ikoner = env("IKONER", "").split(",") }
 let i = 0
@@ -235,6 +249,7 @@ while frame() {
     else if n == "bob" { bob() }
     else if n == "wt-mini" { wt_mini() }
     else if n == "fishout" { fishout() }
+    else if n == "mini-player" { mini_player() }
     screenshot("{ud}/{n}.png")
     # afrundede, gennemsigtige hjørner (kræver python3 + pillow; ellers firkantet)
     try python3 "{ud}/rund.py" "{ud}/{n}.png" 2> /dev/null

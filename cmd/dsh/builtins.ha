@@ -412,14 +412,14 @@ fn attr(obj: value, name: str, line: int) (value | failed) = {
 		case "len" => return len(s): i64;
 		case "name" => return path_name(s);
 		case "dir" =>
-			match (strings::rindex(s, '/')) {
-			case let i: size => return strings::sub(s, 0, i);
+			match (byte_rindex(s, '/')) {
+			case let i: size => return byte_sub(s, 0, i);
 			case void => return "";
 			};
 		case "stem" =>
 			const n = path_name(s);
-			match (strings::rindex(n, '.')) {
-			case let i: size => return if (i == 0) n else strings::sub(n, 0, i);
+			match (byte_rindex(n, '.')) {
+			case let i: size => return if (i == 0) n else byte_sub(n, 0, i);
 			case void => return n;
 			};
 		case "chars" =>
@@ -432,8 +432,8 @@ fn attr(obj: value, name: str, line: int) (value | failed) = {
 			return newlist(parts);
 		case "ext" =>
 			const n = path_name(s);
-			match (strings::rindex(n, '.')) {
-			case let i: size => return if (i == 0) "" else strings::sub(n, i, strings::end);
+			match (byte_rindex(n, '.')) {
+			case let i: size => return if (i == 0) "" else byte_sub(n, i, len(n));
 			case void => return "";
 			};
 		case => void;
@@ -495,10 +495,17 @@ fn casemap(s: str, up: bool) str = {
 	return strings::fromrunes(out)!;
 };
 
-fn path_name(s: str) str = match (strings::rindex(s, '/')) {
-case let i: size => yield strings::sub(s, i + 1, strings::end);
+fn path_name(s: str) str = match (byte_rindex(s, '/')) {
+case let i: size => yield byte_sub(s, i + 1, len(s));
 case void => yield s;
 };
+
+// Stier regnes i bytes: strings::rindex giver en byte-plads, men strings::sub
+// tæller bogstaver, så "Fünfunddreißig/x.mp3".dir blev forkert med æøå/ü/ß.
+fn byte_rindex(s: str, c: u8) (size | void) = bytes::rindex(strings::toutf8(s), c);
+
+fn byte_sub(s: str, a: size, b: size) str =
+	strings::dup(strings::fromutf8_unsafe(strings::toutf8(s)[a..b]))!;
 
 // --- methods: .trim() .push(x) ... ---
 
