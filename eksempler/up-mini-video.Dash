@@ -17,6 +17,11 @@
 # som tømmes ved start og når appen lukker. Kun hvor langt du nåede i en video
 # (mpv's "watch later") huskes i ~/.config/up-mini-video/fortsæt — små tekstfiler.
 #
+# Undertekster: læg dem ved siden af videoen med samme navn: "Up (2009).srt",
+# "Up (2009).da.srt", "Up (2009).en.srt" (.srt .vtt .ass .ssa). Dansk vælges først, så
+# engelsk. På TV'et sendes én med (dansk hvis den findes). Videoer med undertekster
+# får et lille "UT" på billedet. Undertekster inde i en .mkv klarer mpv selv.
+#
 # Cast til TV (Chromecast): tryk TV i toppen, og tryk så på en video. Kræver catt
 # (pipx install catt). TV'ets navn (fx Go Home) eller IP i ~/.config/up-mini-video/tv.txt
 # — ellers bruger catt sit standard-TV. Mens du caster, kører en ekstra webserver
@@ -25,7 +30,9 @@
 #
 # Film-plakater fra OMDb: læg din OMDb-nøgle i ~/.config/up-mini-video/omdb-key (kun
 # nøglen, chmod 600). Titel og år læses fra filnavnet: "Shrek (2001).mp4" eller
-# "Shrek.2001.1080p.BluRay.mkv". Et billede med samme navn på TeraBox vinder altid.
+# "Shrek.2001.1080p.BluRay.mkv" — uden årstal spørges OMDb ikke (for at undgå forkerte
+# plakater). Et IMDb-id rammer altid præcist: "Shrek (2001) [tt0126029].mp4".
+# Et billede med samme navn på TeraBox vinder altid.
 #
 # mpv åbner videoen i fuld skærm. Tryk/klik i videoen for mpv's knapper; q lukker
 # den igen. Næste gang fortsætter videoen, hvor du slap.
@@ -38,6 +45,7 @@ let INFO = "{ROD}/info"
 let PORT = env("UV_PORT", "8768")
 let VIDEO_EXT = ["mp4", "mkv", "webm", "mov", "avi", "m4v", "ts", "wmv", "flv", "mpg", "mpeg"]
 let BILLED_EXT = ["png", "jpg", "jpeg", "webp"]
+let UT_EXT = ["srt", "vtt", "ass", "ssa"]
 
 let REMOTES = []
 let SPRING_OVER = []
@@ -102,6 +110,26 @@ fn plakat(fil) {
     if l.len > 1 { return l[1].trim() }
     return ""
 }
+# linje 3 og frem: undertekster med samme navn som videoen
+fn undertekster(fil) {
+    let l = linjer(fil)
+    let u = []
+    for i in range(2, l.len) { if l[i].trim() != "" { u = u + [l[i].trim()] } }
+    return u
+}
+fn er_ut(navn) {
+    let l = navn.lower()
+    for e in UT_EXT { if l.ends_with("." + e) { return true } }
+    return false
+}
+# dansk først, så engelsk, ellers den første
+fn bedste_ut(liste) {
+    for sprog in [".da.", ".dan.", "dansk", "danish", ".en.", ".eng.", "english"] {
+        for u in liste { if u.lower().contains(sprog) { return u } }
+    }
+    if liste.len > 0 { return liste[0] }
+    return ""
+}
 fn alle_videoer() {
     let ud = $(try find $LIB -type f)
     let l = []
@@ -139,7 +167,7 @@ fn titel_år(stamme) {
     return [titel.join(" "), år]
 }
 fn vis_titel(stamme) {
-    let ta = titel_år(stamme)
+    let ta = titel_år(uden_id(stamme))
     if ta[1] != "" { return "{ta[0]} ({ta[1]})" }
     return ta[0]
 }
@@ -154,13 +182,34 @@ fn json_felt(svar, navn) {
     return q[1].replace("\\/", "/").replace("\\u0026", "&")
 }
 fn url_kode(t) { return url_del(t).replace("&", "%26").replace("+", "%2B").replace("=", "%3D") }
+# IMDb-id i filnavnet: "Film (2026) [tt1234567].mp4" → "tt1234567"
+fn uden_id(stamme) {
+    let id = imdb_id(stamme)
+    if id == "" { return stamme }
+    return stamme.replace(id, "").replace(id.upper(), "")
+}
+fn imdb_id(stamme) {
+    let t = stamme.replace("[", " ").replace("]", " ").replace("(", " ").replace(")", " ").replace(".", " ").replace("_", " ")
+    for o in t.split(" ") {
+        let x = o.trim().lower()
+        if x.starts_with("tt") and x.len >= 9 and x.len <= 11 {
+            let tal = true
+            for c in x.replace("tt", "").chars { if not "0123456789".contains(c) { tal = false } }
+            if tal { return x }
+        }
+    }
+    return ""
+}
 # spørger OMDb: [plakat-webadresse, "Titel (År)"] — eller ["", ""]
+# Kun med IMDb-id eller årstal i filnavnet, og årstallet skal passe — ellers gætter
+# OMDb tit forkert (en anden film med samme navn), og så er et billede fra filmen bedre.
 fn omdb(stamme, k) {
     if OMDB_NØGLE == "" or which("curl") == nil { return ["", ""] }
-    let ta = titel_år(stamme)
-    if ta[0] == "" { return ["", ""] }
-    let q = "{OMDB_URL}?apikey={OMDB_NØGLE}&t={url_kode(ta[0])}"
-    if ta[1] != "" { q = q + "&y={ta[1]}" }
+    let ta = titel_år(uden_id(stamme))
+    let id = imdb_id(stamme)
+    if id == "" and (ta[0] == "" or ta[1] == "") { return ["", ""] }
+    let q = "{OMDB_URL}?apikey={OMDB_NØGLE}&i={id}"
+    if id == "" { q = "{OMDB_URL}?apikey={OMDB_NØGLE}&t={url_kode(ta[0])}&y={ta[1]}" }
     # nøglen i en lille config-fil (ikke på kommandolinjen)
     let cfg = "{INFO}/{k}.omdb"
     write(cfg, "url = \"{q}\"\n")
@@ -168,6 +217,8 @@ fn omdb(stamme, k) {
     let svar = $(try curl -s --max-time 15 -K $cfg)
     rm -f $cfg
     if json_felt(svar, "Response") != "True" { return ["", ""] }
+    # årstallet skal passe (OMDb skriver fx "2009" eller "2009–2012" for serier)
+    if id == "" and not json_felt(svar, "Year").starts_with(ta[1]) { return ["", ""] }
     let p = json_felt(svar, "Poster")
     if not p.starts_with("http") { p = "" }
     let navn = json_felt(svar, "Title")
@@ -182,7 +233,7 @@ if args.len > 2 and args[0] == "hent" {
     let r = args[1]
     let mål = args[2]
     let inc = []
-    for e in VIDEO_EXT + BILLED_EXT {
+    for e in VIDEO_EXT + BILLED_EXT + UT_EXT {
         inc = inc + ["--include", "*." + e, "--include", "*." + e.upper()]
     }
     let ud = $($RCLONE lsf -R --files-only $inc $r)
@@ -190,10 +241,13 @@ if args.len > 2 and args[0] == "hent" {
     if remote_sti(r) != "" { base = base + "/" + url_del(remote_sti(r)) }
     let videoer = []
     let billeder = []
+    let uts = []
     for l in ud.split("\n") {
         let rel = l.trim()
         if rel != "" {
-            if er_video(rel) { videoer = videoer + [rel] } else { billeder = billeder + [rel] }
+            if er_video(rel) { videoer = videoer + [rel] }
+            else if er_ut(rel) { uts = uts + [rel] }
+            else { billeder = billeder + [rel] }
         }
     }
     for rel in videoer {
@@ -210,10 +264,15 @@ if args.len > 2 and args[0] == "hent" {
                 if billede == "" and b.lower() == (stamme + "." + e).lower() { billede = base + "/" + url_del(b) }
             }
         }
+        # undertekster: "Film.srt", "Film.da.srt", "Film.Danish.srt" ... (samme navn + noget)
+        let ut_linjer = ""
+        for u in uts {
+            if u.lower().starts_with(stamme.lower() + ".") { ut_linjer = ut_linjer + base + "/" + url_del(u) + "\n" }
+        }
         let sti = mål + "/" + rel
         let d = sti.dir
         mkdir -p $d
-        write(sti, base + "/" + url_del(rel) + "\n" + billede + "\n")
+        write(sti, base + "/" + url_del(rel) + "\n" + billede + "\n" + ut_linjer)
     }
     exit 0
 }
@@ -465,7 +524,7 @@ fn ny_video(f) {
         navn = d.join(".")
     }
     return {"fil": f, "nøgle": nøgle(f), "titel": vis_titel(navn), "dur": 0.0, "hylde": hylde_af(f),
-            "klar": false, "billede": -1, "intet": false}
+            "klar": false, "billede": -1, "intet": false, "ut": undertekster(f).len > 0}
 }
 fn læs_info(v) {
     let tsv = "{INFO}/{v.nøgle}.tsv"
@@ -590,7 +649,11 @@ fn spil(i) {
     stop()
     mkdir -p "{CFG}/fortsæt"
     let url = kilde(videoer[i].fil)
-    let cmd = ["mpv", "--fs", "--force-window=yes", "--title={MÆRKE}", "--hwdec=no", "--save-position-on-quit", "--watch-later-dir={CFG}/fortsæt", "--cache=yes", "--demuxer-max-bytes=150M", url]
+    let cmd = ["mpv", "--fs", "--force-window=yes", "--title={MÆRKE}", "--hwdec=no", "--save-position-on-quit", "--watch-later-dir={CFG}/fortsæt", "--cache=yes", "--demuxer-max-bytes=150M", "--slang=da,dan,dansk,en,eng"]
+    # undertekster med samme navn: dansk vælges først (står i filnavnet, fx Film.da.srt)
+    let uts = undertekster(videoer[i].fil)
+    for u in uts { cmd = cmd + ["--sub-file={u}"] }
+    cmd = cmd + [url]
     afspiller = &($cmd < /dev/null > /dev/null 2> /dev/null)
     spiller_nr = i
     spillet = 0.0
@@ -643,7 +706,17 @@ fn cast(i) {
     let url = kilde(videoer[i].fil).replace("127.0.0.1:{PORT}", "{ip}:{CAST_PORT}/{TOKEN}")
     let d = tv_d()
     if cast_job != nil and running(cast_job) { try kill(cast_job, 15) }
-    cast_job = &(catt $d cast $url < /dev/null >> "{INFO}/cast.log" 2>&1)
+    # undertekst til TV'et: catt vil have en fil, så den hentes til /tmp (lille tekstfil)
+    let ut = []
+    let bedste = bedste_ut(undertekster(videoer[i].fil))
+    if bedste != "" {
+        let ext = "srt"
+        for e in UT_EXT { if bedste.lower().ends_with("." + e) { ext = e } }
+        let uf = "{ROD}/ut-{i}.{ext}"
+        try curl -s --max-time 30 -o $uf $bedste
+        if exists(uf) { ut = ["-s", uf] }
+    }
+    cast_job = &(catt $d cast $ut $url < /dev/null >> "{INFO}/cast.log" 2>&1)
     tv_spiller = i
     let hvor = "TV"
     if TV != "" { hvor = TV }
@@ -772,6 +845,11 @@ fn tegn_videoer() {
                 let tw = text_width(t, SK) + 12
                 round_rect(x + TW - tw - 8, y + TH - 20 * SK - 8, tw, 18 * SK + 4, 6, TOP)
                 text(x + TW - tw - 2, y + TH - 20 * SK - 4, t, LYS, SK)
+            }
+            if v.ut {
+                let uw = text_width("UT", SK) + 12
+                round_rect(x + 8, y + TH - 20 * SK - 8, uw, 18 * SK + 4, 6, LILLA_M)
+                text(x + 14, y + TH - 20 * SK - 4, "UT", LYS, SK)
             }
             text(x, y + TH + 8, klip(v.titel, TW, SK + 1), LYS, SK + 1)
             if inde(x, y, TW, tile_h - MELLEM) and inde(0, top, W, bund - top) and trykket() {
