@@ -675,22 +675,49 @@ fn tv_d() {
     if TV == "" { return [] }
     return ["-d", TV]
 }
-# din IP på hjemmenetværket (så TV'et kan nå webserveren)
+# kører en proces? (i proot ser jobs tit færdige ud, selvom de kører — så spørg pgrep)
+fn lever(mønster) { return $(try pgrep -f $mønster 2> /dev/null).trim() != "" }
+
+# "10.0.0.135" → "10.0.0." (de første tre tal)
+fn net_af(ip) {
+    let d = ip.split(".")
+    if d.len != 4 { return "" }
+    return "{d[0]}.{d[1]}.{d[2]}."
+}
+# din IP på hjemmenetværket (så TV'et kan nå webserveren).
+# Mobilen har tit to: mobildata og Wi-Fi — vælg den på samme net som TV'et.
 fn lan_ip() {
     if exists("{CFG}/ip.txt") { return read("{CFG}/ip.txt").trim() }
+    let alle = []
+    let h = $(try hostname -I 2> /dev/null).trim()
+    for x in h.split(" ") { if x.trim() != "" and x.contains(".") { alle = alle + [x.trim()] } }
     let ud = $(try ip -4 route get 1.1.1.1 2> /dev/null)
     let dele = ud.replace("\n", " ").split(" ")
-    for i in range(dele.len) { if dele[i] == "src" and i + 1 < dele.len { return dele[i + 1].trim() } }
-    let h = $(try hostname -I 2> /dev/null).trim()
-    if h != "" { return h.split(" ")[0] }
-    return env("UV_IP", "")
+    for i in range(dele.len) { if dele[i] == "src" and i + 1 < dele.len { alle = alle + [dele[i + 1].trim()] } }
+    if alle.len == 0 { return env("UV_IP", "") }
+    # TV'et er en IP? så den der deler net med det
+    let tv_net = net_af(TV)
+    if tv_net != "" { for x in alle { if x.starts_with(tv_net) { return x } } }
+    # ellers hjemmenet-agtige adresser først
+    for pre in ["192.168.", "10.0.", "172.16.", "10."] { for x in alle { if x.starts_with(pre) { return x } } }
+    return alle[0]
 }
 fn start_cast_serve() {
-    if cast_serve != nil and running(cast_serve) { return nil }
-    # en ny hemmelig sti hver gang: kun TV'et (der får adressen) kan finde videoerne
+    let mønster = "serve http .* --addr 0.0.0.0:{CAST_PORT}"
+    # kører den allerede (med vores hemmelige sti)? så genbrug den
+    if TOKEN != "" and lever(mønster) { return nil }
+    try pkill -f $mønster 2> /dev/null
+    # en ny hemmelig sti: kun TV'et (der får adressen) kan finde videoerne
     TOKEN = $(od -An -N12 -tx1 /dev/urandom).replace(" ", "").replace("\n", "").trim()
     let rod = remote_navn(REMOTES[0])
-    cast_serve = &($RCLONE serve http $rod --addr "0.0.0.0:{CAST_PORT}" --baseurl "/{TOKEN}" --read-only --dir-cache-time 5m < /dev/null >> "{INFO}/cast.log" 2>&1)
+    cast_serve = &($RCLONE serve http $rod --addr "0.0.0.0:{CAST_PORT}" --baseurl "/{TOKEN}" --read-only --vfs-cache-mode full --cache-dir "{ROD}/vfs-tv" --vfs-cache-max-size 2G --vfs-read-ahead 64M --dir-cache-time 5m < /dev/null >> "{INFO}/cast.log" 2>&1)
+    # vent til den lytter (højst ~3 sek.), så TV'et ikke spørger for tidligt
+    let n = 0
+    while n < 6 and not lever(mønster) {
+        sleep 0.5
+        n += 1
+    }
+    sleep 1
 }
 fn cast(i) {
     if i < 0 or i >= videoer.len { return nil }
@@ -733,7 +760,9 @@ fn stop_cast() {
     if cast_job != nil and running(cast_job) { try kill(cast_job, 15) }
     cast_job = nil
     if cast_serve != nil { try kill(cast_serve, 15) }
+    try pkill -f "serve http .* --addr 0.0.0.0:{CAST_PORT}" 2> /dev/null
     cast_serve = nil
+    TOKEN = ""
     tv_spiller = -1
 }
 
@@ -958,7 +987,7 @@ while frame() {
     serve_t -= dt
     if serve_t <= 0 {
         serve_t = 5.0
-        if serve_job == nil or not running(serve_job) { start_serve() }
+        if serve_job == nil or (not running(serve_job) and not lever("serve http .* --addr 127.0.0.1:{PORT}")) { start_serve() }
     }
     auto_t -= dt
     if auto_t <= 0 {
