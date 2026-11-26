@@ -17,6 +17,12 @@
 # som tømmes ved start og når appen lukker. Kun hvor langt du nåede i en video
 # (mpv's "watch later") huskes i ~/.config/up-mini-video/fortsæt — små tekstfiler.
 #
+# Cast til TV (Chromecast): tryk TV i toppen, og tryk så på en video. Kræver catt
+# (pipx install catt). TV'ets navn (fx Go Home) eller IP i ~/.config/up-mini-video/tv.txt
+# — ellers bruger catt sit standard-TV. Mens du caster, kører en ekstra webserver
+# på dit netværk med en tilfældig hemmelig sti, så TV'et kan hente videoen. Den
+# stopper, når du stopper casten. Finder den ikke din IP: skriv den i ip.txt samme sted.
+#
 # Film-plakater fra OMDb: læg din OMDb-nøgle i ~/.config/up-mini-video/omdb-key (kun
 # nøglen, chmod 600). Titel og år læses fra filnavnet: "Shrek (2001).mp4" eller
 # "Shrek.2001.1080p.BluRay.mkv". Et billede med samme navn på TeraBox vinder altid.
@@ -353,6 +359,16 @@ let sync_fejl = []
 let liste_usikker = false
 
 # touch: et tryk er når fingeren slippes uden at have flyttet sig; et træk ruller
+# cast
+let TV = ""
+if exists("{CFG}/tv.txt") { TV = read("{CFG}/tv.txt").trim() }
+let CAST_PORT = "{int(PORT) + 1}"
+let TOKEN = ""
+let cast_serve = nil
+let cast_job = nil
+let tv_valgt = false
+let tv_spiller = -1
+
 let tryk_ned = false
 let tryk_sx = 0
 let tryk_sy = 0
@@ -589,6 +605,63 @@ fn stop() {
     spiller_nr = -1
 }
 
+# ── cast til TV ──────────────────────────────────────────────────────
+fn tv_d() {
+    if TV == "" { return [] }
+    return ["-d", TV]
+}
+# din IP på hjemmenetværket (så TV'et kan nå webserveren)
+fn lan_ip() {
+    if exists("{CFG}/ip.txt") { return read("{CFG}/ip.txt").trim() }
+    let ud = $(try ip -4 route get 1.1.1.1 2> /dev/null)
+    let dele = ud.replace("\n", " ").split(" ")
+    for i in range(dele.len) { if dele[i] == "src" and i + 1 < dele.len { return dele[i + 1].trim() } }
+    let h = $(try hostname -I 2> /dev/null).trim()
+    if h != "" { return h.split(" ")[0] }
+    return env("UV_IP", "")
+}
+fn start_cast_serve() {
+    if cast_serve != nil and running(cast_serve) { return nil }
+    # en ny hemmelig sti hver gang: kun TV'et (der får adressen) kan finde videoerne
+    TOKEN = $(od -An -N12 -tx1 /dev/urandom).replace(" ", "").replace("\n", "").trim()
+    let rod = remote_navn(REMOTES[0])
+    cast_serve = &($RCLONE serve http $rod --addr "0.0.0.0:{CAST_PORT}" --baseurl "/{TOKEN}" --read-only --dir-cache-time 5m < /dev/null >> "{INFO}/cast.log" 2>&1)
+}
+fn cast(i) {
+    if i < 0 or i >= videoer.len { return nil }
+    if which("catt") == nil {
+        sig(RØD, "Installer catt for at caste:  pipx install catt")
+        return nil
+    }
+    let ip = lan_ip()
+    if ip == "" {
+        sig(RØD, "Kan ikke finde din IP - skriv den i {CFG}/ip.txt")
+        return nil
+    }
+    stop()
+    start_cast_serve()
+    let url = kilde(videoer[i].fil).replace("127.0.0.1:{PORT}", "{ip}:{CAST_PORT}/{TOKEN}")
+    let d = tv_d()
+    if cast_job != nil and running(cast_job) { try kill(cast_job, 15) }
+    cast_job = &(catt $d cast $url < /dev/null >> "{INFO}/cast.log" 2>&1)
+    tv_spiller = i
+    let hvor = "TV"
+    if TV != "" { hvor = TV }
+    sig(LYS, "Sender til {hvor}: {videoer[i].titel}")
+}
+fn stop_cast() {
+    if tv_spiller < 0 and cast_serve == nil { return nil }
+    if which("catt") != nil and tv_spiller >= 0 {
+        let d = tv_d()
+        &(catt $d stop < /dev/null > /dev/null 2>&1)
+    }
+    if cast_job != nil and running(cast_job) { try kill(cast_job, 15) }
+    cast_job = nil
+    if cast_serve != nil { try kill(cast_serve, 15) }
+    cast_serve = nil
+    tv_spiller = -1
+}
+
 # ── tegning ──────────────────────────────────────────────────────────
 fn tegn_top() {
     rect(0, 0, W, TOP_H, TOP)
@@ -609,7 +682,13 @@ fn tegn_top() {
     if videoer.len == 1 { st = "1 video" }
     if sync_job != nil { st = "kigger..." }
     else { if forb_job != nil { st = "billeder..." } }
-    text(W - bw - 36 - text_width(st, 1 + SK / 2), ty + 8, st, DÆMP, 1 + SK / 2)
+    let tvw = int(bw * 3 / 4)
+    text(W - bw - tvw - 52 - text_width(st, 1 + SK / 2), ty + 8, st, DÆMP, 1 + SK / 2)
+    if knap(W - bw - tvw - 36, int((TOP_H - bh) / 2), tvw, bh, "TV", tv_valgt, KS) {
+        tv_valgt = not tv_valgt
+        if tv_valgt { sig(LYS, "TV: tryk på en video for at sende den til TV'et") }
+        else { sig(DÆMP, "TV slået fra - videoer spiller her") }
+    }
     if knap(W - bw - 20, int((TOP_H - bh) / 2), bw, bh, "SYNC", sync_job != nil, KS) { start_sync() }
 }
 
@@ -686,7 +765,7 @@ fn tegn_videoer() {
         let x = MARG + (j % KOL) * (TW + MELLEM)
         let y = top + int(j / KOL) * tile_h - rul
         if y + tile_h > top and y < bund {
-            if i == spiller_nr { round_rect(x - 6, y - 6, TW + 12, TH + 12, 12, LILLA) }
+            if i == spiller_nr or i == tv_spiller { round_rect(x - 6, y - 6, TW + 12, TH + 12, 12, LILLA) }
             if v.billede >= 0 { draw(v.billede, x, y) } else { tom_billede(x, y, TW, TH) }
             if v.dur > 0 {
                 let t = tid_tekst(v.dur)
@@ -695,7 +774,9 @@ fn tegn_videoer() {
                 text(x + TW - tw - 2, y + TH - 20 * SK - 4, t, LYS, SK)
             }
             text(x, y + TH + 8, klip(v.titel, TW, SK + 1), LYS, SK + 1)
-            if inde(x, y, TW, tile_h - MELLEM) and inde(0, top, W, bund - top) and trykket() { spil(i) }
+            if inde(x, y, TW, tile_h - MELLEM) and inde(0, top, W, bund - top) and trykket() {
+                if tv_valgt { cast(i) } else { spil(i) }
+            }
         }
         j += 1
     }
@@ -714,14 +795,22 @@ fn tegn_videoer() {
 }
 
 fn tegn_spiller_bjælke() {
-    if afspiller == nil or spiller_nr < 0 or spiller_nr >= videoer.len { return nil }
+    let på_tv = tv_spiller >= 0 and tv_spiller < videoer.len
+    if not på_tv and (afspiller == nil or spiller_nr < 0 or spiller_nr >= videoer.len) { return nil }
     let h = 48 * SK
     let y = H - h
     rect(0, y, W, h, PANEL)
     rect(0, y, W, 2, LILLA_M)
-    let s = "spiller: " + videoer[spiller_nr].titel
+    let s = ""
+    if på_tv {
+        let hvor = "TV"
+        if TV != "" { hvor = TV }
+        s = "på {hvor}: " + videoer[tv_spiller].titel
+    } else { s = "spiller: " + videoer[spiller_nr].titel }
     text(MARG, y + int((h - 16 * SK) / 2), klip(s, W - MARG * 2 - 140 * SK, SK), LYS, SK)
-    if knap(W - 130 * SK - MARG, y + 6 * SK, 130 * SK, h - 12 * SK, "STOP", false, KS) { stop() }
+    if knap(W - 130 * SK - MARG, y + 6 * SK, 130 * SK, h - 12 * SK, "STOP", false, KS) {
+        if på_tv { stop_cast() } else { stop() }
+    }
 }
 
 # ── start ────────────────────────────────────────────────────────────
@@ -767,6 +856,7 @@ while frame() {
             stille = false
             # test: UV_SPIL=n starter video nr. n, når listen er hentet
             if env("UV_SPIL", "") != "" and afspiller == nil { spil(int(env("UV_SPIL", "0"))) }
+            if env("UV_CAST", "") != "" and tv_spiller < 0 { cast(int(env("UV_CAST", "0"))) }
         }
     }
     # billeder og længder: hjælperen arbejder i baggrunden
@@ -818,8 +908,9 @@ while frame() {
     }
 }
 
-# luk: stop mpv og webserveren, og fjern alt det midlertidige — intet bliver liggende
+# luk: stop mpv, casten og webserverne, og fjern alt det midlertidige — intet bliver liggende
 stop()
+stop_cast()
 if serve_job != nil { try kill(serve_job, 15) }
 try pkill -f "serve http {remote_navn(REMOTES[0])} --addr 127.0.0.1:{PORT}" 2> /dev/null
 rm -rf $ROD
