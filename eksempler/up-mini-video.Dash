@@ -17,6 +17,10 @@
 # som tømmes ved start og når appen lukker. Kun hvor langt du nåede i en video
 # (mpv's "watch later") huskes i ~/.config/up-mini-video/fortsæt — små tekstfiler.
 #
+# Film-plakater fra OMDb: læg din OMDb-nøgle i ~/.config/up-mini-video/omdb-key (kun
+# nøglen, chmod 600). Titel og år læses fra filnavnet: "Shrek (2001).mp4" eller
+# "Shrek.2001.1080p.BluRay.mkv". Et billede med samme navn på TeraBox vinder altid.
+#
 # mpv åbner videoen i fuld skærm. Tryk/klik i videoen for mpv's knapper; q lukker
 # den igen. Næste gang fortsætter videoen, hvor du slap.
 
@@ -46,7 +50,11 @@ if RCLONE == "" {
     if which("rclone-tb") != nil { RCLONE = "rclone-tb" }
 }
 let MAGICK = "magick"
-if which("magick") == nil { MAGICK = "convert" }
+let IDENTIFY = ["magick", "identify"]
+if which("magick") == nil {
+    MAGICK = "convert"            # ImageMagick 6
+    IDENTIFY = ["identify"]
+}
 
 # ── fælles ───────────────────────────────────────────────────────────
 fn remote_navn(r) { return r.split(":")[0] + ":" }
@@ -93,6 +101,73 @@ fn alle_videoer() {
     let l = []
     for f in ud.split("\n") { if f.trim() != "" and er_video(f.trim()) { l = l + [f.trim()] } }
     return l.sort()
+}
+
+# ── film: titel og år fra filnavnet, plakat fra OMDb ──────────────────
+# "Shrek (2001).mp4", "Shrek.2001.1080p.BluRay.x264.mkv" → ["Shrek", "2001"]
+let SKRAMMEL = ["1080p", "720p", "2160p", "480p", "4k", "uhd", "bluray", "blu-ray", "brrip", "bdrip", "web", "webrip", "web-dl", "webdl", "hdrip", "dvdrip", "x264", "x265", "h264", "h265", "hevc", "aac", "ac3", "dts", "remux", "hdr", "10bit", "proper", "extended", "uncut"]
+fn titel_år(stamme) {
+    let t = stamme.replace(".", " ").replace("_", " ").replace("(", " ").replace(")", " ").replace("[", " ").replace("]", " ")
+    let ord = []
+    for o in t.split(" ") { if o.trim() != "" { ord = ord + [o.trim()] } }
+    # skær ved det første kvalitetsord (1080p, BluRay, x264 ...)
+    let slut = ord.len
+    for i in range(ord.len) {
+        let lav = ord[i].lower()
+        for x in SKRAMMEL { if i > 0 and slut == ord.len and lav == x { slut = i } }
+    }
+    # året = det SIDSTE rigtige årstal (1900-2027), så "Blade Runner 2049 (2017)" bliver rigtig
+    let år_i = -1
+    for i in range(1, slut) {
+        let o = ord[i]
+        let tal = o.len == 4
+        for c in o.chars { if not "0123456789".contains(c) { tal = false } }
+        if tal and int(o) >= 1900 and int(o) <= 2027 { år_i = i }
+    }
+    let titel = []
+    let stop = slut
+    if år_i >= 0 { stop = år_i }
+    for i in range(0, stop) { titel = titel + [ord[i]] }
+    let år = ""
+    if år_i >= 0 { år = ord[år_i] }
+    return [titel.join(" "), år]
+}
+fn vis_titel(stamme) {
+    let ta = titel_år(stamme)
+    if ta[1] != "" { return "{ta[0]} ({ta[1]})" }
+    return ta[0]
+}
+let OMDB_NØGLE = env("OMDB_API_KEY", "")
+if OMDB_NØGLE == "" and exists("{CFG}/omdb-key") { OMDB_NØGLE = read("{CFG}/omdb-key").trim() }
+let OMDB_URL = env("UV_OMDB_URL", "https://www.omdbapi.com/")
+fn json_felt(svar, navn) {
+    let dele = svar.split("\"" + navn + "\"")
+    if dele.len < 2 { return "" }
+    let q = dele[1].split("\"")
+    if q.len < 2 { return "" }
+    return q[1].replace("\\/", "/").replace("\\u0026", "&")
+}
+fn url_kode(t) { return url_del(t).replace("&", "%26").replace("+", "%2B").replace("=", "%3D") }
+# spørger OMDb: [plakat-webadresse, "Titel (År)"] — eller ["", ""]
+fn omdb(stamme, k) {
+    if OMDB_NØGLE == "" or which("curl") == nil { return ["", ""] }
+    let ta = titel_år(stamme)
+    if ta[0] == "" { return ["", ""] }
+    let q = "{OMDB_URL}?apikey={OMDB_NØGLE}&t={url_kode(ta[0])}"
+    if ta[1] != "" { q = q + "&y={ta[1]}" }
+    # nøglen i en lille config-fil (ikke på kommandolinjen)
+    let cfg = "{INFO}/{k}.omdb"
+    write(cfg, "url = \"{q}\"\n")
+    chmod 600 $cfg
+    let svar = $(try curl -s --max-time 15 -K $cfg)
+    rm -f $cfg
+    if json_felt(svar, "Response") != "True" { return ["", ""] }
+    let p = json_felt(svar, "Poster")
+    if not p.starts_with("http") { p = "" }
+    let navn = json_felt(svar, "Title")
+    let år = json_felt(svar, "Year")
+    if navn != "" and år != "" { navn = "{navn} ({år})" }
+    return [p, navn]
 }
 
 # ── hjælper: dsh up-mini-video.Dash hent "terabox:X" MÅL ──
@@ -165,7 +240,26 @@ if args.len > 2 and args[0] == "forbered" {
         if not exists(png) {
             let src = "{INFO}/{k}.src.png"
             let pl = plakat(f)
+            let stående = false
             if pl != "" { try ffmpeg -v quiet -y -i $pl -frames:v 1 $src }
+            if not exists(src) {
+                # film: spørg OMDb om plakat og den rigtige titel
+                let navn = f.name
+                let p = navn.split(".")
+                if p.len > 1 {
+                    let d = []
+                    for i in range(0, p.len - 1) { d = d + [p[i]] }
+                    navn = d.join(".")
+                }
+                let o = omdb(navn, k)
+                if o[1] != "" { write("{INFO}/{k}.titel", o[1] + "\n") }
+                let pu = o[0]
+                if pu != "" { try ffmpeg -v quiet -y -i $pu -frames:v 1 $src }
+            }
+            if exists(src) {
+                let mål = $(try $IDENTIFY -format "%w %h" $src).trim().split(" ")
+                if mål.len == 2 and int(mål[1]) > int(mål[0]) { stående = true }
+            }
             if not exists(src) {
                 # et billede lidt inde i videoen (ikke det sorte første billede)
                 let dur = float(read(tsv).trim())
@@ -176,7 +270,12 @@ if args.len > 2 and args[0] == "forbered" {
             }
             if exists(src) {
                 let ny = png + ".ny"
-                try $MAGICK $src -resize "{bw}x{bh}^" -gravity center -extent "{bw}x{bh}" "PNG24:{ny}"
+                if stående {
+                    # en plakat på højkant: hele plakaten i midten, sløret udgave af den bagved
+                    try $MAGICK $src "(" -clone 0 -resize "{bw}x{bh}^" -gravity center -extent "{bw}x{bh}" -blur "0x14" -modulate "55" ")" "(" -clone 0 -resize "{bw}x{bh}" ")" -delete 0 -gravity center -composite "PNG24:{ny}"
+                } else {
+                    try $MAGICK $src -resize "{bw}x{bh}^" -gravity center -extent "{bw}x{bh}" "PNG24:{ny}"
+                }
                 if exists(ny) { mv -f $ny $png }
                 rm -f $src
             } else {
@@ -231,7 +330,7 @@ let RØD = "#ff5a7a"
 
 let videoer = []
 let hylder = []          # [{navn, antal}] — en mappe = en hylde
-let hylde_valg = env("UV_HYLDE", "")   # "" = hylde-oversigten
+let hylde_valg = ""      # "" = hylde-oversigten
 let rul = 0
 let afspiller = nil
 let spiller_nr = -1
@@ -349,7 +448,7 @@ fn ny_video(f) {
         for i in range(0, p.len - 1) { d = d + [p[i]] }
         navn = d.join(".")
     }
-    return {"fil": f, "nøgle": nøgle(f), "titel": navn.replace("_", " "), "dur": 0.0, "hylde": hylde_af(f),
+    return {"fil": f, "nøgle": nøgle(f), "titel": vis_titel(navn), "dur": 0.0, "hylde": hylde_af(f),
             "klar": false, "billede": -1, "intet": false}
 }
 fn læs_info(v) {
@@ -358,6 +457,8 @@ fn læs_info(v) {
         v.dur = float(read(tsv).trim())
         v.klar = true
     }
+    let tf = "{INFO}/{v.nøgle}.titel"
+    if exists(tf) { v.titel = read(tf).trim() }
     let png = "{INFO}/{v.nøgle}.png"
     if v.billede < 0 and exists(png) { v.billede = image(png) }
     if exists(png + ".ingen") { v.intet = true }
@@ -660,6 +761,7 @@ while frame() {
         if not sync_næste() {
             # kun én mappe med videoer? så vis videoerne med det samme
             if hylder.len == 1 and hylde_valg == "" { hylde_valg = hylder[0].navn }
+            if env("UV_HYLDE", "") != "" { hylde_valg = env("UV_HYLDE", "") }   # test
             if sync_fejl.len > 0 { sig(RØD, "Kunne ikke læse {mappe_navn(sync_fejl[0])} (se {INFO}/sync.log)") }
             else { if not stille { sig(LYS, "{videoer.len} videoer i {hylder.len} mapper") } }
             stille = false
