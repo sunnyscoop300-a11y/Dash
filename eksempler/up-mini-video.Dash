@@ -329,6 +329,8 @@ if args.len > 2 and args[0] == "forbered" {
                 # et billede lidt inde i videoen (ikke det sorte første billede)
                 let dur = float(read(tsv).trim())
                 let ss = "{min(60.0, max(1.0, dur * 0.1))}"
+                # en hel film: forbi rulleteksterne i starten (20 % inde, højst 15 min)
+                if dur > 1200 { ss = "{min(900.0, dur * 0.2)}" }
                 if dur <= 0 { ss = "5" }
                 try ffmpeg -v quiet -y -ss $ss -i $url -frames:v 1 $src
                 if not exists(src) { try ffmpeg -v quiet -y -i $url -frames:v 1 $src }
