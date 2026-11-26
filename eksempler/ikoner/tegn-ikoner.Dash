@@ -234,6 +234,18 @@ fn mini_player() {
     polygon([[194, 36], [194, 68], [222, 52]], "#e6ccff")
 }
 
+fn up_mini_video() {
+    clear("#0d0714")
+    # en lille skærm med play-knap
+    round_rect(28, 44, 200, 128, 18, "#a64dff")
+    round_rect(38, 54, 180, 108, 12, "#08040d")
+    polygon([[108, 80], [108, 136], [156, 108]], "#e6ccff")
+    rect(108, 172, 40, 16, "#7a2ee0")
+    round_rect(80, 184, 96, 10, 5, "#7a2ee0")
+    round_rect(36, 200, 184, 46, 14, "#7a2ee0")
+    text(128 - text_width("UP", 3) / 2, 199, "UP", "#e6ccff", 3)
+}
+
 fn mini_cloud() {
     clear("#0d0714")
     # pladen
@@ -253,7 +265,7 @@ fn mini_cloud() {
     text(128 - text_width("CLOUD", 3) / 2, 206, "CLOUD", "#e6ccff", 3)
 }
 
-let ikoner = ["boxman", "cube-runner", "jj-demo", "nonbiri", "serietracker", "bob", "wt-mini", "fishout", "mini-player", "mini-cloud"]
+let ikoner = ["boxman", "cube-runner", "jj-demo", "nonbiri", "serietracker", "bob", "wt-mini", "fishout", "mini-player", "mini-cloud", "up-mini-video"]
 # kun nogle af dem:  IKONER=wt-mini,fishout dsh eksempler/ikoner/tegn-ikoner.Dash
 if env("IKONER", "") != "" { ikoner = env("IKONER", "").split(",") }
 let i = 0
@@ -270,6 +282,7 @@ while frame() {
     else if n == "fishout" { fishout() }
     else if n == "mini-player" { mini_player() }
     else if n == "mini-cloud" { mini_cloud() }
+    else if n == "up-mini-video" { up_mini_video() }
     screenshot("{ud}/{n}.png")
     # afrundede, gennemsigtige hjørner (kræver python3 + pillow; ellers firkantet)
     try python3 "{ud}/rund.py" "{ud}/{n}.png" 2> /dev/null

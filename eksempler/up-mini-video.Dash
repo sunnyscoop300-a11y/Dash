@@ -1,0 +1,723 @@
+#!/usr/bin/env dsh
+# UP Mini Video Player 🎬💜 — dine videoer streamet direkte fra TeraBox, i ren Dash + JJGui
+# bob-navn: UP Mini Video Player
+# bob-kategori: program
+# bob-farve: #a64dff
+# bob-om: Se dine videoer fra TeraBox uden at hente dem ned: rclone serve http streamer dem til mpv. Mapper med videoer bliver til hylder med billeder fra videoerne. Intet gemmes på disken.
+#
+#   dsh eksempler/up-mini-video.Dash          pc-udgaven (1000x640)
+#   dsh eksempler/up-mini-video.Dash mobil    mobil-udgaven (Termux:X11), stående eller liggende
+#
+# Hvilke mapper: ~/.config/up-mini-video/remote.txt (findes den ikke: "terabox:*" = alle
+# mapper). Kun mapper med videoer vises. Mapper der starter med "From:" (telefon-backup)
+# springes over; en linje "-Navn" springer også en mappe over. Vil du se en From:-mappe,
+# så skriv den på sin egen linje: terabox:From:SM-S938B
+#
+# Intet bliver liggende: listen, billederne og rclones cache ligger i /tmp/up-mini-video,
+# som tømmes ved start og når appen lukker. Kun hvor langt du nåede i en video
+# (mpv's "watch later") huskes i ~/.config/up-mini-video/fortsæt — små tekstfiler.
+#
+# mpv åbner videoen i fuld skærm. Tryk/klik i videoen for mpv's knapper; q lukker
+# den igen. Næste gang fortsætter videoen, hvor du slap.
+
+let HJEM = env("HOME", ".")
+let CFG = "{HJEM}/.config/up-mini-video"
+let ROD = env("UV_ROD", "/tmp/up-mini-video")
+let LIB = "{ROD}/bibliotek"
+let INFO = "{ROD}/info"
+let PORT = env("UV_PORT", "8768")
+let VIDEO_EXT = ["mp4", "mkv", "webm", "mov", "avi", "m4v", "ts", "wmv", "flv", "mpg", "mpeg"]
+let BILLED_EXT = ["png", "jpg", "jpeg", "webp"]
+
+let REMOTES = []
+let SPRING_OVER = []
+if exists("{CFG}/remote.txt") {
+    for l in read("{CFG}/remote.txt").split("\n") {
+        let t = l.trim()
+        if t.starts_with("-") { SPRING_OVER = SPRING_OVER + [t.replace("-", "").trim()] }
+        else { if t != "" and not t.starts_with("#") { REMOTES = REMOTES + [t] } }
+    }
+}
+if REMOTES.len == 0 { REMOTES = ["terabox:*"] }
+
+let RCLONE = env("UV_RCLONE", "")
+if RCLONE == "" {
+    RCLONE = "rclone"
+    if which("rclone-tb") != nil { RCLONE = "rclone-tb" }
+}
+let MAGICK = "magick"
+if which("magick") == nil { MAGICK = "convert" }
+
+# ── fælles ───────────────────────────────────────────────────────────
+fn remote_navn(r) { return r.split(":")[0] + ":" }
+fn remote_sti(r) {
+    let dele = []
+    for d in r.replace(remote_navn(r), "").split("/") { if d != "" { dele = dele + [d] } }
+    return dele.join("/")
+}
+fn mappe_navn(r) {
+    let dele = remote_sti(r).split("/")
+    let n = dele[dele.len - 1]
+    if n == "" { return "TeraBox" }
+    return n
+}
+# webadresse-sikker sti (ü/ß må gerne stå direkte, rclone forstår dem)
+fn url_del(t) {
+    let ud = ""
+    for c in t.chars {
+        if c == " " { ud += "%20" }
+        else if c == "#" { ud += "%23" }
+        else if c == "?" { ud += "%3F" }
+        else if c == "%" { ud += "%25" }
+        else if c == "\"" { ud += "%22" }
+        else { ud += c }
+    }
+    return ud
+}
+fn er_video(navn) {
+    let l = navn.lower()
+    for e in VIDEO_EXT { if l.ends_with("." + e) { return true } }
+    return false
+}
+fn nøgle(fil) { return fil.replace(LIB + "/", "").replace("/", "__").replace(" ", "_") }
+# pladsholderen: linje 1 = videoens webadresse, linje 2 = et billede med samme navn (hvis der er et)
+fn linjer(fil) { return read(fil).split("\n") }
+fn kilde(fil) { return linjer(fil)[0].trim() }
+fn plakat(fil) {
+    let l = linjer(fil)
+    if l.len > 1 { return l[1].trim() }
+    return ""
+}
+fn alle_videoer() {
+    let ud = $(try find $LIB -type f)
+    let l = []
+    for f in ud.split("\n") { if f.trim() != "" and er_video(f.trim()) { l = l + [f.trim()] } }
+    return l.sort()
+}
+
+# ── hjælper: dsh up-mini-video.Dash hent "terabox:X" MÅL ──
+# en pladsholder pr. video; billeder med samme navn bruges som plakat
+if args.len > 2 and args[0] == "hent" {
+    let r = args[1]
+    let mål = args[2]
+    let inc = []
+    for e in VIDEO_EXT + BILLED_EXT {
+        inc = inc + ["--include", "*." + e, "--include", "*." + e.upper()]
+    }
+    let ud = $($RCLONE lsf -R --files-only $inc $r)
+    let base = "http://127.0.0.1:{PORT}"
+    if remote_sti(r) != "" { base = base + "/" + url_del(remote_sti(r)) }
+    let videoer = []
+    let billeder = []
+    for l in ud.split("\n") {
+        let rel = l.trim()
+        if rel != "" {
+            if er_video(rel) { videoer = videoer + [rel] } else { billeder = billeder + [rel] }
+        }
+    }
+    for rel in videoer {
+        let stamme = rel
+        let p = rel.split(".")
+        if p.len > 1 {
+            let d = []
+            for i in range(0, p.len - 1) { d = d + [p[i]] }
+            stamme = d.join(".")
+        }
+        let billede = ""
+        for e in BILLED_EXT {
+            for b in billeder {
+                if billede == "" and b.lower() == (stamme + "." + e).lower() { billede = base + "/" + url_del(b) }
+            }
+        }
+        let sti = mål + "/" + rel
+        let d = sti.dir
+        mkdir -p $d
+        write(sti, base + "/" + url_del(rel) + "\n" + billede + "\n")
+    }
+    exit 0
+}
+
+# ── hjælper: dsh up-mini-video.Dash forbered BREDDE HØJDE ──
+# længde (ffprobe) + et billede fra videoen (eller plakaten), i den størrelse appen viser
+if args.len > 2 and args[0] == "forbered" {
+    let bw = int(args[1])
+    let bh = int(args[2])
+    mkdir -p $INFO
+    for f in alle_videoer() parallel 3 {
+        let k = nøgle(f)
+        let tsv = "{INFO}/{k}.tsv"
+        let png = "{INFO}/{k}.png"
+        let url = kilde(f)
+
+        if not exists(tsv) {
+            # serveren kan være ved at starte: prøv et par gange, gem aldrig et svar vi ikke fik
+            let d = ""
+            let forsøg = 0
+            while d == "" and forsøg < 4 {
+                d = $(try ffprobe -v error -show_entries "format=duration" -of "default=nw=1:nk=1" $url).trim()
+                if d == "" { sleep 2 }
+                forsøg += 1
+            }
+            if d == "N/A" { d = "0" }
+            if d != "" { write(tsv, d + "\n") }
+        }
+        if not exists(tsv) { continue }
+        if not exists(png) {
+            let src = "{INFO}/{k}.src.png"
+            let pl = plakat(f)
+            if pl != "" { try ffmpeg -v quiet -y -i $pl -frames:v 1 $src }
+            if not exists(src) {
+                # et billede lidt inde i videoen (ikke det sorte første billede)
+                let dur = float(read(tsv).trim())
+                let ss = "{min(60.0, max(1.0, dur * 0.1))}"
+                if dur <= 0 { ss = "5" }
+                try ffmpeg -v quiet -y -ss $ss -i $url -frames:v 1 $src
+                if not exists(src) { try ffmpeg -v quiet -y -i $url -frames:v 1 $src }
+            }
+            if exists(src) {
+                let ny = png + ".ny"
+                try $MAGICK $src -resize "{bw}x{bh}^" -gravity center -extent "{bw}x{bh}" "PNG24:{ny}"
+                if exists(ny) { mv -f $ny $png }
+                rm -f $src
+            } else {
+                write(png + ".ingen", "")
+            }
+        }
+    }
+    exit 0
+}
+
+# ── vinduet ──────────────────────────────────────────────────────────
+let MOBIL = env("UV_MOBIL", "") != ""
+for a in args { if a == "mobil" { MOBIL = true } }
+let W = 1000
+let H = 640
+if MOBIL {
+    let str = env("UV_STR", "720x1280").split("x")
+    W = int(str[0])
+    H = int(str[1])
+}
+window("UP Mini Video Player", W, H)
+
+let LIGGENDE = MOBIL and W > H
+let TOP_H = 76
+let SK = 1
+if MOBIL {
+    TOP_H = 104
+    SK = 2
+}
+if LIGGENDE { TOP_H = 84 }
+# kolonner: pc 3, mobil på højkant 1, liggende 3
+let KOL = 3
+if MOBIL and not LIGGENDE { KOL = 1 }
+let MARG = 24
+let MELLEM = 16
+let TW = int((W - MARG * 2 - MELLEM * (KOL - 1)) / KOL)
+let TH = int(TW * 9 / 16)
+let KS = 2               # tekst i knapper
+if MOBIL { KS = 2 }
+let TEKST_H = 64
+if MOBIL { TEKST_H = 100 }
+
+let BG = "#0d0714"
+let PANEL = "#1a0f26"
+let PANEL_LYS = "#26173a"
+let LILLA = "#a64dff"
+let LILLA_M = "#7a2ee0"
+let LYS = "#e6ccff"
+let DÆMP = "#8a7a99"
+let TOP = "#08040d"
+let RØD = "#ff5a7a"
+
+let videoer = []
+let hylder = []          # [{navn, antal}] — en mappe = en hylde
+let hylde_valg = env("UV_HYLDE", "")   # "" = hylde-oversigten
+let rul = 0
+let afspiller = nil
+let spiller_nr = -1
+let spillet = 0.0
+let sync_job = nil
+let forb_job = nil
+let forb_igen = 0.0
+let besked = ""
+let besked_farve = DÆMP
+let besked_t = 0.0
+let info_t = 0.0
+let serve_job = nil
+let serve_t = 0.0
+let auto_t = float(env("UV_AUTO", "600"))
+let stille = false
+let sync_kø = []
+let sync_liste = []
+let sync_nr = 0
+let sync_fejl = []
+let liste_usikker = false
+
+# touch: et tryk er når fingeren slippes uden at have flyttet sig; et træk ruller
+let tryk_ned = false
+let tryk_sx = 0
+let tryk_sy = 0
+let tryk_flyt = 0
+let sidste_y = 0
+let tap = false
+let træk_dy = 0
+
+fn opdater_touch() {
+    tap = false
+    træk_dy = 0
+    let m = mouse()
+    if mouse_down() {
+        if not tryk_ned {
+            tryk_ned = true
+            tryk_sx = m[0]
+            tryk_sy = m[1]
+            tryk_flyt = 0
+            sidste_y = m[1]
+        } else {
+            træk_dy = m[1] - sidste_y
+            sidste_y = m[1]
+            tryk_flyt = max(tryk_flyt, abs(m[0] - tryk_sx) + abs(m[1] - tryk_sy))
+        }
+    } else {
+        if tryk_ned {
+            tryk_ned = false
+            if tryk_flyt < 16 { tap = true }
+        } else {
+            if clicked() { tap = true }
+        }
+    }
+}
+fn trykket() {
+    if MOBIL { return tap }
+    return clicked()
+}
+fn sig(farve, s) {
+    besked = s
+    besked_farve = farve
+    besked_t = 5.0
+}
+fn inde(x, y, w, h) {
+    let m = mouse()
+    return m[0] >= x and m[0] < x + w and m[1] >= y and m[1] < y + h
+}
+fn klip(s, maxw, sk) {
+    if text_width(s, sk) <= maxw { return s }
+    let r = ""
+    for c in s.chars {
+        if text_width(r + c + "...", sk) > maxw { return r + "..." }
+        r += c
+    }
+    return r
+}
+fn tid_tekst(sek) {
+    let s = int(max(0.0, sek))
+    let t = int(s / 3600)
+    let m = int((s % 3600) / 60)
+    let r = s % 60
+    let rs = "{r}"
+    if r < 10 { rs = "0{r}" }
+    if t > 0 {
+        let ms = "{m}"
+        if m < 10 { ms = "0{m}" }
+        return "{t}:{ms}:{rs}"
+    }
+    return "{m}:{rs}"
+}
+fn knap(x, y, w, h, s, aktiv, sk) {
+    let over = inde(x, y, w, h)
+    let c = PANEL_LYS
+    if aktiv { c = LILLA_M }
+    if over and not MOBIL { c = LILLA }
+    round_rect(x, y, w, h, 8 * sk, c)
+    text(x + (w - text_width(s, sk)) / 2, y + int((h - 16 * sk) / 2), s, LYS, sk)
+    return over and trykket()
+}
+
+# ── videoer og hylder ───────────────────────────────────────────────
+fn hylde_af(f) {
+    let rel = f.dir.replace(LIB, "")
+    let dele = []
+    for d in rel.split("/") { if d != "" { dele = dele + [d] } }
+    if dele.len == 0 { return "TeraBox" }
+    return dele.join(" / ")
+}
+fn ny_video(f) {
+    let navn = f.name
+    let p = navn.split(".")
+    if p.len > 1 {
+        let d = []
+        for i in range(0, p.len - 1) { d = d + [p[i]] }
+        navn = d.join(".")
+    }
+    return {"fil": f, "nøgle": nøgle(f), "titel": navn.replace("_", " "), "dur": 0.0, "hylde": hylde_af(f),
+            "klar": false, "billede": -1, "intet": false}
+}
+fn læs_info(v) {
+    let tsv = "{INFO}/{v.nøgle}.tsv"
+    if not v.klar and exists(tsv) {
+        v.dur = float(read(tsv).trim())
+        v.klar = true
+    }
+    let png = "{INFO}/{v.nøgle}.png"
+    if v.billede < 0 and exists(png) { v.billede = image(png) }
+    if exists(png + ".ingen") { v.intet = true }
+}
+fn mangler(v) {
+    return not exists("{INFO}/{v.nøgle}.tsv") or (v.billede < 0 and not v.intet)
+}
+fn start_forbered() {
+    if forb_job != nil { return nil }
+    let m = false
+    for v in videoer { if mangler(v) { m = true } }
+    if not m { return nil }
+    forb_job = &(dsh $script forbered $TW $TH < /dev/null >> "{INFO}/forbered.log" 2>&1)
+}
+fn find_hylder() {
+    hylder = []
+    let set = {}
+    for v in videoer {
+        if set.has(v.hylde) {
+            hylder[set[v.hylde]].antal = hylder[set[v.hylde]].antal + 1
+        } else {
+            set[v.hylde] = hylder.len
+            hylder = hylder + [{"navn": v.hylde, "antal": 1}]
+        }
+    }
+    let fandtes = false
+    for h in hylder { if h.navn == hylde_valg { fandtes = true } }
+    if not fandtes { hylde_valg = "" }
+}
+fn scan() {
+    let gammel = {}
+    for v in videoer { gammel[v.fil] = v }
+    videoer = []
+    for f in alle_videoer() {
+        if gammel.has(f) { videoer = videoer + [gammel[f]] } else { videoer = videoer + [ny_video(f)] }
+    }
+    for v in videoer { læs_info(v) }
+    find_hylder()
+    start_forbered()
+}
+fn vist() {
+    let l = []
+    for i in range(videoer.len) { if videoer[i].hylde == hylde_valg { l = l + [i] } }
+    return l
+}
+fn hylde_billede(navn) {
+    for v in videoer { if v.hylde == navn and v.billede >= 0 { return v.billede } }
+    return -1
+}
+
+# ── TeraBox: webserveren og listen ──────────────────────────────────
+fn start_serve() {
+    if which(RCLONE) == nil { return nil }
+    let rod = remote_navn(REMOTES[0])
+    # cachen (så spol og pause går hurtigt) ligger i /tmp og slettes, når appen lukker
+    serve_job = &($RCLONE serve http $rod --addr "127.0.0.1:{PORT}" --read-only --vfs-cache-mode full --cache-dir "{ROD}/vfs" --vfs-cache-max-size 2G --vfs-read-ahead 64M --dir-cache-time 5m < /dev/null >> "{INFO}/serve.log" 2>&1)
+}
+fn udvid(r) {
+    if not r.ends_with("*") { return [r] }
+    let base = r.replace("*", "")
+    let ud = $(try $RCLONE lsf --dirs-only $base 2> /dev/null)
+    let l = []
+    for linje in ud.split("\n") {
+        let navn = linje.trim()
+        if navn.ends_with("/") { navn = navn.replace("/", "") }
+        let spring = navn == "" or navn.starts_with("From:")
+        for s in SPRING_OVER { if s == navn { spring = true } }
+        if not spring { l = l + [base + navn] }
+    }
+    if l.len == 0 { liste_usikker = true }
+    return l
+}
+fn sync_næste() {
+    if sync_kø.len == 0 { return false }
+    let r = sync_kø[0]
+    let rest = []
+    for i in range(1, sync_kø.len) { rest = rest + [sync_kø[i]] }
+    sync_kø = rest
+    sync_nr += 1
+    let mål = "{LIB}/{mappe_navn(r)}"
+    mkdir -p $mål
+    sync_job = &(dsh $script hent $r $mål < /dev/null >> "{INFO}/sync.log" 2>&1)
+    if not stille { sig(LYS, "Kigger i {mappe_navn(r)} ({sync_nr}/{sync_liste.len}) ...") }
+    return true
+}
+fn start_sync() {
+    if sync_job != nil { return nil }
+    if which(RCLONE) == nil {
+        sig(RØD, "Kan ikke finde {RCLONE} - installer rclone-extra (med TeraBox)")
+        return nil
+    }
+    sync_liste = []
+    liste_usikker = false
+    for r in REMOTES { sync_liste = sync_liste + udvid(r) }
+    if sync_liste.len == 0 {
+        sig(RØD, "Fandt ingen mapper - tjek nettet eller remote.txt")
+        return nil
+    }
+    sync_kø = sync_liste
+    sync_nr = 0
+    sync_fejl = []
+    sync_næste()
+}
+
+# ── afspilning ───────────────────────────────────────────────────────
+let MÆRKE = "up-mini-video-afspiller"
+fn spil(i) {
+    if i < 0 or i >= videoer.len { return nil }
+    if which("mpv") == nil {
+        sig(RØD, "Installer mpv for at se videoer")
+        return nil
+    }
+    stop()
+    mkdir -p "{CFG}/fortsæt"
+    let url = kilde(videoer[i].fil)
+    let cmd = ["mpv", "--fs", "--force-window=yes", "--title={MÆRKE}", "--hwdec=no", "--save-position-on-quit", "--watch-later-dir={CFG}/fortsæt", "--cache=yes", "--demuxer-max-bytes=150M", url]
+    afspiller = &($cmd < /dev/null > /dev/null 2> /dev/null)
+    spiller_nr = i
+    spillet = 0.0
+}
+fn stop() {
+    if afspiller != nil {
+        # q i stedet for at dræbe: så gemmer mpv, hvor langt du nåede
+        try kill(afspiller, 15)
+        try wait(afspiller)
+        afspiller = nil
+    }
+    spiller_nr = -1
+}
+
+# ── tegning ──────────────────────────────────────────────────────────
+fn tegn_top() {
+    rect(0, 0, W, TOP_H, TOP)
+    rect(0, TOP_H - 2, W, 2, LILLA_M)
+    let ty = int((TOP_H - 48) / 2)
+    text(24, ty, "UP", LILLA, 3)
+    let x2 = 24 + text_width("UP ", 3)
+    if not MOBIL or LIGGENDE {
+        text(x2, ty, "MINI VIDEO", LYS, 3)
+    }
+    let bw = 120
+    let bh = 44
+    if MOBIL {
+        bw = 160
+        bh = 56
+    }
+    let st = "{videoer.len} videoer"
+    if videoer.len == 1 { st = "1 video" }
+    if sync_job != nil { st = "kigger..." }
+    else { if forb_job != nil { st = "billeder..." } }
+    text(W - bw - 36 - text_width(st, 1 + SK / 2), ty + 8, st, DÆMP, 1 + SK / 2)
+    if knap(W - bw - 20, int((TOP_H - bh) / 2), bw, bh, "SYNC", sync_job != nil, KS) { start_sync() }
+}
+
+fn tom_billede(x, y, w, h) {
+    round_rect(x, y, w, h, 10, PANEL_LYS)
+    # en lille play-trekant
+    let cx = x + w / 2
+    let cy = y + h / 2
+    polygon([[cx - 14 * SK, cy - 18 * SK], [cx - 14 * SK, cy + 18 * SK], [cx + 18 * SK, cy]], LILLA_M)
+}
+
+fn tegn_gitter(antal, tegn_en) {
+    let top = TOP_H + 16
+    if hylde_valg != "" { top += 56 + 8 * SK }
+    let bund = H
+    let tile_h = TH + TEKST_H + MELLEM
+    let rækker = int((antal + KOL - 1) / KOL)
+    let maks = max(0, rækker * tile_h - (bund - top))
+    if inde(0, top, W, bund - top) {
+        rul -= træk_dy
+        rul -= wheel() * 80
+    }
+    rul = max(0, min(maks, rul))
+    return [top, bund, tile_h]
+}
+
+fn tegn_hylder() {
+    if hylder.len == 0 {
+        let l1 = "Ingen videoer endnu"
+        text((W - text_width(l1, 1 + SK)) / 2, H / 2 - 40, l1, LYS, 1 + SK)
+        let l2 = "Tryk SYNC for at kigge i TeraBox"
+        if sync_job != nil { l2 = "Kigger i TeraBox ..." }
+        text((W - text_width(l2, SK)) / 2, H / 2 + 10, l2, DÆMP, SK)
+        return nil
+    }
+    let g = tegn_gitter(hylder.len, nil)
+    let top = g[0]
+    let bund = g[1]
+    let tile_h = g[2]
+    let j = 0
+    while j < hylder.len {
+        let h = hylder[j]
+        let x = MARG + (j % KOL) * (TW + MELLEM)
+        let y = top + int(j / KOL) * tile_h - rul
+        if y + tile_h > top and y < bund {
+            # en "stak" bag billedet, så det ligner en hylde med flere videoer
+            round_rect(x + 14, y - 8, TW - 28, TH, 10, PANEL_LYS)
+            let b = hylde_billede(h.navn)
+            if b >= 0 { draw(b, x, y) } else { tom_billede(x, y, TW, TH) }
+            text(x, y + TH + 8, klip(h.navn, TW, SK + 1), LYS, SK + 1)
+            let n = "{h.antal} videoer"
+            if h.antal == 1 { n = "1 video" }
+            text(x, y + TH + 12 + 16 * (SK + 1), n, DÆMP, SK)
+            if inde(x, y, TW, tile_h - MELLEM) and inde(0, top, W, bund - top) and trykket() {
+                hylde_valg = h.navn
+                rul = 0
+            }
+        }
+        j += 1
+    }
+    rect(0, TOP_H, W, 16, BG)
+}
+
+fn tegn_videoer() {
+    let l = vist()
+    let g = tegn_gitter(l.len, nil)
+    let top = g[0]
+    let bund = g[1]
+    let tile_h = g[2]
+    let j = 0
+    while j < l.len {
+        let i = l[j]
+        let v = videoer[i]
+        let x = MARG + (j % KOL) * (TW + MELLEM)
+        let y = top + int(j / KOL) * tile_h - rul
+        if y + tile_h > top and y < bund {
+            if i == spiller_nr { round_rect(x - 6, y - 6, TW + 12, TH + 12, 12, LILLA) }
+            if v.billede >= 0 { draw(v.billede, x, y) } else { tom_billede(x, y, TW, TH) }
+            if v.dur > 0 {
+                let t = tid_tekst(v.dur)
+                let tw = text_width(t, SK) + 12
+                round_rect(x + TW - tw - 8, y + TH - 20 * SK - 8, tw, 18 * SK + 4, 6, TOP)
+                text(x + TW - tw - 2, y + TH - 20 * SK - 4, t, LYS, SK)
+            }
+            text(x, y + TH + 8, klip(v.titel, TW, SK + 1), LYS, SK + 1)
+            if inde(x, y, TW, tile_h - MELLEM) and inde(0, top, W, bund - top) and trykket() { spil(i) }
+        }
+        j += 1
+    }
+    # overskrift med hyldens navn + TILBAGE (dækker det, der ruller op under den)
+    rect(0, TOP_H, W, top - TOP_H, BG)
+    let bw = 0
+    if hylder.len > 1 {
+        bw = 130 + 60 * (SK - 1)
+        if knap(MARG, TOP_H + 12, bw, 40 + 8 * (SK - 1), "TILBAGE", false, KS) {
+            hylde_valg = ""
+            rul = 0
+        }
+        bw += 16
+    }
+    text(MARG + bw, TOP_H + 20, klip(hylde_valg, W - MARG * 2 - bw, SK + 1), LYS, SK + 1)
+}
+
+fn tegn_spiller_bjælke() {
+    if afspiller == nil or spiller_nr < 0 or spiller_nr >= videoer.len { return nil }
+    let h = 48 * SK
+    let y = H - h
+    rect(0, y, W, h, PANEL)
+    rect(0, y, W, 2, LILLA_M)
+    let s = "spiller: " + videoer[spiller_nr].titel
+    text(MARG, y + int((h - 16 * SK) / 2), klip(s, W - MARG * 2 - 140 * SK, SK), LYS, SK)
+    if knap(W - 130 * SK - MARG, y + 6 * SK, 130 * SK, h - 12 * SK, "STOP", false, KS) { stop() }
+}
+
+# ── start ────────────────────────────────────────────────────────────
+# frisk start: intet fra sidst, alt hentes fra skyen igen
+try pkill -f $MÆRKE 2> /dev/null
+try pkill -f "serve http {remote_navn(REMOTES[0])} --addr 127.0.0.1:{PORT}" 2> /dev/null
+rm -rf $ROD
+mkdir -p $LIB $INFO
+start_serve()
+serve_t = 5.0
+start_sync()
+
+let skud = env("UV_SKUD", "")
+let skud_t = 0.0
+
+while frame() {
+    let dt = min(delta(), 0.1)
+    besked_t -= dt
+    opdater_touch()
+
+    # er mpv lukket (q, eller videoen er slut)?
+    if afspiller != nil {
+        spillet += dt
+        if not running(afspiller) {
+            try wait(afspiller)
+            afspiller = nil
+            if spillet < 2.0 { sig(RØD, "Kunne ikke afspille - virker mpv? (se {INFO}/serve.log)") }
+            spiller_nr = -1
+        }
+    }
+    # listen fra TeraBox
+    if sync_job != nil and not running(sync_job) {
+        let st = wait(sync_job)
+        sync_job = nil
+        if st != 0 { sync_fejl = sync_fejl + [sync_liste[sync_nr - 1]] }
+        scan()
+        if not sync_næste() {
+            # kun én mappe med videoer? så vis videoerne med det samme
+            if hylder.len == 1 and hylde_valg == "" { hylde_valg = hylder[0].navn }
+            if sync_fejl.len > 0 { sig(RØD, "Kunne ikke læse {mappe_navn(sync_fejl[0])} (se {INFO}/sync.log)") }
+            else { if not stille { sig(LYS, "{videoer.len} videoer i {hylder.len} mapper") } }
+            stille = false
+            # test: UV_SPIL=n starter video nr. n, når listen er hentet
+            if env("UV_SPIL", "") != "" and afspiller == nil { spil(int(env("UV_SPIL", "0"))) }
+        }
+    }
+    # billeder og længder: hjælperen arbejder i baggrunden
+    info_t -= dt
+    if info_t <= 0 {
+        info_t = 0.5
+        if forb_job != nil and not running(forb_job) {
+            try wait(forb_job)
+            forb_job = nil
+            forb_igen = 2.0
+        }
+        for v in videoer { læs_info(v) }
+        if forb_igen > 0 {
+            forb_igen -= 0.5
+            if forb_igen <= 0 { start_forbered() }
+        }
+    }
+    # webserveren skal køre, og listen opdateres af og til
+    serve_t -= dt
+    if serve_t <= 0 {
+        serve_t = 5.0
+        if serve_job == nil or not running(serve_job) { start_serve() }
+    }
+    auto_t -= dt
+    if auto_t <= 0 {
+        auto_t = float(env("UV_AUTO", "600"))
+        if sync_job == nil {
+            stille = true
+            start_sync()
+        }
+    }
+
+    clear(BG)
+    if hylde_valg == "" { tegn_hylder() } else { tegn_videoer() }
+    tegn_top()
+    tegn_spiller_bjælke()
+    if besked_t > 0 and besked != "" {
+        let bw = min(W - 40, text_width(besked, SK) + 32)
+        let by = H - 60 * SK - 48 * SK
+        round_rect((W - bw) / 2, by, bw, 24 * SK + 16, 10, TOP)
+        text((W - bw) / 2 + 16, by + 8, klip(besked, bw - 32, SK), besked_farve, SK)
+    }
+    if skud != "" {
+        skud_t += dt
+        if skud_t > float(env("UV_SKUD_T", "6")) {
+            screenshot(skud)
+            break
+        }
+    }
+}
+
+# luk: stop mpv og webserveren, og fjern alt det midlertidige — intet bliver liggende
+stop()
+if serve_job != nil { try kill(serve_job, 15) }
+try pkill -f "serve http {remote_navn(REMOTES[0])} --addr 127.0.0.1:{PORT}" 2> /dev/null
+rm -rf $ROD
