@@ -1,0 +1,954 @@
+#!/usr/bin/env dsh
+# Mini Image Viewer 🖼️💜 — dine billeder direkte fra TeraBox, i ren Dash + JJGui
+# bob-navn: Mini Image Viewer
+# bob-kategori: program
+# bob-farve: #a64dff
+# bob-om: Se dine billeder fra TeraBox uden at hente dem ned. Mapper med billeder bliver til hylder med små billeder, og du bladrer i fuld størrelse. Intet gemmes på disken.
+#
+#   dsh eksempler/mini-image.Dash          pc-udgaven (1000x640)
+#   dsh eksempler/mini-image.Dash mobil    mobil-udgaven (Termux:X11), stående eller liggende
+#
+# Hvilke mapper: ~/.config/mini-image/remote.txt (findes den ikke: "terabox:*" = alle
+# mapper). Kun mapper med billeder vises. Mapper der starter med "From:" (telefon-backup)
+# springes over; en linje "-Navn" springer også en mappe over. Vil du se en From:-mappe,
+# så skriv den på sin egen linje: terabox:From:SM-S938B
+#
+# Intet bliver liggende: listen, de små billeder og rclones cache ligger i /tmp/mini-image,
+# som tømmes ved start og når appen lukker. Det store billede hentes, skaleres til skærmen
+# og læses ind i hukommelsen — filen slettes med det samme.
+#
+# Film-plakater kommer ikke med: billeder med samme navn som en video (dem bruger
+# UP Mini Video), og poster.jpg, folder.jpg, fanart.jpg … i mapper med videoer.
+#
+# Bladr: ← →, tryk i venstre/højre side, eller stryg med fingeren.
+# Zoom: hjulet (zoomer ved musen), + og - (knapper eller taster), 0 = hele billedet,
+# eller dobbelttryk midt på. Zoomet ind: træk (eller pilene) for at flytte rundt.
+# Mellemrum = lysbilledshow, Esc = tilbage til hylden.
+
+let HJEM = env("HOME", ".")
+let CFG = "{HJEM}/.config/mini-image"
+let ROD = env("MI_ROD", "/tmp/mini-image")
+let LIB = "{ROD}/bibliotek"
+let INFO = "{ROD}/info"
+let STOR = "{ROD}/stor"
+let PORT = env("MI_PORT", "8770")
+let BILLED_EXT = ["png", "jpg", "jpeg", "webp", "gif", "bmp", "heic", "avif", "tif", "tiff"]
+# film-plakater springes over: et billede med samme navn som en video ("Up (2009).jpg" ved
+# "Up (2009).mp4"), og poster.jpg, folder.jpg … i en mappe med videoer
+let VIDEO_EXT = ["mp4", "mkv", "webm", "mov", "avi", "m4v", "ts", "wmv", "flv", "mpg", "mpeg"]
+let PLAKAT_NAVNE = ["poster", "folder", "cover", "fanart", "backdrop", "thumb", "banner", "logo", "landscape", "clearart", "disc"]
+
+let REMOTES = []
+let SPRING_OVER = []
+if exists("{CFG}/remote.txt") {
+    for l in read("{CFG}/remote.txt").split("\n") {
+        let t = l.trim()
+        if t.starts_with("-") { SPRING_OVER = SPRING_OVER + [t.replace("-", "").trim()] }
+        else { if t != "" and not t.starts_with("#") { REMOTES = REMOTES + [t] } }
+    }
+}
+if REMOTES.len == 0 { REMOTES = ["terabox:*"] }
+
+let RCLONE = env("MI_RCLONE", "")
+if RCLONE == "" {
+    RCLONE = "rclone"
+    if which("rclone-tb") != nil { RCLONE = "rclone-tb" }
+}
+let MAGICK = "magick"
+if which("magick") == nil { MAGICK = "convert" }   # ImageMagick 6
+
+# ── fælles ───────────────────────────────────────────────────────────
+fn remote_navn(r) { return r.split(":")[0] + ":" }
+fn remote_sti(r) {
+    let dele = []
+    for d in r.replace(remote_navn(r), "").split("/") { if d != "" { dele = dele + [d] } }
+    return dele.join("/")
+}
+fn mappe_navn(r) {
+    let dele = remote_sti(r).split("/")
+    let n = dele[dele.len - 1]
+    if n == "" { return "TeraBox" }
+    return n
+}
+# webadresse-sikker sti
+fn url_del(t) {
+    let ud = ""
+    for c in t.chars {
+        if c == " " { ud += "%20" }
+        else if c == "#" { ud += "%23" }
+        else if c == "?" { ud += "%3F" }
+        else if c == "%" { ud += "%25" }
+        else if c == "\"" { ud += "%22" }
+        else { ud += c }
+    }
+    return ud
+}
+fn er_billede(navn) {
+    let l = navn.lower()
+    for e in BILLED_EXT { if l.ends_with("." + e) { return true } }
+    return false
+}
+# "a/b/Up (2009).jpg" → "a/b/Up (2009)"   og   "a/b/x.jpg" → "a/b"
+fn uden_endelse(rel) {
+    let p = rel.split(".")
+    if p.len < 2 { return rel }
+    let d = []
+    for i in range(0, p.len - 1) { d = d + [p[i]] }
+    return d.join(".")
+}
+fn mappe_af(rel) {
+    let p = rel.split("/")
+    let d = []
+    for i in range(0, p.len - 1) { d = d + [p[i]] }
+    return d.join("/")
+}
+fn nøgle(fil) { return fil.replace(LIB + "/", "").replace("/", "__").replace(" ", "_") }
+# pladsholderen: én linje = billedets webadresse på den lokale rclone-server
+fn kilde(fil) { return read(fil).split("\n")[0].trim() }
+fn alle_billeder() {
+    let ud = $(try find $LIB -type f)
+    let l = []
+    for f in ud.split("\n") { if f.trim() != "" and er_billede(f.trim()) { l = l + [f.trim()] } }
+    return l.sort()
+}
+
+# ── hjælper: dsh mini-image.Dash hent "terabox:X" MÅL ──
+# en lille pladsholder pr. billede (kun webadressen — selve billedet bliver i skyen)
+if args.len > 2 and args[0] == "hent" {
+    let r = args[1]
+    let mål = args[2]
+    let inc = []
+    for e in BILLED_EXT + VIDEO_EXT {
+        inc = inc + ["--include", "*." + e, "--include", "*." + e.upper()]
+    }
+    let ud = $($RCLONE lsf -R --files-only $inc $r)
+    # videoerne: "mappe/navn" uden endelse, og mapperne de ligger i
+    let video_navne = {}
+    let video_mapper = {}
+    for l in ud.split("\n") {
+        let rel = l.trim()
+        let lav = rel.lower()
+        let er_v = false
+        for e in VIDEO_EXT { if lav.ends_with("." + e) { er_v = true } }
+        if er_v {
+            video_navne[uden_endelse(lav)] = true
+            video_mapper[mappe_af(lav)] = true
+        }
+    }
+    let base = "http://127.0.0.1:{PORT}"
+    if remote_sti(r) != "" { base = base + "/" + url_del(remote_sti(r)) }
+    # en frisk mappe, så billeder slettet på TeraBox også forsvinder her
+    let ny = mål + ".ny"
+    rm -rf $ny
+    mkdir -p $ny
+    for l in ud.split("\n") {
+        let rel = l.trim()
+        let lav = rel.lower()
+        let plakat = video_navne.has(uden_endelse(lav))
+        if video_mapper.has(mappe_af(lav)) {
+            let n = uden_endelse(lav).split("/")
+            let navn = n[n.len - 1]
+            for p in PLAKAT_NAVNE { if navn == p or navn.starts_with(p + "-") or navn.ends_with("-" + p) { plakat = true } }
+        }
+        if rel != "" and er_billede(rel) and not plakat {
+            let sti = ny + "/" + rel
+            let d = sti.dir
+            mkdir -p $d
+            write(sti, base + "/" + url_del(rel) + "\n")
+        }
+    }
+    rm -rf $mål
+    mv $ny $mål
+    exit 0
+}
+
+# ── hjælper: dsh mini-image.Dash forbered BREDDE HØJDE ──
+# små billeder til gitteret (beskåret i midten), lavet i /tmp
+if args.len > 2 and args[0] == "forbered" {
+    let bw = int(args[1])
+    let bh = int(args[2])
+    mkdir -p $INFO
+    for f in alle_billeder() parallel 4 {
+        let k = nøgle(f)
+        let png = "{INFO}/{k}.png"
+        if exists(png) or exists(png + ".ingen") { continue }
+        let src = "{INFO}/{k}.src"
+        let url = kilde(f)
+        # serveren kan være ved at starte: prøv et par gange
+        let forsøg = 0
+        while not exists(src) and forsøg < 3 {
+            try curl -s -f --max-time 120 -o $src $url
+            if not exists(src) { sleep 2 }
+            forsøg += 1
+        }
+        if not exists(src) { continue }
+        let ny = png + ".ny"
+        try $MAGICK "{src}[0]" -auto-orient -thumbnail "{bw}x{bh}^" -gravity center -extent "{bw}x{bh}" "PNG24:{ny}"
+        rm -f $src
+        if exists(ny) { mv -f $ny $png } else { write(png + ".ingen", "") }
+    }
+    exit 0
+}
+
+# ── hjælper: dsh mini-image.Dash stor WEBADRESSE UD BREDDE HØJDE ──
+# ét billede i skærmstørrelse; UD.ny → UD når det er klar, UD.fejl hvis det ikke kunne
+if args.len > 4 and args[0] == "stor" {
+    let url = args[1]
+    let ud = args[2]
+    let bw = args[3]
+    let bh = args[4]
+    let src = ud + ".src"
+    try curl -s -f --max-time 180 -o $src $url
+    if exists(src) {
+        try $MAGICK "{src}[0]" -auto-orient -resize "{bw}x{bh}>" "PNG24:{ud}.ny"
+        rm -f $src
+    }
+    if exists(ud + ".ny") { mv -f "{ud}.ny" $ud } else { write(ud + ".fejl", "") }
+    exit 0
+}
+
+# ── vinduet ──────────────────────────────────────────────────────────
+let MOBIL = env("MI_MOBIL", "") != ""
+for a in args { if a == "mobil" { MOBIL = true } }
+let W = 1000
+let H = 640
+if MOBIL {
+    let str = env("MI_STR", "720x1280").split("x")
+    W = int(str[0])
+    H = int(str[1])
+}
+window("Mini Image Viewer", W, H)
+
+let LIGGENDE = MOBIL and W > H
+let TOP_H = 76
+let SK = 1
+if MOBIL {
+    TOP_H = 104
+    SK = 2
+}
+if LIGGENDE { TOP_H = 84 }
+# kolonner: pc 4, mobil på højkant 2, liggende 4
+let KOL = 4
+if MOBIL and not LIGGENDE { KOL = 2 }
+let MARG = 24
+let MELLEM = 14
+let TW = int((W - MARG * 2 - MELLEM * (KOL - 1)) / KOL)
+let TH = TW
+let KS = 2               # tekst i knapper
+let NAVN_H = 26 * SK     # filnavnet under et billede
+let HYLDE_H = 64
+if MOBIL { HYLDE_H = 100 }
+
+let BG = "#0d0714"
+let PANEL = "#1a0f26"
+let PANEL_LYS = "#26173a"
+let LILLA = "#a64dff"
+let LILLA_M = "#7a2ee0"
+let LYS = "#e6ccff"
+let DÆMP = "#8a7a99"
+let TOP = "#08040d"
+let RØD = "#ff5a7a"
+let SORT = "#000000"
+
+let billeder = []        # [{fil, nøgle, navn, hylde, lille, intet}]
+let hylder = []          # [{navn, antal}] — en mappe = en hylde
+let hylde_valg = ""      # "" = hylde-oversigten
+let rul = 0
+let sync_job = nil
+let forb_job = nil
+let forb_igen = 0.0
+let besked = ""
+let besked_farve = DÆMP
+let besked_t = 0.0
+let info_t = 0.0
+let serve_job = nil
+let serve_t = 0.0
+let auto_t = float(env("MI_AUTO", "600"))
+let stille = false
+let sync_kø = []
+let sync_liste = []
+let sync_nr = 0
+let sync_fejl = []
+
+# visning i fuld størrelse
+let vis = -1             # nummeret i billeder[] der vises (-1 = gitteret)
+let stor = {}            # nøgle → billed-nr. i hukommelsen
+let bestilt = {}         # nøgle → sekunder siden den blev bestilt
+let ui = true            # vis knapper og navn ovenpå billedet
+let show = false         # lysbilledshow
+let show_t = 0.0
+let SHOW_SEK = float(env("MI_SHOW", "4"))
+let zoom = 1.0           # 1 = hele billedet på skærmen
+let pan_x = 0.0          # hvor billedet er skubbet hen, når der er zoomet
+let pan_y = 0.0
+let ZOOM_MAKS = 8.0
+let sidste_tap_t = 9.0   # sekunder siden sidste tryk (dobbelttryk = zoom)
+let sidste_tap_x = 0
+let sidste_tap_y = 0
+
+# touch: et tryk er når fingeren slippes uden at have flyttet sig; et træk ruller, et strøg bladrer
+let tryk_ned = false
+let tryk_sx = 0
+let tryk_sy = 0
+let tryk_flyt = 0
+let sidste_y = 0
+let tap = false
+let træk_dy = 0
+let træk_dx = 0
+let sidste_x = 0
+let strøg = 0            # -1 = strøg mod venstre (næste), 1 = mod højre (forrige)
+
+fn opdater_touch() {
+    tap = false
+    træk_dy = 0
+    træk_dx = 0
+    strøg = 0
+    let m = mouse()
+    if mouse_down() {
+        if not tryk_ned {
+            tryk_ned = true
+            tryk_sx = m[0]
+            tryk_sy = m[1]
+            tryk_flyt = 0
+            sidste_y = m[1]
+            sidste_x = m[0]
+        } else {
+            træk_dy = m[1] - sidste_y
+            træk_dx = m[0] - sidste_x
+            sidste_y = m[1]
+            sidste_x = m[0]
+            tryk_flyt = max(tryk_flyt, abs(m[0] - tryk_sx) + abs(m[1] - tryk_sy))
+        }
+    } else {
+        if tryk_ned {
+            tryk_ned = false
+            let dx = m[0] - tryk_sx
+            let dy = m[1] - tryk_sy
+            if tryk_flyt < 16 { tap = true }
+            else if abs(dx) > 60 * SK and abs(dx) > abs(dy) * 2 {
+                strøg = 1
+                if dx < 0 { strøg = -1 }
+            }
+        } else {
+            if clicked() { tap = true }
+        }
+    }
+}
+fn trykket() {
+    if MOBIL { return tap }
+    return clicked()
+}
+fn sig(farve, s) {
+    besked = s
+    besked_farve = farve
+    besked_t = 4.0
+}
+fn inde(x, y, w, h) {
+    let m = mouse()
+    return m[0] >= x and m[0] < x + w and m[1] >= y and m[1] < y + h
+}
+fn klip(s, maxw, sk) {
+    if text_width(s, sk) <= maxw { return s }
+    let r = ""
+    for c in s.chars {
+        if text_width(r + c + "...", sk) > maxw { return r + "..." }
+        r += c
+    }
+    return r
+}
+fn knap(x, y, w, h, s, aktiv, sk) {
+    let over = inde(x, y, w, h)
+    let c = PANEL_LYS
+    if aktiv { c = LILLA_M }
+    if over and not MOBIL { c = LILLA }
+    round_rect(x, y, w, h, 8 * sk, c)
+    text(x + (w - text_width(s, sk)) / 2, y + int((h - 16 * sk) / 2), s, LYS, sk)
+    return over and trykket()
+}
+fn lever(mønster) { return $(try pgrep -f $mønster 2> /dev/null).trim() != "" }
+
+# ── billeder og hylder ──────────────────────────────────────────────
+fn hylde_af(f) {
+    let rel = f.dir.replace(LIB, "")
+    let dele = []
+    for d in rel.split("/") { if d != "" { dele = dele + [d] } }
+    if dele.len == 0 { return "TeraBox" }
+    return dele.join(" / ")
+}
+fn nyt_billede(f) {
+    return {"fil": f, "nøgle": nøgle(f), "navn": f.name, "hylde": hylde_af(f), "lille": -1, "intet": false}
+}
+fn læs_lille(b) {
+    if b.lille >= 0 or b.intet { return nil }
+    let png = "{INFO}/{b.nøgle}.png"
+    if exists(png) { b.lille = image(png) }
+    else if exists(png + ".ingen") { b.intet = true }
+}
+fn mangler(b) { return b.lille < 0 and not b.intet and not exists("{INFO}/{b.nøgle}.png") }
+fn start_forbered() {
+    if forb_job != nil { return nil }
+    let m = false
+    for b in billeder { if mangler(b) { m = true } }
+    if not m { return nil }
+    forb_job = &(dsh $script forbered $TW $TH < /dev/null >> "{INFO}/forbered.log" 2>&1)
+}
+fn find_hylder() {
+    hylder = []
+    let set = {}
+    for b in billeder {
+        if set.has(b.hylde) {
+            hylder[set[b.hylde]].antal = hylder[set[b.hylde]].antal + 1
+        } else {
+            set[b.hylde] = hylder.len
+            hylder = hylder + [{"navn": b.hylde, "antal": 1}]
+        }
+    }
+    let fandtes = false
+    for h in hylder { if h.navn == hylde_valg { fandtes = true } }
+    if not fandtes { hylde_valg = "" }
+}
+fn scan() {
+    let gammel = {}
+    for b in billeder { gammel[b.fil] = b }
+    let vist_fil = ""
+    if vis >= 0 and vis < billeder.len { vist_fil = billeder[vis].fil }
+    billeder = []
+    for f in alle_billeder() {
+        if gammel.has(f) { billeder = billeder + [gammel[f]] } else { billeder = billeder + [nyt_billede(f)] }
+    }
+    # billedet der vises nu, skal blive ved med at vises (dets nummer kan have flyttet sig)
+    if vis >= 0 {
+        vis = -1
+        for i in range(billeder.len) { if billeder[i].fil == vist_fil { vis = i } }
+    }
+    # billeder der ikke findes mere: giv hukommelsen tilbage
+    let nu = {}
+    for b in billeder { nu[b.fil] = true }
+    for f in gammel.keys {
+        if not nu.has(f) and gammel[f].lille >= 0 { free_image(gammel[f].lille) }
+    }
+    find_hylder()
+    start_forbered()
+}
+fn vist() {
+    let l = []
+    for i in range(billeder.len) { if billeder[i].hylde == hylde_valg { l = l + [i] } }
+    return l
+}
+fn hylde_billede(navn) {
+    for b in billeder { if b.hylde == navn and b.lille >= 0 { return b.lille } }
+    return -1
+}
+
+# ── TeraBox: webserveren og listen ──────────────────────────────────
+fn start_serve() {
+    if which(RCLONE) == nil { return nil }
+    let rod = remote_navn(REMOTES[0])
+    serve_job = &($RCLONE serve http $rod --addr "127.0.0.1:{PORT}" --read-only --vfs-cache-mode full --cache-dir "{ROD}/vfs" --vfs-cache-max-size 1G --dir-cache-time 5m < /dev/null >> "{INFO}/serve.log" 2>&1)
+}
+fn udvid(r) {
+    if not r.ends_with("*") { return [r] }
+    let base = r.replace("*", "")
+    let ud = $(try $RCLONE lsf --dirs-only $base 2> /dev/null)
+    let l = []
+    for linje in ud.split("\n") {
+        let navn = linje.trim()
+        if navn.ends_with("/") { navn = navn.replace("/", "") }
+        let spring = navn == "" or navn.starts_with("From:")
+        for s in SPRING_OVER { if s == navn { spring = true } }
+        if not spring { l = l + [base + navn] }
+    }
+    return l
+}
+fn sync_næste() {
+    if sync_kø.len == 0 { return false }
+    let r = sync_kø[0]
+    let rest = []
+    for i in range(1, sync_kø.len) { rest = rest + [sync_kø[i]] }
+    sync_kø = rest
+    sync_nr += 1
+    let mål = "{LIB}/{mappe_navn(r)}"
+    sync_job = &(dsh $script hent $r $mål < /dev/null >> "{INFO}/sync.log" 2>&1)
+    if not stille { sig(LYS, "Kigger i {mappe_navn(r)} ({sync_nr}/{sync_liste.len}) ...") }
+    return true
+}
+fn start_sync() {
+    if sync_job != nil { return nil }
+    if which(RCLONE) == nil {
+        sig(RØD, "Kan ikke finde {RCLONE} - installer rclone-extra (med TeraBox)")
+        return nil
+    }
+    sync_liste = []
+    for r in REMOTES { sync_liste = sync_liste + udvid(r) }
+    if sync_liste.len == 0 {
+        sig(RØD, "Fandt ingen mapper - tjek nettet eller remote.txt")
+        return nil
+    }
+    sync_kø = sync_liste
+    sync_nr = 0
+    sync_fejl = []
+    sync_næste()
+}
+
+# ── fuld størrelse: hent, hold i hukommelsen, bladr ─────────────────
+fn stor_fil(k) { return "{STOR}/{k}.png" }
+fn bestil(i) {
+    if i < 0 or i >= billeder.len { return nil }
+    let b = billeder[i]
+    if stor.has(b.nøgle) or bestilt.has(b.nøgle) { return nil }
+    # højst 3 i gang ad gangen
+    if bestilt.keys.len >= 3 { return nil }
+    let ud = stor_fil(b.nøgle)
+    let url = kilde(b.fil)
+    # dobbelt skærmstørrelse, så det stadig er skarpt, når du zoomer ind
+    let bw = W * 2
+    let bh = H * 2
+    &(dsh $script stor $url $ud $bw $bh < /dev/null >> "{INFO}/stor.log" 2>&1)
+    bestilt[b.nøgle] = 0.0
+}
+# kig efter færdige billeder; læs dem ind og slet filen
+fn hent_færdige(dt) {
+    for k in bestilt.keys {
+        let f = stor_fil(k)
+        bestilt[k] = bestilt[k] + dt
+        if exists(f) {
+            stor[k] = image(f)
+            rm -f $f
+            bestilt.remove(k)
+        } else if exists(f + ".fejl") or bestilt[k] > 200.0 {
+            rm -f "{f}.fejl"
+            stor[k] = -1
+            bestilt.remove(k)
+        }
+    }
+}
+# naboerne i den samme hylde
+fn nabo(i, retning) {
+    let l = vist()
+    for j in range(l.len) {
+        if l[j] == i {
+            let n = j + retning
+            if n < 0 { n = l.len - 1 }
+            if n >= l.len { n = 0 }
+            return l[n]
+        }
+    }
+    return i
+}
+# kun det viste billede og dets naboer bliver i hukommelsen
+fn ryd_stor() {
+    let behold = {}
+    if vis >= 0 {
+        behold[billeder[vis].nøgle] = true
+        behold[billeder[nabo(vis, 1)].nøgle] = true
+        behold[billeder[nabo(vis, -1)].nøgle] = true
+    }
+    for k in stor.keys {
+        if not behold.has(k) {
+            if stor[k] >= 0 { free_image(stor[k]) }
+            stor.remove(k)
+        }
+    }
+}
+fn nulstil_zoom() {
+    zoom = 1.0
+    pan_x = 0.0
+    pan_y = 0.0
+}
+fn åbn(i) {
+    nulstil_zoom()
+    vis = i
+    ui = true
+    show = false
+    ryd_stor()
+}
+fn bladr(retning) {
+    if vis < 0 { return nil }
+    vis = nabo(vis, retning)
+    nulstil_zoom()
+    show_t = 0.0
+    ryd_stor()
+}
+fn luk() {
+    vis = -1
+    show = false
+    ryd_stor()
+}
+
+# ── tegning ──────────────────────────────────────────────────────────
+fn tegn_top() {
+    rect(0, 0, W, TOP_H, TOP)
+    rect(0, TOP_H - 2, W, 2, LILLA_M)
+    let ty = int((TOP_H - 48) / 2)
+    text(24, ty, "MINI", LILLA, 3)
+    let x2 = 24 + text_width("MINI ", 3)
+    text(x2, ty, "IMAGE", LYS, 3)
+    let bw = 120
+    let bh = 44
+    if MOBIL {
+        bw = 160
+        bh = 56
+    }
+    let st = "{billeder.len} billeder"
+    if billeder.len == 1 { st = "1 billede" }
+    if sync_job != nil { st = "kigger..." }
+    else { if forb_job != nil { st = "billeder..." } }
+    text(W - bw - 36 - text_width(st, 1 + SK / 2), ty + 8, st, DÆMP, 1 + SK / 2)
+    if knap(W - bw - 20, int((TOP_H - bh) / 2), bw, bh, "SYNC", sync_job != nil, KS) { start_sync() }
+}
+
+fn tom_billede(x, y, w, h) {
+    round_rect(x, y, w, h, 10, PANEL_LYS)
+    # et lille bjerg med en sol
+    let cx = x + w / 2
+    let cy = y + h / 2
+    circle(cx + 14 * SK, cy - 12 * SK, 7 * SK, LILLA_M)
+    polygon([[cx - 26 * SK, cy + 18 * SK], [cx - 6 * SK, cy - 6 * SK], [cx + 12 * SK, cy + 18 * SK]], LILLA_M)
+}
+
+fn gitter(antal, tile_h, top) {
+    let bund = H
+    let rækker = int((antal + KOL - 1) / KOL)
+    let maks = max(0, rækker * tile_h - (bund - top))
+    if inde(0, top, W, bund - top) {
+        rul -= træk_dy
+        rul -= wheel() * 80
+    }
+    rul = max(0, min(maks, rul))
+    return bund
+}
+
+fn tegn_hylder() {
+    if hylder.len == 0 {
+        let l1 = "Ingen billeder endnu"
+        text((W - text_width(l1, 1 + SK)) / 2, H / 2 - 40, l1, LYS, 1 + SK)
+        let l2 = "Tryk SYNC for at kigge i TeraBox"
+        if sync_job != nil { l2 = "Kigger i TeraBox ..." }
+        text((W - text_width(l2, SK)) / 2, H / 2 + 10, l2, DÆMP, SK)
+        return nil
+    }
+    let top = TOP_H + 16
+    let tile_h = TH + HYLDE_H + MELLEM
+    let bund = gitter(hylder.len, tile_h, top)
+    let j = 0
+    while j < hylder.len {
+        let h = hylder[j]
+        let x = MARG + (j % KOL) * (TW + MELLEM)
+        let y = top + int(j / KOL) * tile_h - rul
+        if y + tile_h > top and y < bund {
+            # en "stak" bag billedet, så det ligner en bunke billeder
+            round_rect(x + 12, y - 8, TW - 24, TH, 10, PANEL_LYS)
+            let b = hylde_billede(h.navn)
+            if b >= 0 { draw(b, x, y) } else { tom_billede(x, y, TW, TH) }
+            text(x, y + TH + 8, klip(h.navn, TW, SK + 1), LYS, SK + 1)
+            let n = "{h.antal} billeder"
+            if h.antal == 1 { n = "1 billede" }
+            text(x, y + TH + 12 + 16 * (SK + 1), n, DÆMP, SK)
+            if inde(x, y, TW, tile_h - MELLEM) and inde(0, top, W, bund - top) and trykket() {
+                hylde_valg = h.navn
+                rul = 0
+            }
+        }
+        j += 1
+    }
+    rect(0, TOP_H, W, 16, BG)
+}
+
+fn tegn_billeder() {
+    let l = vist()
+    let top = TOP_H + 16 + 56 + 8 * SK
+    let tile_h = TH + NAVN_H + MELLEM
+    let bund = gitter(l.len, tile_h, top)
+    let j = 0
+    while j < l.len {
+        let i = l[j]
+        let b = billeder[i]
+        let x = MARG + (j % KOL) * (TW + MELLEM)
+        let y = top + int(j / KOL) * tile_h - rul
+        if y + tile_h > top and y < bund {
+            if b.lille >= 0 { draw(b.lille, x, y) } else { tom_billede(x, y, TW, TH) }
+            text(x, y + TH + 6, klip(b.navn, TW, SK), DÆMP, SK)
+            if inde(x, y, TW, tile_h - MELLEM) and inde(0, top, W, bund - top) and trykket() { åbn(i) }
+        }
+        j += 1
+    }
+    # overskrift med hyldens navn + TILBAGE (dækker det, der ruller op under den)
+    rect(0, TOP_H, W, top - TOP_H, BG)
+    let bw = 0
+    if hylder.len > 1 {
+        bw = 130 + 60 * (SK - 1)
+        if knap(MARG, TOP_H + 12, bw, 40 + 8 * (SK - 1), "TILBAGE", false, KS) or (pressed("esc") and vis < 0) {
+            hylde_valg = ""
+            rul = 0
+        }
+        bw += 16
+    }
+    text(MARG + bw, TOP_H + 20, klip(hylde_valg, W - MARG * 2 - bw, SK + 1), LYS, SK + 1)
+}
+
+# et billede i fuld størrelse, skaleret så det fylder pladsen fra y=top og ned
+# (uden at blive strakt skævt) — så knapperne øverst aldrig dækker billedet
+fn tegn_stort(nr, top) {
+    let s = image_size(nr)
+    let iw = float(s[0])
+    let ih = float(s[1])
+    let ph = H - top
+    let f = min(float(W) / iw, float(ph) / ih) * zoom
+    let dw = iw * f
+    let dh = ih * f
+    # skubbet ikke længere end til kanten (og i midten, hvis det er mindre end skærmen)
+    if dw <= float(W) { pan_x = 0.0 } else { pan_x = max((float(W) - dw) / 2.0, min((dw - float(W)) / 2.0, pan_x)) }
+    if dh <= float(ph) { pan_y = 0.0 } else { pan_y = max((float(ph) - dh) / 2.0, min((dh - float(ph)) / 2.0, pan_y)) }
+    let x = (float(W) - dw) / 2.0 + pan_x
+    let y = float(top) + (float(ph) - dh) / 2.0 + pan_y
+    draw(nr, int(x), int(y), int(dw), int(dh))
+}
+# zoom til z, så punktet (mx, my) på skærmen bliver, hvor det er
+fn zoom_til(z, mx, my, top) {
+    let ny = max(1.0, min(ZOOM_MAKS, z))
+    let ph = H - top
+    # punktet i forhold til billedets midte (i skærm-pixels)
+    let cx = float(mx) - float(W) / 2.0 - pan_x
+    let cy = float(my) - float(top) - float(ph) / 2.0 - pan_y
+    let r = ny / zoom
+    pan_x = pan_x - cx * (r - 1.0)
+    pan_y = pan_y - cy * (r - 1.0)
+    zoom = ny
+    if zoom <= 1.0 { nulstil_zoom() }
+}
+
+fn tegn_visning() {
+    clear(SORT)
+    let b = billeder[vis]
+    bestil(vis)
+    bestil(nabo(vis, 1))
+    bestil(nabo(vis, -1))
+    let k = b.nøgle
+    # med knapperne fremme starter billedet under dem
+    let knap_h = 44 * SK
+    let top = 0
+    if ui { top = knap_h + 24 }
+    if stor.has(k) and stor[k] >= 0 { tegn_stort(stor[k], top) }
+    else {
+        # mens det store hentes: det lille billede, forstørret
+        if b.lille >= 0 { tegn_stort(b.lille, top) }
+        let s = "henter ..."
+        if stor.has(k) { s = "kunne ikke hente billedet" }
+        let sw = text_width(s, SK) + 24
+        round_rect((W - sw) / 2, H - 70 * SK, sw, 24 * SK + 12, 10, TOP)
+        text((W - sw) / 2 + 12, H - 70 * SK + 6, s, LYS, SK)
+    }
+    let l = vist()
+    let nr = 0
+    for j in range(l.len) { if l[j] == vis { nr = j + 1 } }
+
+    # knapperne (skjules med et tryk midt på billedet — så fylder billedet hele skærmen)
+    let klik_brugt = false
+    if ui {
+        rect(0, 0, W, knap_h + 24, TOP)
+        let lw = 80 * SK
+        if knap(16, 12, lw, knap_h, "LUK", false, KS) {
+            luk()
+            return nil
+        }
+        let sw = 80 * SK
+        if knap(W - sw - 16, 12, sw, knap_h, "SHOW", show, KS) {
+            show = not show
+            show_t = 0.0
+            klik_brugt = true
+        }
+        # zoom-knapperne
+        let zw = 48 * SK
+        let zx = W - sw - 16 - 12 - zw * 2 - 8
+        if knap(zx, 12, zw, knap_h, "-", false, KS) {
+            zoom_til(zoom / 1.5, W / 2, top + (H - top) / 2, top)
+            klik_brugt = true
+        }
+        if knap(zx + zw + 8, 12, zw, knap_h, "+", zoom > 1.0, KS) {
+            zoom_til(zoom * 1.5, W / 2, top + (H - top) / 2, top)
+            klik_brugt = true
+        }
+        let t = "{nr} / {l.len}  {b.navn}"
+        if zoom > 1.0 { t = "{int(zoom * 100.0)}%  " + t }
+        text(lw + 32, 12 + int((knap_h - 16 * SK) / 2), klip(t, zx - lw - 48, SK), LYS, SK)
+        if inde(0, 0, W, knap_h + 24) { klik_brugt = true }
+    }
+
+    # zoom: hjulet (ved musen), + og - (0 = hele billedet), dobbelttryk
+    let m = mouse()
+    let hj = wheel()
+    if hj > 0 { zoom_til(zoom * 1.25, m[0], m[1], top) }
+    if hj < 0 { zoom_til(zoom / 1.25, m[0], m[1], top) }
+    let ty = typed()
+    if ty.contains("+") or ty.contains("=") { zoom_til(zoom * 1.5, W / 2, top + (H - top) / 2, top) }
+    if ty.contains("-") { zoom_til(zoom / 1.5, W / 2, top + (H - top) / 2, top) }
+    if ty.contains("0") { nulstil_zoom() }
+    sidste_tap_t += min(delta(), 0.1)
+    # "tap" = sluppet uden at have flyttet sig (så et træk med musen ikke tæller som et klik)
+    if not klik_brugt and tap {
+        let midt = m[0] >= W / 3 and m[0] <= W * 2 / 3
+        if (midt or zoom > 1.0) and sidste_tap_t < 0.35 and abs(m[0] - sidste_tap_x) + abs(m[1] - sidste_tap_y) < 40 * SK {
+            # dobbelttryk: zoom ind på stedet — eller ud igen (og knapperne som før det første tryk)
+            if zoom > 1.0 { nulstil_zoom() } else { zoom_til(2.5, m[0], m[1], top) }
+            ui = not ui
+            sidste_tap_t = 9.0
+            klik_brugt = true
+        } else {
+            sidste_tap_t = 0.0
+            sidste_tap_x = m[0]
+            sidste_tap_y = m[1]
+        }
+    }
+    # zoomet ind: træk for at flytte rundt, pilene flytter også
+    if zoom > 1.0 {
+        if mouse_down() {
+            pan_x += float(træk_dx)
+            pan_y += float(træk_dy)
+        }
+        let trin = 40.0 * float(SK)
+        if key("right") { pan_x -= trin }
+        if key("left") { pan_x += trin }
+        if key("down") { pan_y -= trin }
+        if key("up") { pan_y += trin }
+        if pressed("esc") or pressed("backspace") {
+            nulstil_zoom()
+            return nil
+        }
+        # et enkelt tryk viser/skjuler knapperne (ingen bladring, mens der er zoomet)
+        if not klik_brugt and tap { ui = not ui }
+        return nil
+    }
+
+    # tastatur
+    if pressed("right") or pressed("down") or pressed("pagedown") { bladr(1) }
+    if pressed("left") or pressed("up") or pressed("pageup") { bladr(-1) }
+    if pressed("space") {
+        show = not show
+        show_t = 0.0
+    }
+    if pressed("esc") or pressed("backspace") or pressed("q") {
+        luk()
+        return nil
+    }
+    # stryg med fingeren
+    if strøg == -1 { bladr(1) }
+    if strøg == 1 { bladr(-1) }
+    # tryk: venstre tredjedel = forrige, højre = næste, midten = knapper til/fra
+    if not klik_brugt and tap {
+        let m = mouse()
+        if m[0] < W / 3 { bladr(-1) }
+        else if m[0] > W * 2 / 3 { bladr(1) }
+        else { ui = not ui }
+    }
+}
+
+# ── start ────────────────────────────────────────────────────────────
+# frisk start: intet fra sidst, alt hentes fra skyen igen
+try pkill -f "serve http {remote_navn(REMOTES[0])} --addr 127.0.0.1:{PORT}" 2> /dev/null
+mkdir -p $CFG
+rm -rf $ROD
+mkdir -p $LIB $INFO $STOR
+start_serve()
+serve_t = 5.0
+start_sync()
+
+let skud = env("MI_SKUD", "")
+let skud_t = 0.0
+
+while frame() {
+    let dt = min(delta(), 0.1)
+    besked_t -= dt
+    opdater_touch()
+
+    # listen fra TeraBox
+    if sync_job != nil and not running(sync_job) {
+        let st = wait(sync_job)
+        sync_job = nil
+        if st != 0 { sync_fejl = sync_fejl + [sync_liste[sync_nr - 1]] }
+        scan()
+        if not sync_næste() {
+            # kun én mappe med billeder? så vis billederne med det samme
+            # mapper der ikke er på TeraBox mere (kun hvis alle mapper kunne læses)
+            if sync_fejl.len == 0 {
+                let findes = {}
+                for r in sync_liste { findes[mappe_navn(r)] = true }
+                for d in $(try ls $LIB).split("\n") {
+                    let n = d.trim()
+                    if n != "" and not findes.has(n) { rm -rf "{LIB}/{n}" }
+                }
+                scan()
+            }
+            if hylder.len == 1 and hylde_valg == "" { hylde_valg = hylder[0].navn }
+            if env("MI_HYLDE", "") != "" { hylde_valg = env("MI_HYLDE", "") }   # test
+            if sync_fejl.len > 0 { sig(RØD, "Kunne ikke læse {mappe_navn(sync_fejl[0])} (se {INFO}/sync.log)") }
+            else { if not stille { sig(LYS, "{billeder.len} billeder i {hylder.len} mapper") } }
+            stille = false
+            # test: MI_VIS=n åbner billede nr. n
+            if env("MI_VIS", "") != "" and vis < 0 { åbn(int(env("MI_VIS", "0"))) }
+        }
+    }
+    # små billeder: hjælperen arbejder i baggrunden
+    info_t -= dt
+    if info_t <= 0 {
+        info_t = 0.5
+        if forb_job != nil and not running(forb_job) {
+            try wait(forb_job)
+            forb_job = nil
+            forb_igen = 3.0
+        }
+        for b in billeder { læs_lille(b) }
+        if forb_igen > 0 {
+            forb_igen -= 0.5
+            if forb_igen <= 0 { start_forbered() }
+        }
+    }
+    hent_færdige(dt)
+    # webserveren skal køre, og listen opdateres af og til
+    serve_t -= dt
+    if serve_t <= 0 {
+        serve_t = 5.0
+        if serve_job == nil or (not running(serve_job) and not lever("serve http .* --addr 127.0.0.1:{PORT}")) { start_serve() }
+    }
+    auto_t -= dt
+    if auto_t <= 0 {
+        auto_t = float(env("MI_AUTO", "600"))
+        if sync_job == nil and vis < 0 {
+            stille = true
+            start_sync()
+        }
+    }
+    # lysbilledshow: næste billede efter et par sekunder (når det er hentet)
+    if vis >= 0 and show {
+        let k = billeder[vis].nøgle
+        if stor.has(k) { show_t += dt }
+        if show_t >= SHOW_SEK { bladr(1) }
+    }
+
+    if vis >= 0 { tegn_visning() }
+    else {
+        clear(BG)
+        if hylde_valg == "" { tegn_hylder() } else { tegn_billeder() }
+        tegn_top()
+    }
+    if besked_t > 0 and besked != "" and vis < 0 {
+        let bw = min(W - 40, text_width(besked, SK) + 32)
+        let by = H - 60 * SK - 48 * SK
+        round_rect((W - bw) / 2, by, bw, 24 * SK + 16, 10, TOP)
+        text((W - bw) / 2 + 16, by + 8, klip(besked, bw - 32, SK), besked_farve, SK)
+    }
+    if skud != "" {
+        skud_t += dt
+        if skud_t > float(env("MI_SKUD_T", "6")) {
+            screenshot(skud)
+            break
+        }
+    }
+}
+
+# luk: stop webserveren og fjern alt det midlertidige — intet bliver liggende
+if serve_job != nil { try kill(serve_job, 15) }
+try pkill -f "serve http {remote_navn(REMOTES[0])} --addr 127.0.0.1:{PORT}" 2> /dev/null
+for lg in ["serve", "sync", "stor"] {
+    if exists("{INFO}/{lg}.log") { cp "{INFO}/{lg}.log" "{CFG}/forrige-{lg}.log" }
+}
+rm -rf $ROD

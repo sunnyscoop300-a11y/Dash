@@ -1,0 +1,511 @@
+#!/usr/bin/env dsh
+# Mini Muse 🖱️💜 — lav dine egne muse-ikoner af et billede, og vælg imellem dem
+# bob-navn: Mini Muse
+# bob-kategori: program
+# bob-farve: #a64dff
+# bob-om: Lav din egen mus af et billede (png, jpg, webp) og skift mellem muse-pakkerne med et klik. Baggrunden fjernes selv, og billedet drejes som en tryllestav.
+#
+#   dsh eksempler/mini-muse.Dash                          vælg med musen (vindue)
+#   dsh eksempler/mini-muse.Dash lav billede.png [navn]   lav en muse-pakke af et billede
+#   dsh eksempler/mini-muse.Dash brug navn                skift til en muse-pakke
+#   dsh eksempler/mini-muse.Dash normal                   tilbage til den normale mus
+#   dsh eksempler/mini-muse.Dash størrelse 96             musens størrelse (24 32 48 64 96 128 192)
+#
+#   --drej 30    drej billedet (grader, mod uret). Standard: høje, smalle billeder
+#                (en tryllestav, et sværd …) drejes 30°, så toppen peger op mod venstre
+#   --ingen-baggrund-fjern   brug billedet som det er
+#
+# Læg dine billeder i ~/Pictures/muse — så står de i vinduet, klar til et klik.
+# Muse-pakkerne gemmes i ~/.icons/<navn> (en helt almindelig Xcursor-pakke), og
+# skiftes i XFCE (xfconf-query), GNOME (gsettings) og for alle andre programmer
+# (~/.icons/default/index.theme). Nogle programmer viser den nye mus først,
+# når de er åbnet igen.
+#
+# Baggrunden: har billedet ingen gennemsigtighed, fjernes alt uden for den sorte
+# streg rundt om tegningen (fra hjørnerne og ind). Bedst til tegninger med kant.
+# Musen klikker med det punkt, der er tættest på øverste venstre hjørne.
+
+let home = env("HOME", ".")
+let IKONER = "{home}/.icons"
+let BILLEDER = "{home}/Pictures/muse"
+let CFG = "{home}/.config/mini-muse"
+let STØRRELSER = [24, 32, 48, 64, 96, 128, 192]
+let BILLED_EXT = ["png", "jpg", "jpeg", "webp", "gif", "bmp"]
+
+let MAGICK = ["magick"]
+let IDENTIFY = ["magick", "identify"]
+if which("magick") == nil {
+    MAGICK = ["convert"]            # ImageMagick 6
+    IDENTIFY = ["identify"]
+}
+
+fn fuld(s) {
+    if s.starts_with("~/") { return home + s.replace("~", "") }
+    return s
+}
+fn er_billede(navn) {
+    let l = navn.lower()
+    for e in BILLED_EXT { if l.ends_with("." + e) { return true } }
+    return false
+}
+# "Royal Wand.webp" → "Royal-Wand" (et pænt pakkenavn)
+fn pakke_navn(fil) {
+    let n = fil.name
+    let p = n.split(".")
+    if p.len > 1 {
+        let d = []
+        for i in range(0, p.len - 1) { d.push(p[i]) }
+        n = d.join(".")
+    }
+    let ud = ""
+    for c in n.chars {
+        if c == " " or c == "/" or c == "\"" or c == "'" { ud += "-" } else { ud += c }
+    }
+    return ud
+}
+
+# ── Xcursor-filen, skrevet direkte i Dash ───────────────────────────
+# filen: "Xcur", en indholdsfortegnelse, og et billede pr. størrelse (ARGB, præmultipliceret)
+fn skriv_xcursor(mappe, ud) {
+    let total = 16 + 12 * STØRRELSER.len
+    for n in STØRRELSER { total += 36 + n * n * 4 }
+    let buf = bytes(total)
+    wr8(buf, 0, 88)      # X
+    wr8(buf, 1, 99)      # c
+    wr8(buf, 2, 117)     # u
+    wr8(buf, 3, 114)     # r
+    wr32(buf, 4, 16)
+    wr32(buf, 8, 65536)
+    wr32(buf, 12, STØRRELSER.len)
+    let pos = 16 + 12 * STØRRELSER.len
+    let k = 0
+    for n in STØRRELSER {
+        let raw = read_bytes("{mappe}/{n}.rgba")
+        let hot = read("{mappe}/{n}.hot").trim().split(" ")
+        # indholdsfortegnelsen
+        wr32(buf, 16 + k * 12, 4294770690)     # 0xfffd0002 = billede
+        wr32(buf, 16 + k * 12 + 4, n)
+        wr32(buf, 16 + k * 12 + 8, pos)
+        # billedets hoved
+        wr32(buf, pos, 36)
+        wr32(buf, pos + 4, 4294770690)
+        wr32(buf, pos + 8, n)
+        wr32(buf, pos + 12, 1)
+        wr32(buf, pos + 16, n)
+        wr32(buf, pos + 20, n)
+        wr32(buf, pos + 24, int(hot[0]))
+        wr32(buf, pos + 28, int(hot[1]))
+        wr32(buf, pos + 32, 0)
+        let p = pos + 36
+        for i in range(n * n) {
+            let a = rd8(raw, i * 4 + 3)
+            let r = int(rd8(raw, i * 4) * a / 255)
+            let g = int(rd8(raw, i * 4 + 1) * a / 255)
+            let b = int(rd8(raw, i * 4 + 2) * a / 255)
+            # little-endian ARGB = bytes b, g, r, a
+            wr8(buf, p, b)
+            wr8(buf, p + 1, g)
+            wr8(buf, p + 2, r)
+            wr8(buf, p + 3, a)
+            p += 4
+        }
+        free_bytes(raw)
+        pos = p
+        k += 1
+    }
+    write_bytes(ud, buf)
+    free_bytes(buf)
+}
+
+# klikpunktet: den synlige pixel tættest på øverste venstre hjørne
+fn find_spids(raw, n) {
+    let bedst = n * 3
+    let hx = 0
+    let hy = 0
+    for y in range(n) {
+        for x in range(n) {
+            if x + y < bedst and rd8(raw, (y * n + x) * 4 + 3) > 128 {
+                bedst = x + y
+                hx = x
+                hy = y
+            }
+        }
+    }
+    return [hx, hy]
+}
+
+# ── lav en muse-pakke af et billede ─────────────────────────────────
+# drej = "" → selv (30° for høje, smalle billeder), ellers grader
+fn lav(billede, navn, drej, fjern) {
+    if not exists(billede) { return "kan ikke finde {billede}" }
+    let tmp = "/tmp/mini-muse-{random(100000, 999999)}"
+    rm -rf $tmp
+    mkdir -p $tmp
+    let a = "{tmp}/a.png"
+    let b = "{tmp}/b.png"
+    try $MAGICK "{billede}[0]" -auto-orient "PNG32:{a}"
+    if not exists(a) {
+        rm -rf $tmp
+        return "kunne ikke læse billedet (er ImageMagick installeret?)"
+    }
+    let info = $(try $IDENTIFY -format "%w %h %[opaque]" $a).trim().split(" ")
+    if info.len < 3 {
+        rm -rf $tmp
+        return "kunne ikke læse billedets størrelse"
+    }
+    let w = int(info[0])
+    let h = int(info[1])
+    # ingen gennemsigtighed? så fjernes baggrunden: alt hvad man kan nå fra hjørnerne
+    # uden at krydse en mørk streg (konturen rundt om tegningen)
+    if fjern and info[2].lower() == "true" {
+        let x = "{w - 1}"
+        let y = "{h - 1}"
+        try $MAGICK $a -alpha off "(" +clone -colorspace gray -threshold "10%" -fuzz 0 -fill red -floodfill "+0+0" white -floodfill "+{x}+0" white -floodfill "+0+{y}" white -floodfill "+{x}+{y}" white -fill black +opaque red -fill white -opaque red -negate ")" -compose copy_opacity -composite "PNG32:{b}"
+        if exists(b) { mv -f $b $a }
+    }
+    try $MAGICK $a -trim +repage "PNG32:{b}"
+    if exists(b) { mv -f $b $a }
+    # drej (høje, smalle ting som en tryllestav: skråt, med toppen op mod venstre)
+    let mål = $(try $IDENTIFY -format "%w %h" $a).trim().split(" ")
+    let grader = 0
+    if drej != "" { grader = int(drej) }
+    else if mål.len == 2 and int(mål[1]) > int(mål[0]) * 14 / 10 { grader = 30 }
+    if grader != 0 {
+        try $MAGICK $a -background none -rotate "{0 - grader}" -trim +repage "PNG32:{b}"
+        if exists(b) { mv -f $b $a }
+    }
+    # hver størrelse som rå RGBA + klikpunktet
+    for n in STØRRELSER {
+        let rgba = "{tmp}/{n}.rgba"
+        try $MAGICK $a -resize "{n}x{n}" -background none -gravity center -extent "{n}x{n}" -depth 8 "RGBA:{rgba}"
+        if not exists(rgba) {
+            rm -rf $tmp
+            return "kunne ikke skalere billedet til {n}x{n}"
+        }
+        let raw = read_bytes(rgba)
+        let s = find_spids(raw, n)
+        free_bytes(raw)
+        write("{tmp}/{n}.hot", "{s[0]} {s[1]}\n")
+    }
+    let d = "{IKONER}/{navn}"
+    mkdir -p "{d}/cursors"
+    skriv_xcursor(tmp, "{d}/cursors/left_ptr")
+    # den samme mus som pil og som hånd over links — resten (tekst, vent …) som normalt
+    for alias in ["default", "arrow", "top_left_arrow", "left_arrow", "pointer", "hand1", "hand2", "pointing_hand"] {
+        try ln -sf left_ptr "{d}/cursors/{alias}"
+    }
+    write("{d}/index.theme", "[Icon Theme]\nName={navn}\nComment=Lavet med Mini Muse\nInherits=Adwaita\n")
+    # et lille billede af musen til vinduet
+    try $MAGICK $a -resize "96x96" -background none -gravity center -extent "96x96" "PNG32:{d}/mini-muse.png"
+    rm -rf $tmp
+    return ""
+}
+
+# ── skift mus ───────────────────────────────────────────────────────
+fn brug(navn) {
+    if which("xfconf-query") != nil {
+        try xfconf-query -c xsettings -p /Gtk/CursorThemeName -s $navn 2> /dev/null
+        # findes indstillingen ikke endnu, laves den
+        try xfconf-query -c xsettings -p /Gtk/CursorThemeName -n -t string -s $navn 2> /dev/null
+    }
+    if which("gsettings") != nil { try gsettings set org.gnome.desktop.interface cursor-theme $navn 2> /dev/null }
+    mkdir -p "{IKONER}/default" $CFG
+    write("{IKONER}/default/index.theme", "[Icon Theme]\nInherits={navn}\n")
+    write("{CFG}/valgt", navn + "\n")
+}
+# musens størrelse: brug en af pakkens størrelser, så den bliver skarp
+fn sæt_størrelse(n) {
+    if which("xfconf-query") != nil {
+        try xfconf-query -c xsettings -p /Gtk/CursorThemeSize -s $n 2> /dev/null
+        try xfconf-query -c xsettings -p /Gtk/CursorThemeSize -n -t int -s $n 2> /dev/null
+    }
+    if which("gsettings") != nil { try gsettings set org.gnome.desktop.interface cursor-size $n 2> /dev/null }
+    mkdir -p $CFG
+    write("{CFG}/størrelse", "{n}\n")
+}
+fn størrelse() {
+    if exists("{CFG}/størrelse") { return int(read("{CFG}/størrelse").trim()) }
+    return 32
+}
+fn valgt() {
+    if exists("{CFG}/valgt") { return read("{CFG}/valgt").trim() }
+    return "Adwaita"
+}
+
+# ── kommandolinjen ──────────────────────────────────────────────────
+let drej = ""
+let fjern = true
+let rest = []
+let i = 0
+while i < args.len {
+    let x = args[i]
+    if x == "--drej" and i + 1 < args.len {
+        drej = args[i + 1]
+        i += 2
+    } else if x == "--ingen-baggrund-fjern" {
+        fjern = false
+        i += 1
+    } else {
+        rest.push(x)
+        i += 1
+    }
+}
+if rest.len > 0 {
+    let cmd = rest[0]
+    if cmd == "lav" and rest.len > 1 {
+        let fil = fuld(rest[1])
+        let navn = pakke_navn(fil)
+        if rest.len > 2 { navn = rest[2] }
+        print("🖱️ laver {navn} af {fil.name} …")
+        let fejl = lav(fil, navn, drej, fjern)
+        if fejl != "" {
+            print("💀 {fejl}")
+            exit 1
+        }
+        brug(navn)
+        print("💜 færdig: {IKONER}/{navn} — og den er sat som din mus")
+        exit 0
+    }
+    if cmd == "brug" and rest.len > 1 {
+        brug(rest[1])
+        print("💜 musen er nu {rest[1]}")
+        exit 0
+    }
+    if cmd == "størrelse" and rest.len > 1 {
+        sæt_størrelse(int(rest[1]))
+        print("💜 musens størrelse er nu {rest[1]}")
+        exit 0
+    }
+    if cmd == "normal" {
+        brug("Adwaita")
+        print("💜 tilbage til den normale mus (Adwaita)")
+        exit 0
+    }
+    print("mini-muse 🖱️ — brug:")
+    print("  mini-muse                          vælg med musen")
+    print("  mini-muse lav billede.png [navn]   lav en mus af et billede  (--drej 30)")
+    print("  mini-muse brug navn                skift mus")
+    print("  mini-muse normal                   den normale mus")
+    print("  mini-muse størrelse 96             musens størrelse (24 32 48 64 96 128 192)")
+    exit 1
+}
+
+# ── vinduet ─────────────────────────────────────────────────────────
+let W = 1000
+let H = 600
+window("Mini Muse", W, H)
+
+let BG = "#0d0714"
+let PANEL = "#1a0f26"
+let PANEL_LYS = "#26173a"
+let LILLA = "#a64dff"
+let LILLA_M = "#7a2ee0"
+let LYS = "#e6ccff"
+let DÆMP = "#8a7a99"
+let TOP = "#08040d"
+let RØD = "#ff5a7a"
+let TOP_H = 76
+let FELT = 132           # et felt i gitteret
+let MARG = 24
+let MELLEM = 14
+let KOL = int((W - MARG * 2 + MELLEM) / (FELT + MELLEM))
+
+let VIS = "/tmp/mini-muse-vis"
+rm -rf $VIS
+mkdir -p $BILLEDER $VIS
+
+let felter = []          # [{type: "billede"/"pakke", navn, fil, billede}]
+let rul = 0
+let besked = ""
+let besked_farve = DÆMP
+let besked_t = 0.0
+let drej_valg = ["selv", "0", "30", "45", "90"]
+let drej_nr = 0
+let nu = valgt()
+let STR_VALG = [32, 48, 64, 96, 128]
+let str_nu = størrelse()
+let arbejd = ""          # billedet der skal laves næste billede (så "laver …" når at blive vist)
+
+fn sig(farve, s) {
+    besked = s
+    besked_farve = farve
+    besked_t = 5.0
+}
+fn inde(x, y, w, h) {
+    let m = mouse()
+    return m[0] >= x and m[0] < x + w and m[1] >= y and m[1] < y + h
+}
+fn klip(s, maxw, sk) {
+    if text_width(s, sk) <= maxw { return s }
+    let r = ""
+    for c in s.chars {
+        if text_width(r + c + "...", sk) > maxw { return r + "..." }
+        r += c
+    }
+    return r
+}
+fn knap(x, y, w, h, s, aktiv) {
+    let over = inde(x, y, w, h)
+    let c = PANEL_LYS
+    if aktiv { c = LILLA_M }
+    if over { c = LILLA }
+    round_rect(x, y, w, h, 8, c)
+    text(x + (w - text_width(s, 2)) / 2, y + int((h - 32) / 2), s, LYS, 2)
+    return over and clicked()
+}
+# et lille billede (96x96 PNG) til vinduet
+fn forhånd(fil, nøgle) {
+    let ud = "{VIS}/{nøgle}.png"
+    if not exists(ud) { try $MAGICK "{fil}[0]" -resize "96x96" -background none -gravity center -extent "96x96" "PNG32:{ud}" }
+    if exists(ud) { return image(ud) }
+    return -1
+}
+fn find_felter() {
+    for f in felter { if f.billede >= 0 { free_image(f.billede) } }
+    felter = []
+    rm -rf $VIS
+    mkdir -p $VIS
+    # dine billeder
+    let ud = $(try ls $BILLEDER)
+    let nr = 0
+    for l in ud.split("\n") {
+        let n = l.trim()
+        if n != "" and er_billede(n) {
+            let fil = "{BILLEDER}/{n}"
+            felter.push({"type": "billede", "navn": pakke_navn(fil), "fil": fil, "billede": forhånd(fil, "b{nr}")})
+            nr += 1
+        }
+    }
+    # muse-pakkerne (dine egne først)
+    for rod in [IKONER, "/usr/share/icons"] {
+        let ls = $(try ls $rod)
+        for l in ls.split("\n") {
+            let n = l.trim()
+            if n != "" and n != "default" and exists("{rod}/{n}/cursors/left_ptr") {
+                let b = -1
+                if exists("{rod}/{n}/mini-muse.png") { b = image("{rod}/{n}/mini-muse.png") }
+                felter.push({"type": "pakke", "navn": n, "fil": "{rod}/{n}", "billede": b})
+            }
+        }
+    }
+}
+# en lille pil til pakker uden billede
+fn pil(x, y, s, c) {
+    polygon([[x, y], [x, y + 34 * s], [x + 9 * s, y + 26 * s], [x + 16 * s, y + 40 * s], [x + 22 * s, y + 37 * s], [x + 15 * s, y + 23 * s], [x + 26 * s, y + 23 * s]], c)
+}
+
+find_felter()
+let skud = env("MM_SKUD", "")
+let skud_t = 0.0
+
+while frame() {
+    let dt = min(delta(), 0.1)
+    besked_t -= dt
+
+    # et billede blev klikket i sidste runde: lav musen nu (efter "laver …" er tegnet)
+    if arbejd != "" {
+        let fil = arbejd
+        arbejd = ""
+        let navn = pakke_navn(fil)
+        let d = ""
+        if drej_valg[drej_nr] != "selv" { d = drej_valg[drej_nr] }
+        let fejl = lav(fil, navn, d, true)
+        if fejl != "" { sig(RØD, fejl) }
+        else {
+            brug(navn)
+            nu = navn
+            find_felter()
+            sig(LYS, "Musen er nu {navn} - nogle programmer skal åbnes igen")
+        }
+    }
+
+    clear(BG)
+    # gitteret
+    let top = TOP_H + 56
+    let række_h = FELT + 40
+    let rækker = int((felter.len + KOL - 1) / KOL)
+    let maks = max(0, rækker * række_h - (H - top))
+    rul -= wheel() * 60
+    rul = max(0, min(maks, rul))
+    let j = 0
+    while j < felter.len {
+        let f = felter[j]
+        let x = MARG + (j % KOL) * (FELT + MELLEM)
+        let y = top + int(j / KOL) * række_h - rul
+        if y + række_h > top and y < H {
+            let aktiv = f.type == "pakke" and f.navn == nu
+            let c = PANEL
+            if aktiv { c = LILLA_M }
+            if inde(x, y, FELT, FELT) and y >= top { c = PANEL_LYS }
+            round_rect(x, y, FELT, FELT, 12, c)
+            if f.billede >= 0 { draw(f.billede, x + (FELT - 96) / 2, y + (FELT - 96) / 2) }
+            else { pil(x + 46, y + 34, 2, LYS) }
+            if f.type == "billede" {
+                round_rect(x + 6, y + 6, 44, 20, 6, LILLA_M)
+                text(x + 12, y + 8, "NY", LYS, 1)
+            }
+            text(x, y + FELT + 8, klip(f.navn, FELT, 1), LYS, 1)
+            if inde(x, y, FELT, FELT) and y >= top and clicked() and arbejd == "" {
+                if f.type == "billede" {
+                    arbejd = f.fil
+                    sig(LYS, "Laver musen af {f.fil.name} ...")
+                } else {
+                    brug(f.navn)
+                    nu = f.navn
+                    sig(LYS, "Musen er nu {f.navn} - nogle programmer skal åbnes igen")
+                }
+            }
+        }
+        j += 1
+    }
+    # overskrifter og knapper ovenpå
+    rect(0, 0, W, top, BG)
+    rect(0, 0, W, TOP_H, TOP)
+    rect(0, TOP_H - 2, W, 2, LILLA_M)
+    text(24, 14, "MINI", LILLA, 3)
+    text(24 + text_width("MINI ", 3), 14, "MUSE", LYS, 3)
+    let tx = 24 + text_width("MINI MUSE ", 3)
+    text(tx, 30, klip("nu: {nu}", W - tx - 620, 1), DÆMP, 1)
+    let bw = 120
+    if knap(W - bw - 20, 16, bw, 44, "NORMAL", nu == "Adwaita") {
+        brug("Adwaita")
+        nu = "Adwaita"
+        sig(LYS, "Tilbage til den normale mus")
+    }
+    let dw = 150
+    if knap(W - bw - dw - 32, 16, dw, 44, "DREJ " + drej_valg[drej_nr], drej_nr != 0) {
+        drej_nr = (drej_nr + 1) % drej_valg.len
+        sig(DÆMP, "Nye mus drejes: {drej_valg[drej_nr]} (selv = 30 for høje, smalle billeder)")
+    }
+    let sw = 130
+    if knap(W - bw - dw - sw - 44, 16, sw, 44, "STR {str_nu}", false) {
+        # næste størrelse i rækken
+        let næste = STR_VALG[0]
+        for i in range(STR_VALG.len) { if STR_VALG[i] == str_nu and i + 1 < STR_VALG.len { næste = STR_VALG[i + 1] } }
+        str_nu = næste
+        sæt_størrelse(str_nu)
+        sig(LYS, "Musens størrelse: {str_nu} - nogle programmer skal åbnes igen")
+    }
+    let ow = 140
+    if knap(W - bw - dw - sw - ow - 56, 16, ow, 44, "OPDATER", false) {
+        find_felter()
+        sig(DÆMP, "Kigget i {BILLEDER} igen")
+    }
+    text(MARG, TOP_H + 18, "Læg billeder i ~/Pictures/muse  ·  klik NY = lav musen  ·  klik en pakke = brug den", DÆMP, 1)
+    if felter.len == 0 { text(MARG, top + 20, "Ingen billeder eller muse-pakker endnu", LYS, 2) }
+
+    if besked_t > 0 and besked != "" {
+        let bw2 = min(W - 40, text_width(besked, 1) + 32)
+        round_rect((W - bw2) / 2, H - 60, bw2, 34, 10, TOP)
+        text((W - bw2) / 2 + 16, H - 51, klip(besked, bw2 - 32, 1), besked_farve, 1)
+    }
+    if skud != "" {
+        skud_t += dt
+        if skud_t > float(env("MM_SKUD_T", "3")) {
+            screenshot(skud)
+            break
+        }
+    }
+}
+for f in felter { if f.billede >= 0 { free_image(f.billede) } }
+rm -rf $VIS

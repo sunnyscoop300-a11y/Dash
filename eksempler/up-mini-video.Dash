@@ -429,6 +429,12 @@ let cast_serve = nil
 let cast_job = nil
 let tv_valgt = false
 let tv_spiller = -1
+let tv_status_job = nil
+let tv_status_t = 20.0
+let tv_pos = 0.0         # hvor langt TV'et er (gættet mellem catt status hvert 20. sek.)
+let tv_total = 0.0
+let tv_pause = false
+let tv_ign = false       # en knap blev trykket — det næste svar fra catt status er for gammelt
 
 let tryk_ned = false
 let tryk_sx = 0
@@ -642,6 +648,19 @@ fn start_sync() {
 
 # ── afspilning ───────────────────────────────────────────────────────
 let MÆRKE = "up-mini-video-afspiller"
+# et lille mpv-script: skriver "watch later" hvert 10. sekund, og sletter den, når videoen er set færdig
+let GEM_LUA = ["local sti = nil",
+    "mp.register_event('file-loaded', function() sti = mp.get_property('path') end)",
+    "mp.add_periodic_timer(10, function()",
+    "  local t = mp.get_property_number('time-pos')",
+    "  local p = mp.get_property_number('percent-pos')",
+    "  if not t or not p or t < 5 then return end",
+    "  if p < 95 then mp.command('write-watch-later-config')",
+    "  elseif sti then mp.commandv('delete-watch-later-config', sti) end",
+    "end)",
+    "mp.register_event('end-file', function(e)",
+    "  if e.reason == 'eof' and sti then mp.commandv('delete-watch-later-config', sti) end",
+    "end)", ""].join("\n")
 fn spil(i) {
     if i < 0 or i >= videoer.len { return nil }
     if which("mpv") == nil {
@@ -651,10 +670,16 @@ fn spil(i) {
     stop()
     mkdir -p "{CFG}/fortsæt"
     let url = kilde(videoer[i].fil)
-    let cmd = ["mpv", "--fs", "--force-window=yes", "--title={MÆRKE}", "--hwdec=no", "--save-position-on-quit", "--watch-later-dir={CFG}/fortsæt", "--cache=yes", "--demuxer-max-bytes=150M", "--slang=da,dan,dansk,en,eng"]
+    let cmd = ["mpv", "--fs", "--force-window=yes", "--title={MÆRKE}", "--hwdec=no", "--save-position-on-quit", "--watch-later-dir={CFG}/fortsæt", "--cache=yes", "--demuxer-max-bytes=150M", "--slang=da,dan,dansk,en,eng",
+               "--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_delay_max=30", "--network-timeout=60",
+               "--log-file={INFO}/mpv.log", "--msg-level=all=warn"]
     # undertekster med samme navn: dansk vælges først (står i filnavnet, fx Film.da.srt)
     let uts = undertekster(videoer[i].fil)
     for u in uts { cmd = cmd + ["--sub-file={u}"] }
+    # gem hvor langt du er nået hvert 10. sekund — mpv gemmer ellers kun, når du trykker q,
+    # og ikke når appen lukker den (eller den går i stå)
+    write("{INFO}/gem-plads.lua", GEM_LUA)
+    cmd = cmd + ["--script={INFO}/gem-plads.lua"]
     cmd = cmd + [url]
     afspiller = &($cmd < /dev/null > /dev/null 2> /dev/null)
     spiller_nr = i
@@ -719,6 +744,55 @@ fn start_cast_serve() {
     }
     sleep 1
 }
+# hvor langt er TV'et nået? gemmes, så næste cast kan fortsætte derfra
+fn tv_fil(i) { return "{CFG}/fortsæt-tv/{videoer[i].nøgle}" }
+# "Time: 0:45:12 / 1:39:42" → 2712 sekunder (-1 hvis ikke fundet)
+fn tv_tid(tekst) {
+    for l in tekst.split("\n") {
+        let t = l.trim()
+        if t.starts_with("Time:") {
+            let d = t.replace("Time:", "").trim().split(" ")[0].split(":")
+            let sek = 0
+            for x in d { sek = sek * 60 + int(x) }
+            return sek
+        }
+    }
+    return -1
+}
+# "Time: 0:45:12 / 1:39:42 (45%)" → 5982 (filmens længde; -1 hvis ikke fundet)
+fn tv_længde(tekst) {
+    for l in tekst.split("\n") {
+        let t = l.trim()
+        if t.starts_with("Time:") and t.contains("/") {
+            let d = t.split("/")[1].trim().split(" ")[0].split(":")
+            let sek = 0
+            for x in d { sek = sek * 60 + int(x) }
+            return sek
+        }
+    }
+    return -1
+}
+fn gem_tv_tid() {
+    let f = "{ROD}/tv-status.txt"
+    if tv_spiller < 0 or not exists(f) { return nil }
+    # svaret er fra før du trykkede på en knap — så er det forkert nu
+    if tv_ign { return nil }
+    let st = read(f)
+    let sek = tv_tid(st)
+    if sek <= 0 { return nil }
+    tv_pos = float(sek)
+    let l = tv_længde(st)
+    if l > 0 { tv_total = float(l) }
+    if st.contains("State: PAUSED") { tv_pause = true }
+    if st.contains("State: PLAYING") { tv_pause = false }
+    mkdir -p "{CFG}/fortsæt-tv"
+    let v = videoer[tv_spiller]
+    # næsten færdig? så starter den forfra næste gang
+    let tf = tv_fil(tv_spiller)
+    if v.dur > 0 and sek > v.dur - 180 { rm -f $tf }
+    else { write(tv_fil(tv_spiller), "{sek}\n") }
+}
+
 fn cast(i) {
     if i < 0 or i >= videoer.len { return nil }
     if which("catt") == nil {
@@ -745,14 +819,40 @@ fn cast(i) {
         try curl -s --max-time 30 -o $uf $bedste
         if exists(uf) { ut = ["-s", uf] }
     }
-    cast_job = &(catt $d cast $ut $url < /dev/null >> "{INFO}/cast.log" 2>&1)
+    # fortsæt hvor du slap på TV'et sidst
+    let fra = []
+    let tf = tv_fil(i)
+    if exists(tf) {
+        let sek = int(read(tf).trim())
+        if sek > 30 {
+            fra = ["-t", "{sek}"]
+            sig(LYS, "Fortsætter fra {tid_tekst(float(sek))} på TV'et")
+        }
+    }
+    cast_job = &(catt $d cast $fra $ut $url < /dev/null >> "{INFO}/cast.log" 2>&1)
     tv_spiller = i
-    let hvor = "TV"
-    if TV != "" { hvor = TV }
-    sig(LYS, "Sender til {hvor}: {videoer[i].titel}")
+    tv_status_t = 20.0
+    tv_pos = 0.0
+    if fra.len > 0 { tv_pos = float(fra[1]) }
+    tv_total = videoer[i].dur
+    tv_pause = false
+    tv_ign = false
+    if fra.len == 0 {
+        let hvor = "TV"
+        if TV != "" { hvor = TV }
+        sig(LYS, "Sender til {hvor}: {videoer[i].titel}")
+    }
 }
 fn stop_cast() {
     if tv_spiller < 0 and cast_serve == nil { return nil }
+    # husk hvor langt TV'et nåede, før det stoppes
+    if tv_spiller >= 0 and which("catt") != nil {
+        let d = tv_d()
+        let st = $(try catt $d status 2> /dev/null)
+        write("{ROD}/tv-status.txt", st)
+        tv_ign = false
+        gem_tv_tid()
+    }
     if which("catt") != nil and tv_spiller >= 0 {
         let d = tv_d()
         &(catt $d stop < /dev/null > /dev/null 2>&1)
@@ -766,7 +866,36 @@ fn stop_cast() {
     tv_spiller = -1
 }
 
+# styr TV'et: hop til et sekund, pause/spil (catt kører i baggrunden)
+fn tv_kommando(c) {
+    if tv_spiller < 0 or which("catt") == nil { return nil }
+    let d = tv_d()
+    &(catt $d $c < /dev/null >> "{INFO}/cast.log" 2>&1)
+    # spørg TV'et igen om lidt, men stol ikke på svaret der allerede er på vej
+    tv_ign = true
+    tv_status_t = 4.0
+}
+fn tv_hop(sek) {
+    let maks = tv_total
+    if maks <= 0 { maks = videoer[tv_spiller].dur }
+    let t = max(0.0, sek)
+    if maks > 0 { t = min(t, maks - 5) }
+    tv_pos = t
+    tv_kommando(["seek", "{int(t)}"])
+    sig(LYS, "Hopper til {tid_tekst(t)}")
+}
+fn tv_pause_spil() {
+    tv_pause = not tv_pause
+    if tv_pause { tv_kommando(["pause"]) } else { tv_kommando(["play"]) }
+}
+
 # ── tegning ──────────────────────────────────────────────────────────
+# højden på bjælken i bunden (0 når intet spiller) — videoerne skal ikke kunne trykkes bag den
+fn bjælke_h() {
+    if tv_spiller >= 0 and tv_spiller < videoer.len { return 132 * SK }
+    if afspiller != nil and spiller_nr >= 0 and spiller_nr < videoer.len { return 48 * SK }
+    return 0
+}
 fn tegn_top() {
     rect(0, 0, W, TOP_H, TOP)
     rect(0, TOP_H - 2, W, 2, LILLA_M)
@@ -807,7 +936,7 @@ fn tom_billede(x, y, w, h) {
 fn tegn_gitter(antal, tegn_en) {
     let top = TOP_H + 16
     if hylde_valg != "" { top += 56 + 8 * SK }
-    let bund = H
+    let bund = H - bjælke_h()
     let tile_h = TH + TEKST_H + MELLEM
     let rækker = int((antal + KOL - 1) / KOL)
     let maks = max(0, rækker * tile_h - (bund - top))
@@ -906,19 +1035,72 @@ fn tegn_videoer() {
 fn tegn_spiller_bjælke() {
     let på_tv = tv_spiller >= 0 and tv_spiller < videoer.len
     if not på_tv and (afspiller == nil or spiller_nr < 0 or spiller_nr >= videoer.len) { return nil }
-    let h = 48 * SK
+    let h = bjælke_h()
     let y = H - h
     rect(0, y, W, h, PANEL)
     rect(0, y, W, 2, LILLA_M)
-    let s = ""
-    if på_tv {
-        let hvor = "TV"
-        if TV != "" { hvor = TV }
-        s = "på {hvor}: " + videoer[tv_spiller].titel
-    } else { s = "spiller: " + videoer[spiller_nr].titel }
-    text(MARG, y + int((h - 16 * SK) / 2), klip(s, W - MARG * 2 - 140 * SK, SK), LYS, SK)
-    if knap(W - 130 * SK - MARG, y + 6 * SK, 130 * SK, h - 12 * SK, "STOP", false, KS) {
-        if på_tv { stop_cast() } else { stop() }
+    if not på_tv {
+        let s = "spiller: " + videoer[spiller_nr].titel
+        text(MARG, y + int((h - 16 * SK) / 2), klip(s, W - MARG * 2 - 140 * SK, SK), LYS, SK)
+        if knap(W - 130 * SK - MARG, y + 6 * SK, 130 * SK, h - 12 * SK, "STOP", false, KS) { stop() }
+        return nil
+    }
+    # ── på TV: titel, tid, en bjælke du kan trykke på, og knapper ──
+    let total = tv_total
+    if total <= 0 { total = videoer[tv_spiller].dur }
+    let hvor = "TV"
+    if TV != "" { hvor = TV }
+    let tid = tid_tekst(tv_pos)
+    if total > 0 { tid = tid + " / " + tid_tekst(total) }
+    if tv_pause { tid = tid + "  (pause)" }
+    let tw = text_width(tid, SK)
+    let ty = y + 10 * SK
+    text(MARG, ty, klip("på {hvor}: " + videoer[tv_spiller].titel, W - MARG * 3 - tw, SK), LYS, SK)
+    text(W - MARG - tw, ty, tid, DÆMP, SK)
+    # tidslinjen: tryk hvor du vil hen
+    let bx = MARG
+    let bw = W - MARG * 2
+    let by = y + 36 * SK
+    let bh = 14 * SK
+    round_rect(bx, by, bw, bh, 6, PANEL_LYS)
+    if total > 0 {
+        let fw = int(bw * min(1.0, tv_pos / total))
+        if fw > 0 { round_rect(bx, by, fw, bh, 6, LILLA_M) }
+        let m = mouse()
+        # lidt større område end selve bjælken, så den er nem at ramme med en finger
+        if inde(bx, by - 10 * SK, bw, bh + 20 * SK) {
+            let mål = total * float(m[0] - bx) / float(bw)
+            if not MOBIL {
+                rect(m[0], by - 4, 2, bh + 8, LYS)
+                let hs = tid_tekst(mål)
+                let hw = text_width(hs, SK) + 12
+                let hx = max(0, min(W - hw, m[0] - hw / 2))
+                round_rect(hx, by - 26 * SK, hw, 18 * SK + 4, 6, TOP)
+                text(hx + 6, by - 24 * SK, hs, LYS, SK)
+            }
+            if trykket() { tv_hop(mål) }
+        }
+    }
+    # knapperne
+    let navne = ["-10m", "-30s", "PAUSE", "+30s", "+10m", "STOP"]
+    if tv_pause { navne[2] = "SPIL" }
+    let n = navne.len
+    let gap = 8 * SK
+    let kw = int((W - MARG * 2 - gap * (n - 1)) / n)
+    let kh = 40 * SK
+    let ky = y + h - kh - 12 * SK
+    let k = 0
+    while k < n {
+        let kx = MARG + k * (kw + gap)
+        if knap(kx, ky, kw, kh, navne[k], k == 2 and tv_pause, KS) {
+            if k == 0 { tv_hop(tv_pos - 600.0) }
+            if k == 1 { tv_hop(tv_pos - 30.0) }
+            if k == 2 { tv_pause_spil() }
+            if k == 3 { tv_hop(tv_pos + 30.0) }
+            if k == 4 { tv_hop(tv_pos + 600.0) }
+            if k == 5 { stop_cast() }
+        }
+        k += 1
     }
 }
 
@@ -926,6 +1108,12 @@ fn tegn_spiller_bjælke() {
 # frisk start: intet fra sidst, alt hentes fra skyen igen
 try pkill -f $MÆRKE 2> /dev/null
 try pkill -f "serve http {remote_navn(REMOTES[0])} --addr 127.0.0.1:{PORT}" 2> /dev/null
+try pkill -f "serve http .* --addr 0.0.0.0:{CAST_PORT}" 2> /dev/null
+# gem loggene fra sidste gang (små tekstfiler), så man kan se hvad der skete
+mkdir -p $CFG
+for lg in ["serve", "cast", "mpv", "sync"] {
+    if exists("{INFO}/{lg}.log") { cp "{INFO}/{lg}.log" "{CFG}/forrige-{lg}.log" }
+}
 rm -rf $ROD
 mkdir -p $LIB $INFO
 start_serve()
@@ -989,6 +1177,20 @@ while frame() {
         serve_t = 5.0
         if serve_job == nil or (not running(serve_job) and not lever("serve http .* --addr 127.0.0.1:{PORT}")) { start_serve() }
     }
+    # på TV: spørg hvor langt filmen er, hvert 20. sek. (i baggrunden)
+    # (i proot ser jobs færdige ud med det samme, så svaret læses først ved næste
+    # runde, 20 sek. senere — så har catt for længst skrevet det)
+    if tv_spiller >= 0 {
+        if not tv_pause { tv_pos += dt }
+        tv_status_t -= dt
+        if tv_status_t <= 0 {
+            tv_status_t = 20.0
+            gem_tv_tid()
+            tv_ign = false
+            let d = tv_d()
+            tv_status_job = &(catt $d status < /dev/null > "{ROD}/tv-status.txt" 2> /dev/null)
+        }
+    }
     auto_t -= dt
     if auto_t <= 0 {
         auto_t = float(env("UV_AUTO", "600"))
@@ -1004,7 +1206,7 @@ while frame() {
     tegn_spiller_bjælke()
     if besked_t > 0 and besked != "" {
         let bw = min(W - 40, text_width(besked, SK) + 32)
-        let by = H - 60 * SK - 48 * SK
+        let by = H - max(bjælke_h(), 48 * SK) - 60 * SK
         round_rect((W - bw) / 2, by, bw, 24 * SK + 16, 10, TOP)
         text((W - bw) / 2 + 16, by + 8, klip(besked, bw - 32, SK), besked_farve, SK)
     }
@@ -1022,4 +1224,7 @@ stop()
 stop_cast()
 if serve_job != nil { try kill(serve_job, 15) }
 try pkill -f "serve http {remote_navn(REMOTES[0])} --addr 127.0.0.1:{PORT}" 2> /dev/null
+for lg in ["serve", "cast", "mpv", "sync"] {
+    if exists("{INFO}/{lg}.log") { cp "{INFO}/{lg}.log" "{CFG}/forrige-{lg}.log" }
+}
 rm -rf $ROD

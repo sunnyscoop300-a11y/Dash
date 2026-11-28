@@ -423,6 +423,33 @@ fn inde(x, y, w, h) {
     return m[0] >= x and m[0] < x + w and m[1] >= y and m[1] < y + h
 }
 
+# titlen ruller hen over skærmen, når den er for lang til pladsen (ellers står den stille).
+# Den står stille lidt i starten, så du kan nå at læse begyndelsen.
+let rul_t = 0.0
+let rul_nu = -1
+fn rul_tekst(s, x, y, w, farve, sk) {
+    let tw = text_width(s, sk)
+    if tw <= w {
+        text(x, y, s, farve, sk)
+        return nil
+    }
+    let mellem = 48 * sk
+    let fart = 40.0 * sk                 # pixels pr. sekund
+    let pause = 1.5
+    let runde = float(tw + mellem) / fart + pause
+    let t = rul_t - float(int(rul_t / runde)) * runde
+    let off = 0
+    if t > pause { off = int((t - pause) * fart) }
+    # tegn for tegn: kun de tegn, der er helt inde i feltet, bliver tegnet
+    for start in [x - off, x - off + tw + mellem] {
+        let cx = start
+        for c in s.chars {
+            let cw = text_width(c, sk)
+            if cx >= x and cx + cw <= x + w { text(cx, y, c, farve, sk) }
+            cx += cw
+        }
+    }
+}
 fn klip(s, maxw, sk) {
     if text_width(s, sk) <= maxw { return s }
     let r = ""
@@ -934,7 +961,7 @@ fn tegn_nu() {
     if s.cover and s.stor < 0 and har_billede(s.nøgle, STOR) { s.stor = hent_billede(s.nøgle, STOR) }
     if s.stor >= 0 { draw(s.stor, x, y) } else { tom_cover(x, y, STOR, 6) }
     let ty = y + STOR + 14
-    text(x, ty, klip(s.titel, STOR, 2), LYS, 2)
+    rul_tekst(s.titel, x, ty, STOR, LYS, 2)
     text(x, ty + 34, klip(kunstner_af(s), STOR, 1), LILLA, 1)
     let by = ty + 62
     tidslinje(x, by, STOR, 8, 1)
@@ -1071,7 +1098,7 @@ fn m_nu_bjælke() {
     rect(0, y, W, h, PANEL)
     rect(0, y, W, 2, LILLA_M)
     if s.grid >= 0 { draw(s.grid, 20, y + 12, 80, 80) } else { tom_cover(20, y + 12, 80, 3) }
-    text(116, y + 24, klip(s.titel, W - 116 - 120, 2), LYS, 2)
+    rul_tekst(s.titel, 116, y + 24, W - 116 - 120, LYS, 2)
     text(116, y + 60, klip(kunstner_af(s), W - 116 - 120, 1), LILLA, 2)
     if s.dur > 0 { rect(0, y + h - 6, int(W * min(1.0, pos / s.dur)), 6, LILLA) }
     if rund_knap(W - 60, y + h / 2, 38, true) { skift_pause() }
@@ -1186,7 +1213,7 @@ fn m_spiller_liggende() {
     if s.stor >= 0 { draw(s.stor, x, y) } else { tom_cover(x, y, MSTOR, 8) }
     let x2 = x + MSTOR + 48
     let rw = W - x2 - 32
-    text(x2, y + 10, klip(s.titel, rw, 3), LYS, 3)
+    rul_tekst(s.titel, x2, y + 10, rw, LYS, 3)
     text(x2, y + 62, klip(kunstner_af(s), rw, 2), LILLA, 2)
     tidslinje(x2, y + 120, rw, 14, 2)
     let cx = x2 + int(rw / 2)
@@ -1217,7 +1244,7 @@ fn m_spiller() {
     if s.cover and s.stor < 0 and har_billede(s.nøgle, MSTOR) { s.stor = hent_billede(s.nøgle, MSTOR) }
     if s.stor >= 0 { draw(s.stor, x, y) } else { tom_cover(x, y, MSTOR, 10) }
     let ty = y + MSTOR + 24
-    text(x, ty, klip(s.titel, MSTOR, 3), LYS, 3)
+    rul_tekst(s.titel, x, ty, MSTOR, LYS, 3)
     text(x, ty + 52, klip(kunstner_af(s), MSTOR, 2), LILLA, 2)
     let by = ty + 100
     tidslinje(x, by, MSTOR, 14, 2)
@@ -1261,6 +1288,12 @@ if env("MP_SPIL", "") != "" {   # test: start en sang med det samme
 
 while frame() {
     let dt = min(delta(), 0.1)
+    # ny sang: titlen starter forfra med at rulle
+    rul_t += dt
+    if nu != rul_nu {
+        rul_nu = nu
+        rul_t = 0.0
+    }
     tid += dt
     besked_t -= dt
     opdater_touch()
